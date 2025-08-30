@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CheesePie Lab Tools</title>
+    <script>
+      (function(){
+        try {
+          var t = localStorage.getItem('cheesepie.theme') || 'dark';
+          document.documentElement.setAttribute('data-theme', t);
+        } catch (e) { /* ignore */ }
+      })();
+    </script>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <meta name="theme-color" content="#f5c12e">
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand">
+        <div class="logo">🧀</div>
+        <div class="title">CheesePie</div>
+      </div>
+      <nav class="tabs">
+        <a class="tab {{ 'active' if active_tab == 'browser' else '' }}" href="/browser">Browser</a>
+        <a class="tab {{ 'active' if active_tab == 'preproc' else '' }}" href="/preproc">Preproc</a>
+        <a class="tab {{ 'active' if active_tab == 'annotator' else '' }}" href="/annotator">Annotator</a>
+        <a class="tab {{ 'active' if active_tab == 'importer' else '' }}" href="/importer">Importer</a>
+        <a class="tab {{ 'active' if active_tab == 'settings' else '' }}" href="/settings">Settings</a>
+      </nav>
+    </header>
+
+    <main class="container">
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer muted">
+      <span>CheesePie Lab Tools · v0.1</span>
+    </footer>
+
+    <script>
+      window.CHEESEPIE = {{ public_config|tojson }};
+    </script>
+    <script src="/static/app.js"></script>
+  </body>
+  </html>

@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <h1>File Browser</h1>
+      <p class="muted">Browse experiment videos, filter, and inspect details.</p>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="control-group">
+      <label for="dir-input">Folder path</label>
+      <div class="inline">
+        <input id="dir-input" type="text" placeholder="/path/to/videos" spellcheck="false" autocomplete="off">
+        <button id="up-btn" class="btn" title="Up one folder" aria-label="Up one folder">↑</button>
+        <button id="load-btn" class="btn primary">Load</button>
+      </div>
+    </div>
+    <div class="control-group">
+      <label for="search-input">Search</label>
+      <div class="search-wrap">
+        <input id="search-input" type="text" placeholder="Type to filter (e.g. session1, .mp4)">
+        <button id="clear-search" class="clear-x" title="Clear" aria-label="Clear search" hidden>×</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="layout">
+    <div class="file-list" id="file-list">
+      <div class="placeholder muted">Enter a folder path and click Load.</div>
+    </div>
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-inner">
+        <div class="muted" id="actions-placeholder">Select a file to see available actions.</div>
+        <div id="actions"></div>
+        <div style="border-top:1px solid var(--border); margin:12px 0 10px;"></div>
+        <h2>Details</h2>
+        <div class="muted" id="details-placeholder">Select a file to see details.</div>
+        <div id="details"></div>
+      </div>
+    </aside>
+  </div>
+</section>
+{% endblock %}

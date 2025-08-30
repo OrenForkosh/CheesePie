@@ -1,0 +1,355 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="panel">
+  <div class="panel-header">
+    <h1>Importer</h1>
+    <div class="muted">Configure facility, experiment, dates, times, and cameras.</div>
+  </div>
+  <div class="controls">
+    <div class="control-group">
+      <label for="facility-select">Facility</label>
+      <select id="facility-select"></select>
+    </div>
+    <div class="control-group">
+      <label for="source-dir">Source Folder</label>
+      <input id="source-dir" type="text" readonly placeholder="Select a facility" />
+    </div>
+
+    
+
+    <div class="control-group">
+      <label for="experiment-select">Experiment</label>
+      <select id="experiment-select" disabled></select>
+    </div>
+    <div class="control-group">
+      <label for="treatment-select">Treatment</label>
+      <select id="treatment-select" disabled></select>
+    </div>
+
+    <div class="control-group">
+      <label for="batch-input">Batch</label>
+      <input id="batch-input" type="number" min="0" step="1" value="1" readonly />
+    </div>
+    <div class="control-group">
+      <label>&nbsp;</label>
+      <div class="muted">Used in filename: expNNNN</div>
+    </div>
+
+    <div class="control-group">
+      <label for="start-date">Start Date</label>
+      <input id="start-date" type="date" />
+    </div>
+    <div class="control-group">
+      <label for="end-date">End Date</label>
+      <input id="end-date" type="date" />
+    </div>
+
+    <div class="control-group">
+      <label for="start-time">Start Time</label>
+      <input id="start-time" type="time" placeholder="20:00" />
+    </div>
+    <div class="control-group">
+      <label for="end-time">End Time</label>
+      <input id="end-time" type="time" />
+    </div>
+
+    <div class="control-group" style="grid-column: 1 / -1;">
+      <label>Cameras</label>
+      <div id="cameras-wrap">
+        <div class="cam-toolbar" id="cams-toolbar" hidden>
+          <button type="button" class="btn mini" id="cams-all">All</button>
+          <button type="button" class="btn mini" id="cams-none">None</button>
+          <div class="cam-row" id="cams-row"></div>
+        </div>
+      </div>
+      <div class="muted" id="cameras-hint" style="margin-top:6px">Select a facility to load available cameras.</div>
+    </div>
+
+    <div class="control-group" style="grid-column: 1 / -1; display:flex; gap:10px; align-items:flex-end; justify-content:flex-end">
+      <label style="margin-left:auto; display:flex; align-items:center; gap:8px"><input id="dry-run" type="checkbox" /> Dry run (write .src only)</label>
+      <button class="btn" id="reset-btn">Reset</button>
+      <button class="btn primary" id="import-btn" disabled>Import</button>
+    </div>
+  </div>
+</div>
+
+<script>
+window.addEventListener('DOMContentLoaded', function(){
+  const CFG = window.CHEESEPIE || {};
+  const FACS = (CFG.importer && CFG.importer.facilities) || {};
+
+  const $ = (s, el=document) => el.querySelector(s);
+  const facilitySel = $('#facility-select');
+  const experimentSel = $('#experiment-select');
+  const treatmentSel = $('#treatment-select');
+  const srcDir = $('#source-dir');
+  const startDate = $('#start-date');
+  const endDate = $('#end-date');
+  const startTime = $('#start-time');
+  const endTime = $('#end-time');
+  const camsWrap = $('#cameras-wrap');
+  const camsToolbar = $('#cams-toolbar');
+  const camsRow = $('#cams-row');
+  const camsAllBtn = $('#cams-all');
+  const camsNoneBtn = $('#cams-none');
+  const batchInput = $('#batch-input');
+  const dryRun = document.getElementById('dry-run');
+  const camsHint = $('#cameras-hint');
+  const importBtn = $('#import-btn');
+  const resetBtn = $('#reset-btn');
+
+  function pad2(n){ return String(n).padStart(2,'0'); }
+
+  function setDisabled(el, dis){ el.disabled = !!dis; if (dis) el.value=''; }
+
+  function populateFacilities(){
+    facilitySel.innerHTML = '<option value="">Select facility…</option>';
+    Object.keys(FACS).sort().forEach(k => {
+      const opt = document.createElement('option');
+      opt.value = k; opt.textContent = k;
+      facilitySel.appendChild(opt);
+    });
+  }
+
+  function populateExperiments(fac){
+    experimentSel.innerHTML = '';
+    setDisabled(experimentSel, true);
+    setDisabled(treatmentSel, true);
+    treatmentSel.innerHTML = '';
+    if (!fac || !FACS[fac]) return;
+    const exps = FACS[fac].experiments || {};
+    const names = Object.keys(exps).sort();
+    experimentSel.innerHTML = '<option value="">Select experiment…</option>';
+    names.forEach(name => {
+      const opt = document.createElement('option'); opt.value = name; opt.textContent = name; experimentSel.appendChild(opt);
+    });
+    setDisabled(experimentSel, false);
+    refreshBatch();
+  }
+
+  function populateTreatments(fac, exp){
+    treatmentSel.innerHTML = '';
+    setDisabled(treatmentSel, true);
+    if (!fac || !exp || !FACS[fac]) return;
+    const arr = (FACS[fac].experiments || {})[exp] || [];
+    treatmentSel.innerHTML = '<option value="">Select treatment…</option>';
+    arr.forEach(t => {
+      const opt = document.createElement('option'); opt.value = t; opt.textContent = t; treatmentSel.appendChild(opt);
+    });
+    setDisabled(treatmentSel, false);
+  }
+
+  function applyTreatmentDefaults(fac, exp, trt){
+    if (!fac || !exp || !trt) return;
+    const defs = (((FACS[fac] || {}).treatment_defaults || {})[exp] || {})[trt] || {};
+    if (defs.start_time) startTime.value = defs.start_time;
+    if (defs.end_time) endTime.value = defs.end_time;
+  }
+
+  function populateCameras(fac){
+    camsRow.innerHTML = '';
+    const n = (FACS[fac] && Number(FACS[fac].cameras)) || 0;
+    camsToolbar.hidden = !n;
+    camsHint.textContent = n ? `Pick from ${n} camera(s).` : 'Select a facility to load available cameras.';
+    if (!n) return;
+
+    for (let i = 1; i <= n; i++){
+      const btn = document.createElement('div');
+      btn.className = 'cam-btn';
+      btn.dataset.cam = String(i);
+      btn.textContent = String(i);
+      btn.addEventListener('click', () => {
+        btn.classList.toggle('active');
+        validate();
+      });
+      camsRow.appendChild(btn);
+    }
+
+    camsAllBtn.onclick = () => {
+      camsRow.querySelectorAll('.cam-btn').forEach(el => el.classList.add('active'));
+      validate();
+    };
+    camsNoneBtn.onclick = () => {
+      camsRow.querySelectorAll('.cam-btn').forEach(el => el.classList.remove('active'));
+      validate();
+    };
+  }
+
+  function validate(){
+    const hasFac = !!facilitySel.value;
+    const hasExp = !!experimentSel.value;
+    const hasTrt = !!treatmentSel.value;
+    const hasDates = !!startDate.value && !!endDate.value;
+    const hasTimes = !!startTime.value && !!endTime.value;
+    const anyCam = !!camsRow.querySelector('.cam-btn.active');
+    importBtn.disabled = !(hasFac && hasExp && hasTrt && hasDates && hasTimes && anyCam);
+  }
+
+  facilitySel.addEventListener('change', () => {
+    const fac = facilitySel.value;
+    const src = (FACS[fac] && FACS[fac].source_dir) || '';
+    srcDir.value = src;
+    populateExperiments(fac);
+    populateCameras(fac);
+    // Preselect first experiment and treatment (if available) and apply defaults
+    const exps = Object.keys(((FACS[fac] || {}).experiments || {})).sort();
+    if (exps.length > 0){
+      experimentSel.value = exps[0];
+      populateTreatments(fac, experimentSel.value);
+      const trts = (((FACS[fac] || {}).experiments || {})[experimentSel.value] || []);
+      if (trts.length > 0){
+        treatmentSel.value = trts[0];
+        applyTreatmentDefaults(fac, experimentSel.value, treatmentSel.value);
+      } else {
+        // no treatments; clear times
+        startTime.value = '';
+        endTime.value = '';
+      }
+    } else {
+      // no experiments; clear times
+      startTime.value = '';
+      endTime.value = '';
+    }
+    refreshBatch();
+    validate();
+  });
+  experimentSel.addEventListener('change', () => {
+    populateTreatments(facilitySel.value, experimentSel.value);
+    // clear times when experiment changes; treatment selection will set defaults
+    startTime.value = '';
+    endTime.value = '';
+    refreshBatch();
+    validate();
+  });
+  treatmentSel.addEventListener('change', () => {
+    applyTreatmentDefaults(facilitySel.value, experimentSel.value, treatmentSel.value);
+    refreshBatch();
+    validate();
+  });
+  startDate.addEventListener('change', validate);
+  endDate.addEventListener('change', validate);
+  startTime.addEventListener('change', validate);
+  endTime.addEventListener('change', validate);
+
+  resetBtn.addEventListener('click', () => {
+    facilitySel.value = '';
+    srcDir.value = '';
+    experimentSel.innerHTML=''; setDisabled(experimentSel, true);
+    treatmentSel.innerHTML=''; setDisabled(treatmentSel, true);
+    startDate.value = endDate.value = '';
+    startTime.value = endTime.value = '';
+    camsRow.innerHTML=''; camsToolbar.hidden = true; camsHint.textContent = 'Select a facility to load available cameras.';
+    batchInput.value = '1';
+    validate();
+  });
+
+  importBtn.addEventListener('click', async () => {
+    const fac = facilitySel.value;
+    const exp = experimentSel.value;
+    const trt = treatmentSel.value;
+    const sDate = startDate.value; const eDate = endDate.value;
+    const sTime = startTime.value; const eTime = endTime.value;
+    const cams = Array.from(camsRow.querySelectorAll('.cam-btn.active')).map(x => Number(x.dataset.cam));
+    const batch = Math.max(0, Number(batchInput.value || 0));
+    importBtn.disabled = true; importBtn.textContent = 'Importing…';
+    try {
+      const res = await fetch('/api/import/start', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ facility: fac, experiment: exp, treatment: trt, start_date: sDate, end_date: eDate, start_time: sTime, end_time: eTime, cameras: cams, batch, async: true, dry_run: !!dryRun.checked })
+      });
+      const data = await res.json();
+      if (!res.ok || !data || data.error){
+        alert('Import failed: ' + (data && data.error || res.statusText));
+      } else {
+        // Create or show a status panel and start polling if async
+        ensureStatusPanel();
+        renderPlan(data);
+        if (data.job_id){
+          pollStatus(data.job_id);
+        }
+      }
+    } catch (e){
+      alert('Import error: ' + e);
+    } finally {
+      importBtn.disabled = false; importBtn.textContent = 'Import';
+    }
+  });
+
+  // Simple status panel under the form
+  function ensureStatusPanel(){
+    let panel = document.getElementById('import-status');
+    if (!panel){
+      panel = document.createElement('div'); panel.id = 'import-status'; panel.className = 'panel';
+      panel.style.marginTop = '16px'; panel.innerHTML = `
+        <div class="panel-header"><h1>Import Status</h1></div>
+        <div class="table-wrap">
+          <div style="margin: 8px 0">
+            <div id="overall-text" class="muted">Queued…</div>
+            <div class="progress"><div id="overall-bar" class="bar" style="width:0%"></div></div>
+          </div>
+          <table id="status-table" style="width:100%; border-collapse:collapse; font-size:13px">
+            <thead>
+              <tr><th style="text-align:left; padding:6px 4px">Camera</th><th style="text-align:left; padding:6px 4px">Day</th><th style="text-align:left; padding:6px 4px">Segments</th><th style="text-align:left; padding:6px 4px">Status</th></tr>
+            </thead>
+            <tbody id="status-body"></tbody>
+          </table>
+        </div>`;
+      document.querySelector('.panel .controls').after(panel);
+    }
+  }
+
+  function renderPlan(data){
+    const body = document.getElementById('status-body'); if (!body) return;
+    const bar = document.getElementById('overall-bar');
+    const txt = document.getElementById('overall-text');
+    let rows = '';
+    for (const cam of data.jobs){
+      for (const d of cam.days){
+        rows += `<tr>
+          <td style="padding:6px 4px">cam${String(cam.camera).padStart(2,'0')}</td>
+          <td style="padding:6px 4px">${String(d.day).padStart(2,'0')}</td>
+          <td style="padding:6px 4px">${d.segments||0}</td>
+          <td style="padding:6px 4px">${d.status||''}</td>
+        </tr>`;
+      }
+    }
+    body.innerHTML = rows || '<tr><td colspan="4" class="muted" style="padding:6px">No jobs.</td></tr>';
+    if (typeof data.progress === 'number' && typeof data.total === 'number' && data.total > 0){
+      const pct = Math.round(100 * data.progress / data.total);
+      bar.style.width = pct + '%';
+      txt.textContent = `Progress: ${data.progress}/${data.total}`;
+    }
+  }
+
+  async function pollStatus(jobId){
+    const url = `/api/import/status?job=${encodeURIComponent(jobId)}`;
+    const timer = setInterval(async () => {
+      try{
+        const r = await fetch(url); const s = await r.json();
+        if (!r.ok || !s || s.error){ throw new Error(s && s.error || r.statusText); }
+        const merged = Object.assign({}, s.plan, { progress: s.progress, total: s.total });
+        renderPlan(merged);
+        if (s.status === 'DONE'){ clearInterval(timer); }
+      } catch(e){ clearInterval(timer); }
+    }, 2000);
+  }
+
+  // Initialize
+  populateFacilities();
+  validate();
+
+  async function refreshBatch(){
+    const exp = experimentSel.value; const trt = treatmentSel.value;
+    if (!exp || !trt){ batchInput.value = '1'; return; }
+    try{
+      const r = await fetch(`/api/import/next_batch?experiment=${encodeURIComponent(exp)}&treatment=${encodeURIComponent(trt)}`);
+      const d = await r.json();
+      if (r.ok && d && d.ok){ batchInput.value = d.next_batch; }
+      else { batchInput.value = '1'; }
+    } catch { batchInput.value = '1'; }
+  }
+
+  //
+});
+</script>
+{% endblock %}

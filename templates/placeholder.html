@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="panel center">
+  <div class="empty">
+    <div class="emoji">🛠️</div>
+    <h1>{{ title }}</h1>
+    <p class="muted">{{ message }}</p>
+    {% if active_tab == 'annotator' and video %}
+      <p class="muted" style="margin-top:10px">Selected video:</p>
+      <div style="max-width:720px; word-break:break-all">{{ video }}</div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

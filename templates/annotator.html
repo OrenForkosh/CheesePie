@@ -1,0 +1,116 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="panel" id="annotator"
+         data-video="{{ video|default('') }}"
+         data-default-mice='{{ default_mice|tojson }}'
+         data-default-fps='{{ default_fps|tojson }}'
+         data-default-types='{{ default_types|tojson }}'
+         data-keyboard='{{ keyboard|tojson }}'>
+  <div class="panel-header">
+    <div>
+      <h1>Annotator</h1>
+      <p class="muted">Annotate behaviors by type with precise timing.</p>
+    </div>
+    <div class="muted" id="video-path" style="max-width:580px; word-break:break-all"></div>
+  </div>
+
+  <div class="annotator-layout">
+    <div class="viewer-column">
+      <div class="video-wrap">
+        <video id="ann-video" controls preload="metadata"></video>
+      </div>
+      <div class="controls-row">
+        <label class="rate-label">Rate</label>
+        <div class="rate-wrap">
+          <input type="range" id="rate" min="0.25" max="3" step="0.05" value="1">
+          <span id="rate-bubble" class="rate-bubble" hidden>1.00×</span>
+        </div>
+        <span id="rate-val">1.00×</span>
+        <div class="rate-presets">
+          <button class="chip" data-rate="0.5">0.5×</button>
+          <button class="chip" data-rate="1">1×</button>
+          <button class="chip" data-rate="1.5">1.5×</button>
+          <button class="chip" data-rate="2">2×</button>
+        </div>
+        <span class="fill"></span>
+        <button class="btn" id="help-shortcuts" title="Show keyboard shortcuts">?</button>
+        <button class="btn" id="export-json">Save</button>
+      </div>
+
+      <div class="timeline-wrap">
+        <canvas id="timeline" height="220"></canvas>
+        <div class="legend" id="legend"></div>
+      </div>
+    </div>
+
+    <aside class="side-column">
+      <div class="side-section">
+        <div style="display:flex; align-items:center; justify-content:space-between">
+          <h3 style="margin:0">Behavior Types</h3>
+          <button class="btn mini" id="open-add-type">Add</button>
+        </div>
+        <div id="types-list"></div>
+      </div>
+      <div class="side-section">
+        <h3>Animals</h3>
+        <div class="muted" style="margin-bottom:6px">Comma-separated names (e.g., {{ (default_mice or [])|join(',') }})</div>
+        <input type="text" id="mice-input" placeholder="{{ (default_mice or [])|join(',') }}">
+      </div>
+      <div class="side-section">
+        <h3>Event Details</h3>
+        <div id="event-details" class="muted">Select an event or start one using a shortcut key.</div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="table-wrap">
+    <h3>Events</h3>
+    <div class="muted" style="margin:-6px 0 10px">Click an event to select. Double-click to jump to start.</div>
+    <table id="events-table">
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Start</th>
+          <th>End</th>
+          <th>Duration</th>
+          <th>Animals</th>
+          <th>Note</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</section>
+<div id="shortcuts-overlay" class="overlay" hidden>
+  <div class="overlay-panel">
+    <div class="overlay-header">
+      <h3>Keyboard Shortcuts</h3>
+      <button class="btn mini" id="close-shortcuts">Close</button>
+    </div>
+    <div id="shortcuts-content" class="shortcut-list"></div>
+  </div>
+  </div>
+<div id="type-overlay" class="overlay" hidden>
+  <div class="overlay-panel">
+    <div class="overlay-header">
+      <h3 id="type-overlay-title">Add Behavior Type</h3>
+      <button class="btn mini" id="type-cancel">Cancel</button>
+    </div>
+    <div class="type-form" style="display:grid; grid-template-columns:120px 1fr; gap:10px; align-items:center">
+      <label for="type-name-modal" class="muted">Name</label>
+      <input type="text" id="type-name-modal" placeholder="e.g., Grooming">
+      <label for="type-mode-modal" class="muted">Mode</label>
+      <select id="type-mode-modal"><option value="single">Single</option><option value="dyadic">Dyadic</option><option value="agonistic">Agonistic</option></select>
+      <label for="type-key-modal" class="muted">Key</label>
+      <input type="text" id="type-key-modal" placeholder="g" maxlength="1" style="width:80px">
+      <label for="type-color-modal" class="muted">Color</label>
+      <input type="color" id="type-color-modal" value="#7c4dff" style="width:80px">
+    </div>
+    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px">
+      <button class="btn" id="type-save">Add</button>
+    </div>
+  </div>
+</div>
+<script src="/static/annotator.js"></script>
+{% endblock %}

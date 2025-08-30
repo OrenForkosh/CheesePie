@@ -1,0 +1,428 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <h1>Preprocessing</h1>
+      <p class="muted">Prepare a video for tracking: define arena and background.</p>
+    </div>
+  </div>
+
+  <div class="controls" style="grid-template-columns: 2fr 1fr">
+    <div class="control-group" style="grid-column: 1 / -1">
+      <label>Video</label>
+      <input type="text" id="preproc-video-path" value="{{ video or '' }}" readonly />
+    </div>
+
+    <div class="control-group" style="grid-column: 1 / 2">
+      <div class="video-wrap"><div class="video-preview">
+        <div style="position:relative">
+          <video id="pp-video" controls preload="metadata" style="display:block; width:100%; height:auto"></video>
+          <canvas id="pp-overlay" style="position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:auto"></canvas>
+        </div>
+      </div></div>
+      <div class="muted" style="margin-top:6px">Tip: Click to set top-left, then bottom-right of the arena.</div>
+    </div>
+
+    <div class="control-group" style="grid-column: 2 / 3">
+      <div class="tabs small" style="display:flex; gap:8px; margin-bottom:8px">
+        <button class="btn mini" id="tab-arena">Arena</button>
+        <button class="btn mini" id="tab-background">Background</button>
+      </div>
+      <div id="pane-arena">
+        <div class="kv">
+          <div class="k">Grid cols</div><input type="number" id="grid-cols" min="1" value="6" />
+          <div class="k">Grid rows</div><input type="number" id="grid-rows" min="1" value="4" />
+          <div class="k">Width (cm)</div><input type="number" id="arena-wcm" min="1" value="40" />
+          <div class="k">Height (cm)</div><input type="number" id="arena-hcm" min="1" value="30" />
+        </div>
+        <div class="muted" style="margin-top:6px">Arena is axis-aligned rectangle within the frame. Click Mark to define: top-left then bottom-right. Drag handles to refine while marking. Arrow keys nudge (Shift = 10px).</div>
+        <div style="display:flex; gap:8px; align-items:center; margin-top:8px">
+          <label style="display:flex; align-items:center; gap:6px"><input type="checkbox" id="grid-labels"> Show grid indices</label>
+          <label style="display:flex; align-items:center; gap:6px"><input type="checkbox" id="snap-grid"> Snap to grid</label>
+          <button class="btn" id="arena-mark">Mark</button>
+          <span class="muted" id="arena-status"></span>
+        </div>
+      </div>
+      <div id="pane-background" style="display:none">
+        <div class="kv">
+          <div class="k">Frames</div><input type="number" id="bg-frames" min="5" max="200" value="25" />
+          <div class="k">Quantile</div><input type="number" id="bg-quant" min="0" max="100" step="1" value="50" />
+        </div>
+        <div style="display:flex; gap:8px; align-items:center; margin:8px 0">
+          <button class="btn" id="bg-run">Run</button>
+          <button class="btn" id="bg-save">Save</button>
+          <span class="muted" id="bg-status"></span>
+        </div>
+        <canvas id="bg-canvas" style="width:100%; max-width:100%; border:1px solid var(--border); border-radius:8px"></canvas>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+window.addEventListener('DOMContentLoaded', () => {
+  const videoPath = {{ (video or '')|tojson }};
+  const v = document.getElementById('pp-video');
+  const overlay = document.getElementById('pp-overlay');
+  const arenaPane = document.getElementById('pane-arena');
+  const bgPane = document.getElementById('pane-background');
+  const tabArena = document.getElementById('tab-arena');
+  const tabBg = document.getElementById('tab-background');
+  const colsEl = document.getElementById('grid-cols');
+  const rowsEl = document.getElementById('grid-rows');
+  const wcmEl = document.getElementById('arena-wcm');
+  const hcmEl = document.getElementById('arena-hcm');
+  const gridLabelsEl = document.getElementById('grid-labels');
+  const snapGridEl = document.getElementById('snap-grid');
+  const arenaMarkBtn = document.getElementById('arena-mark');
+  const arenaStatus = document.getElementById('arena-status');
+  let marking = false;
+  const bgFramesEl = document.getElementById('bg-frames');
+  const bgQuantEl = document.getElementById('bg-quant');
+  const bgRunBtn = document.getElementById('bg-run');
+  const bgSaveBtn = document.getElementById('bg-save');
+  const bgStatus = document.getElementById('bg-status');
+  const bgCanvas = document.getElementById('bg-canvas');
+
+  if (videoPath){
+    v.innerHTML = '';
+    const src = document.createElement('source');
+    src.src = `/media?path=${encodeURIComponent(videoPath)}`;
+    v.appendChild(src);
+    v.load();
+  }
+  // Default: allow interacting with video controls when not marking
+  overlay.style.pointerEvents = 'none';
+
+  // Arena selection state (video-space pixels)
+  const state = { tl: null, br: null };
+  let hoverBR = null; // provisional bottom-right while marking
+  let dragging = null; // 'tl' or 'br'
+
+  function resizeOverlay(){
+    const rect = v.getBoundingClientRect();
+    overlay.width = rect.width; overlay.height = rect.height;
+    drawOverlay();
+  }
+  window.addEventListener('resize', resizeOverlay);
+  v.addEventListener('loadedmetadata', resizeOverlay);
+  v.addEventListener('resize', resizeOverlay);
+
+  function drawOverlay(){
+    const ctx = overlay.getContext('2d');
+    ctx.clearRect(0,0,overlay.width, overlay.height);
+    if (!state.tl) return;
+    const rect = v.getBoundingClientRect();
+    const scaleX = rect.width / v.videoWidth;
+    const scaleY = rect.height / v.videoHeight;
+    const brPoint = state.br || hoverBR;
+    if (!brPoint) return; // nothing to draw yet
+    const x = state.tl.x * scaleX;
+    const y = state.tl.y * scaleY;
+    const w = Math.max(0, (brPoint.x - state.tl.x) * scaleX);
+    const h = Math.max(0, (brPoint.y - state.tl.y) * scaleY);
+    ctx.strokeStyle = '#4f8cff';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+    // draw grid
+    const cols = Math.max(1, Number(colsEl.value||1));
+    const rows = Math.max(1, Number(rowsEl.value||1));
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.lineWidth = 1;
+    for (let i=1; i<cols; i++){
+      const gx = x + (w * i/cols);
+      ctx.beginPath(); ctx.moveTo(gx, y); ctx.lineTo(gx, y+h); ctx.stroke();
+    }
+    for (let j=1; j<rows; j++){
+      const gy = y + (h * j/rows);
+      ctx.beginPath(); ctx.moveTo(x, gy); ctx.lineTo(x+w, gy); ctx.stroke();
+    }
+    if (gridLabelsEl.checked){
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.font = '12px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      for (let r=0; r<rows; r++){
+        for (let c=0; c<cols; c++){
+          const cx = x + (c+0.5)*w/cols;
+          const cy = y + (r+0.5)*h/rows;
+          ctx.fillText(`${r+1},${c+1}`, cx, cy);
+        }
+      }
+    }
+    // label dims
+    const wcm = Number(wcmEl.value||0), hcm = Number(hcmEl.value||0);
+    if (wcm && hcm){
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(x+6, y+6, 90, 18);
+      ctx.fillStyle = '#fff';
+      ctx.font = '12px sans-serif';
+      ctx.fillText(`${wcm}×${hcm} cm`, x+10, y+19);
+    }
+    // corner handles only when final points exist
+    if (state.br){
+      ctx.fillStyle = '#4f8cff';
+      const s = 6;
+      ctx.fillRect(x - s, y - s, s*2, s*2);
+      ctx.fillRect(x + w - s, y + h - s, s*2, s*2);
+    }
+  }
+
+  colsEl.addEventListener('change', drawOverlay);
+  rowsEl.addEventListener('change', drawOverlay);
+  wcmEl.addEventListener('change', drawOverlay);
+  hcmEl.addEventListener('change', drawOverlay);
+
+  overlay.addEventListener('click', (ev) => {
+    if (!marking) return;
+    if (!v.videoWidth || !v.videoHeight) return;
+    const r = overlay.getBoundingClientRect();
+    const sx = (ev.clientX - r.left) / r.width;
+    const sy = (ev.clientY - r.top) / r.height;
+    const px = Math.max(0, Math.min(v.videoWidth-1, Math.round(sx * v.videoWidth)));
+    const py = Math.max(0, Math.min(v.videoHeight-1, Math.round(sy * v.videoHeight)));
+    lastHandle = pickHandle(ev) || lastHandle;
+    const p = snapCoord(px, py);
+    if (!state.tl){
+      state.tl = {x:p.x, y:p.y}; state.br = null;
+    } else if (!state.br){
+      state.br = {x:Math.max(p.x, state.tl.x), y:Math.max(p.y, state.tl.y)};
+      drawOverlay();
+      // finished marking -> auto-save and exit marking mode
+      saveArena();
+      marking = false; arenaMarkBtn.classList.remove('primary'); arenaMarkBtn.textContent = 'Mark';
+    } else {
+      state.tl = {x:p.x, y:p.y}; state.br = null;
+    }
+    drawOverlay();
+  });
+
+  function pickHandle(ev){
+    if (!state.tl || !state.br) return null;
+    const rect = v.getBoundingClientRect();
+    const scaleX = rect.width / v.videoWidth;
+    const scaleY = rect.height / v.videoHeight;
+    const x = state.tl.x * scaleX;
+    const y = state.tl.y * scaleY;
+    const w = (state.br.x - state.tl.x) * scaleX;
+    const h = (state.br.y - state.tl.y) * scaleY;
+    const s = 8;
+    const mx = ev.clientX - overlay.getBoundingClientRect().left;
+    const my = ev.clientY - overlay.getBoundingClientRect().top;
+    function within(ax, ay){ return (mx >= ax - s) && (mx <= ax + s) && (my >= ay - s) && (my <= ay + s); }
+    if (within(x, y)) return 'tl';
+    if (within(x+w, y+h)) return 'br';
+    return null;
+  }
+  let lastHandle = null;
+  overlay.addEventListener('mousedown', (ev) => { if (!marking) return; dragging = pickHandle(ev); lastHandle = dragging || lastHandle; });
+  window.addEventListener('mouseup', () => { if (dragging) { dragging = null; if (state.tl && state.br) saveArena(); } });
+  window.addEventListener('mousemove', (ev) => {
+    if (!dragging) {
+      if (!marking) return;
+      // live preview while marking (TL chosen, BR pending)
+      if (state.tl && !state.br){
+        const r = overlay.getBoundingClientRect();
+        const sx = (ev.clientX - r.left) / r.width;
+        const sy = (ev.clientY - r.top) / r.height;
+        const p = snapCoord(Math.round(sx * v.videoWidth), Math.round(sy * v.videoHeight));
+        hoverBR = { x: Math.max(p.x, state.tl.x), y: Math.max(p.y, state.tl.y) };
+        drawOverlay();
+      }
+      return;
+    }
+    const r = overlay.getBoundingClientRect();
+    const sx = (ev.clientX - r.left) / r.width;
+    const sy = (ev.clientY - r.top) / r.height;
+    const p = snapCoord(Math.round(sx * v.videoWidth), Math.round(sy * v.videoHeight));
+    if (dragging === 'tl'){
+      state.tl = {x: Math.min(p.x, state.br.x-1), y: Math.min(p.y, state.br.y-1)};
+    } else if (dragging === 'br'){
+      state.br = {x: Math.max(p.x, state.tl.x+1), y: Math.max(p.y, state.tl.y+1)};
+    }
+    drawOverlay();
+  });
+  overlay.addEventListener('mouseleave', () => { if (marking && !state.br){ hoverBR = null; drawOverlay(); } });
+
+  function snapCoord(px, py){
+    if (!snapGridEl.checked) return {x: clamp(px, 0, v.videoWidth-1), y: clamp(py, 0, v.videoHeight-1)};
+    const cols = Math.max(1, Number(colsEl.value||1));
+    const rows = Math.max(1, Number(rowsEl.value||1));
+    const stepX = v.videoWidth / cols;
+    const stepY = v.videoHeight / rows;
+    const sx = Math.round(px / stepX) * stepX;
+    const sy = Math.round(py / stepY) * stepY;
+    return { x: clamp(Math.round(sx), 0, v.videoWidth-1), y: clamp(Math.round(sy), 0, v.videoHeight-1) };
+  }
+  function clamp(val, a, b){ return Math.max(a, Math.min(b, val)); }
+
+  window.addEventListener('keydown', (ev) => {
+    if (!marking || !state.tl || !state.br || !lastHandle) return;
+    const step = ev.shiftKey ? 10 : 1;
+    let dx = 0, dy = 0;
+    if (ev.key === 'ArrowLeft') dx = -step;
+    else if (ev.key === 'ArrowRight') dx = step;
+    else if (ev.key === 'ArrowUp') dy = -step;
+    else if (ev.key === 'ArrowDown') dy = step;
+    else return;
+    ev.preventDefault();
+    const h = lastHandle;
+    const cur = { x: h==='tl'?state.tl.x:state.br.x, y: h==='tl'?state.tl.y:state.br.y };
+    let nx = cur.x + dx, ny = cur.y + dy;
+    const p = snapCoord(nx, ny);
+    if (h === 'tl'){
+      state.tl = { x: clamp(p.x, 0, state.br.x-1), y: clamp(p.y, 0, state.br.y-1) };
+    } else {
+      state.br = { x: clamp(p.x, state.tl.x+1, v.videoWidth-1), y: clamp(p.y, state.tl.y+1, v.videoHeight-1) };
+    }
+    drawOverlay();
+  });
+
+  arenaMarkBtn.addEventListener('click', () => {
+    marking = !marking;
+    if (marking){
+      state.tl = null; state.br = null; hoverBR = null; lastHandle = null; dragging = null;
+      arenaStatus.textContent = 'Marking: click top-left then bottom-right';
+      arenaMarkBtn.classList.add('primary');
+      arenaMarkBtn.textContent = 'Marking…';
+      overlay.style.pointerEvents = 'auto';
+    } else {
+      arenaStatus.textContent = '';
+      arenaMarkBtn.classList.remove('primary');
+      arenaMarkBtn.textContent = 'Mark';
+      overlay.style.pointerEvents = 'none';
+    }
+    drawOverlay();
+  });
+
+  async function saveArena(){
+    if (!videoPath || !state.tl || !state.br) return;
+    const payload = {
+      video: videoPath,
+      arena: {
+        tl: state.tl, br: state.br,
+        cols: Math.max(1, Number(colsEl.value||1)),
+        rows: Math.max(1, Number(rowsEl.value||1)),
+        width_cm: Math.max(0, Number(wcmEl.value||0)),
+        height_cm: Math.max(0, Number(hcmEl.value||0)),
+      }
+    };
+    arenaStatus.textContent = 'Saving…';
+    try{
+      const r = await fetch('/api/preproc/arena', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      const d = await r.json();
+      if (!r.ok || d.error){ arenaStatus.textContent = 'Error: ' + (d.error || r.statusText); }
+      else { arenaStatus.textContent = 'Saved'; }
+    } catch(e){ arenaStatus.textContent = 'Error: ' + e; }
+  }
+
+  tabArena.addEventListener('click', () => { arenaPane.style.display=''; bgPane.style.display='none'; });
+  tabBg.addEventListener('click', () => { arenaPane.style.display='none'; bgPane.style.display=''; });
+
+  // Background computation
+  bgRunBtn.addEventListener('click', async () => {
+    if (!v.duration || !v.videoWidth){ bgStatus.textContent = 'Video not ready'; return; }
+    const N = Math.max(5, Math.min(200, Number(bgFramesEl.value || 25)));
+    const qPct = Math.max(0, Math.min(100, Number(bgQuantEl.value || 50)));
+    bgStatus.textContent = `Sampling ${N} frames…`;
+    await computeBackground(N, qPct/100);
+  });
+
+  bgSaveBtn.addEventListener('click', async () => {
+    if (!videoPath){ bgStatus.textContent = 'Missing video'; return; }
+    const ctx = bgCanvas.getContext('2d');
+    if (!bgCanvas.width || !bgCanvas.height){ bgStatus.textContent = 'No background to save'; return; }
+    try{
+      const dataUrl = bgCanvas.toDataURL('image/png');
+      const r = await fetch('/api/preproc/background', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ video: videoPath, image: dataUrl }) });
+      const d = await r.json();
+      if (!r.ok || d.error){ bgStatus.textContent = 'Error: ' + (d.error || r.statusText); }
+      else { bgStatus.textContent = 'Saved'; }
+    } catch(e){ bgStatus.textContent = 'Error: ' + e; }
+  });
+
+  async function computeBackground(nFrames, quant){
+    // Work at <= 640px width for performance
+    const maxW = 640;
+    const scale = Math.min(1, maxW / v.videoWidth);
+    const w = Math.max(1, Math.round(v.videoWidth * scale));
+    const h = Math.max(1, Math.round(v.videoHeight * scale));
+    const work = document.createElement('canvas'); work.width = w; work.height = h;
+    const wctx = work.getContext('2d');
+    const frames = [];
+    const times = new Set();
+    for (let i=0;i<nFrames;i++){
+      const t = Math.random() * Math.max(0.1, v.duration - 0.1);
+      times.add(t);
+    }
+    const arrTimes = Array.from(times).slice(0, nFrames).sort((a,b)=>a-b);
+    let captured = 0;
+    for (const t of arrTimes){
+      await new Promise((resolve) => {
+        const onSeeked = () => {
+          try{
+            wctx.drawImage(v, 0, 0, w, h);
+            const id = wctx.getImageData(0,0,w,h);
+            frames.push(id.data);
+            captured++;
+            bgStatus.textContent = `Captured ${captured}/${arrTimes.length} frames…`;
+          }catch{}
+          v.removeEventListener('seeked', onSeeked);
+          resolve();
+        };
+        v.addEventListener('seeked', onSeeked);
+        try{ v.currentTime = Math.min(Math.max(0.05, t), Math.max(0.05, v.duration-0.05)); } catch{ v.removeEventListener('seeked', onSeeked); resolve(); }
+      });
+    }
+    if (frames.length === 0){ bgStatus.textContent = 'No frames captured'; return; }
+    // Compute per-pixel quantile across frames
+    bgStatus.textContent = 'Computing background…';
+    const out = new Uint8ClampedArray(w*h*4);
+    const K = frames.length;
+    const qi = Math.max(0, Math.min(K-1, Math.round(quant * (K-1))));
+    for (let i=0, p=0; i<w*h; i++, p+=4){
+      // Gather channel arrays
+      const r = new Uint8Array(K), g = new Uint8Array(K), b = new Uint8Array(K), a = new Uint8Array(K);
+      for (let k=0;k<K;k++){
+        const f = frames[k];
+        r[k] = f[p]; g[k] = f[p+1]; b[k] = f[p+2]; a[k] = f[p+3];
+      }
+      r.sort(); g.sort(); b.sort(); a.sort();
+      out[p] = r[qi]; out[p+1] = g[qi]; out[p+2] = b[qi]; out[p+3] = 255;
+    }
+    const ctx = bgCanvas.getContext('2d');
+    bgCanvas.width = w; bgCanvas.height = h;
+    const img = new ImageData(out, w, h);
+    ctx.putImageData(img, 0, 0);
+    bgStatus.textContent = `Done (frames=${K}, q=${Math.round(quant*100)}%)`;
+  }
+
+  // Load existing preproc state
+  (async function initLoad(){
+    if (!videoPath) return;
+    try{
+      const r = await fetch(`/api/preproc/state?video=${encodeURIComponent(videoPath)}`);
+      const d = await r.json();
+      if (r.ok && d && d.ok){
+        if (d.arena){
+          const a = d.arena;
+          state.tl = a.tl || null; state.br = a.br || null;
+          if (a.cols) colsEl.value = a.cols;
+          if (a.rows) rowsEl.value = a.rows;
+          if (a.width_cm) wcmEl.value = a.width_cm;
+          if (a.height_cm) hcmEl.value = a.height_cm;
+          drawOverlay();
+        }
+        if (d.background){
+          const img = new Image();
+          img.onload = () => {
+            bgCanvas.width = img.width; bgCanvas.height = img.height;
+            const c = bgCanvas.getContext('2d'); c.drawImage(img, 0, 0);
+          };
+          img.src = `/media?path=${encodeURIComponent(d.background)}`;
+        }
+      }
+    } catch {}
+  })();
+});
+</script>
+{% endblock %}

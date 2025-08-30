@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <h1>Settings</h1>
+      <p class="muted">Customize your CheesePie experience.</p>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="control-group">
+      <label for="theme-select">Theme</label>
+      <div class="inline">
+        <select id="theme-select">
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+          <option value="ocean">Ocean</option>
+          <option value="forest">Forest</option>
+          <option value="plum">Plum</option>
+          <option value="contrast">High Contrast</option>
+          <option value="mouse">Mouse</option>
+        </select>
+        <button id="apply-theme" class="btn primary">Apply</button>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

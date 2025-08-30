@@ -1,0 +1,60 @@
+{
+  "annotator": {
+    "default_animals": ["R", "G", "B", "Y"],
+    "default_fps": 30,
+    "autosave": false,
+    "default_types": [
+      {"name": "Grooming", "key": "g", "mode": "single", "color": "#4f8cff"},
+      {"name": "Chasing", "key": "c", "mode": "agonistic", "color": "#ff6b6b"},
+      {"name": "Sniffing", "key": "s", "mode": "single", "color": "#ffd166"}
+    ],
+    "keyboard": {
+      "frame_step_keys": {"prev": "[", "next": "]"},
+      "jump_seconds": {"left": 300, "right": 300, "shift": 60, "alt": 10}
+    }
+  },
+  "browser": {
+    "preview_thumbnails": 8,
+    "visible_extensions": [".mp4", ".avi"]
+  },
+  "importer": {
+    "working_dir": "./working",
+    "source_extensions": [".mp4", ".mkv", ".avi"],
+    "facilities": {
+      "mouse": {
+        "source_dir": "/mnt/nas/mouse", 
+        "cameras": 12,
+        "camera_glob": "**/*cam{cam:02d}*",
+        "path_time_regex": "(?P<year>\\d{4})(?P<month>\\d{2})(?P<day>\\d{2})[\\/](?P<hour>\\d{2})(?::?(?P<minute>\\d{2}))?",
+        "experiments": {
+          "THREE_CHAMBERS": [
+            {"name": "wt", "start_time": "20:00", "end_time": "08:00"},
+            {"name": "pilot", "start_time": "09:00", "end_time": "17:00"},
+            {"name": "overnight", "start_time": "20:00", "end_time": "08:00"}
+          ],
+          "FEMALES_IDS": [
+            {"name": "wt", "start_time": "20:00", "end_time": "08:00"},
+            "overnight"
+          ],
+          "SHELTER_SEEKING": [
+            "pilot",
+            {"name": "wt", "start_time": "10:00", "end_time": "14:00"}
+          ]
+        }
+      },
+      "chick": {
+        "source_dir": "/mnt/nas/chick",
+        "cameras": 8,
+        "camera_glob": "**/*cam{cam:02d}*",
+        "path_time_regex": "(?P<year>\\d{4})(?P<month>\\d{2})(?P<day>\\d{2})[_-](?P<hour>\\d{2})(?P<minute>\\d{2})(?:(?P<second>\\d{2}))?",
+        "experiments": {
+          "PECKING_ORDER": [
+            {"name": "pilot", "start_time": "08:00", "end_time": "12:00"},
+            "wt"
+          ],
+          "OPEN_FIELD": ["wt"]
+        }
+      }
+    }
+  }
+}
