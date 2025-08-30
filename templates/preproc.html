@@ -225,24 +225,7 @@
             <tbody></tbody>
           </table>
         </div>
-        <div
-          style="
-            display: flex;
-            gap: 8px;
-            align-items: center;
-            margin-top: 8px;
-            justify-content: flex-end;
-          "
-        >
-          <button
-            class="btn mini"
-            id="roi-move-toggle"
-            title="Drag ROI cells on video"
-          >
-            Move ROI
-          </button>
-          <button class="btn" id="roi-save">Save Regions</button>
-        </div>
+        
         <div class="muted" style="margin-top: 6px">
           Tip: Click "Edit" for a region, then click grid cells in the
           overlay to toggle. Click again to finish.
@@ -290,13 +273,10 @@
     const roiFacilitySel = document.getElementById('pp-facility');
     const roiSetSel = document.getElementById('pp-setup');
     const roiTableBody = document.querySelector('#roi-table tbody');
-    const roiSaveBtn = document.getElementById('roi-save');
-    const roiMoveBtn = document.getElementById('roi-move-toggle');
+    // Removed Move ROI and Save Regions controls
     let regionsState = null; // { facility, set, items:[{name, enabled, sheltered, cells:[{r,c}]}] }
     let editingRoiIndex = -1;
-    let moveRoiMode = false;
-    let moveStartCell = null;
-    let moveOriginalCells = null;
+    // Move ROI mode removed
 
     if (videoPath){
       v.innerHTML = '';
@@ -370,10 +350,10 @@
       populateRoiSets();
       applySetupDefaults();
       renderRoiUI();
-      roiFacilitySel?.addEventListener('change', () => { regionsState.facility = roiFacilitySel.value; populateRoiSets(); applySetupDefaults(); renderRoiUI(); drawOverlay(); });
-      roiSetSel?.addEventListener('change', () => { regionsState.set = roiSetSel.value; applySetupDefaults(); renderRoiUI(); drawOverlay(); });
-      roiMoveBtn?.addEventListener('click', () => { moveRoiMode = !moveRoiMode; roiMoveBtn.classList.toggle('primary', moveRoiMode); roiMoveBtn.textContent = moveRoiMode ? 'Moving…' : 'Move ROI'; });
-      roiSaveBtn?.addEventListener('click', async () => { if (!videoPath) return; try{ const r = await fetch('/api/preproc/regions', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ video: videoPath, regions: regionsState }) }); const d2 = await r.json(); arenaStatus.textContent = (!r.ok || d2.error) ? 'Error saving regions' : 'Regions saved'; } catch { arenaStatus.textContent = 'Error saving regions'; } });
+      updateTabEnablement();
+      roiFacilitySel?.addEventListener('change', () => { regionsState.facility = roiFacilitySel.value; populateRoiSets(); applySetupDefaults(); renderRoiUI(); drawOverlay(); updateTabEnablement(); });
+      roiSetSel?.addEventListener('change', () => { regionsState.set = roiSetSel.value; applySetupDefaults(); renderRoiUI(); drawOverlay(); updateTabEnablement(); });
+      // Removed Move ROI toggle and Save Regions button/listeners
     } catch {}
     // Wire Save... button even if init block failed
     try { saveSetupBtn?.addEventListener('click', onSaveSetup); } catch {}
@@ -745,29 +725,11 @@
       return null;
     }
     let lastHandle = null;
-    overlay.addEventListener('mousedown', (ev) => {
-      if (!marking && moveRoiMode && editingRoiIndex>=0 && regionsState){
-        // start ROI move drag
-        const r = overlay.getBoundingClientRect();
-        const sx = (ev.clientX - r.left) / r.width;
-        const sy = (ev.clientY - r.top) / r.height;
-        const px = Math.max(0, Math.min(v.videoWidth-1, Math.round(sx * v.videoWidth)));
-        const py = Math.max(0, Math.min(v.videoHeight-1, Math.round(sy * v.videoHeight)));
-        // Use arena-aligned grid mapping for the starting cell
-        moveStartCell = arenaCellAt(px, py);
-        moveOriginalCells = (regionsState.items[editingRoiIndex].cells || []).map(c => ({...c}));
-        dragging = 'roi-move';
-        return;
-      }
-      if (!marking) return; dragging = pickHandle(ev); lastHandle = dragging || lastHandle;
-    });
+    overlay.addEventListener('mousedown', (ev) => { if (!marking) return; dragging = pickHandle(ev); lastHandle = dragging || lastHandle; });
     // Handle elements enable dragging even when not marking
     hTL.addEventListener('mousedown', (ev) => { ev.preventDefault(); dragging = 'tl'; lastHandle = 'tl'; });
     hBR.addEventListener('mousedown', (ev) => { ev.preventDefault(); dragging = 'br'; lastHandle = 'br'; });
-    window.addEventListener('mouseup', () => { if (dragging) {
-      if (dragging === 'roi-move'){ saveRegionsOverlayOnly(); }
-      dragging = null; if (state.tl && state.br) saveArena();
-    } });
+    window.addEventListener('mouseup', () => { if (dragging) { dragging = null; if (state.tl && state.br) saveArena(); } });
     window.addEventListener('mousemove', (ev) => {
       if (!dragging) {
         if (!marking) return;
@@ -785,19 +747,7 @@
       const r = overlay.getBoundingClientRect();
       const sx = (ev.clientX - r.left) / r.width;
       const sy = (ev.clientY - r.top) / r.height;
-      if (dragging === 'roi-move' && moveRoiMode && editingRoiIndex>=0 && regionsState){
-        const px = Math.max(0, Math.min(v.videoWidth-1, Math.round(sx * v.videoWidth)));
-        const py = Math.max(0, Math.min(v.videoHeight-1, Math.round(sy * v.videoHeight)));
-        const cur = arenaCellAt(px, py);
-        if (!cur || !moveStartCell) return;
-        const dr = cur.r - (moveStartCell?.r||0);
-        const dc = cur.c - (moveStartCell?.c||0);
-        const rows = Math.max(1, Number(rowsEl.value||1));
-        const cols = Math.max(1, Number(colsEl.value||1));
-        regionsState.items[editingRoiIndex].cells = (moveOriginalCells||[]).map(c => ({ r: Math.max(0, Math.min(rows-1, c.r + dr)), c: Math.max(0, Math.min(cols-1, c.c + dc)) }));
-        renderRoiUI(); drawOverlay();
-        return;
-      }
+      // ROI move drag removed
       const p = snapCoord(Math.round(sx * v.videoWidth), Math.round(sy * v.videoHeight));
       if (dragging === 'tl'){
         state.tl = {x: Math.min(p.x, state.br.x-1), y: Math.min(p.y, state.br.y-1)};
@@ -1160,16 +1110,19 @@
     }
 
   tabArena.addEventListener('click', () => {
+    if (tabArena.disabled) return;
     arenaPane.style.display=''; bgPane.style.display='none'; regionsPane.style.display='none';
     if (!marking) overlay.style.pointerEvents = 'none';
     drawOverlay();
   });
   tabBg.addEventListener('click', () => {
+    if (tabBg.disabled) return;
     arenaPane.style.display='none'; bgPane.style.display=''; regionsPane.style.display='none';
     if (!marking) overlay.style.pointerEvents = 'none';
     drawOverlay();
   });
   tabRegions.addEventListener('click', () => {
+    if (tabRegions.disabled) return;
     if (!(state.tl && state.br)){
       arenaStatus.textContent = 'Please mark the arena first to use Regions.';
       return;
@@ -1306,9 +1259,20 @@
           }
           renderRoiUI();
           drawOverlay();
+          updateTabEnablement();
         }
       } catch {}
     })();
+
+    function updateTabEnablement(){
+      try{
+        const facs = (window.CHEESEPIE && window.CHEESEPIE.importer && window.CHEESEPIE.importer.facilities) || {};
+        const fac = roiFacilitySel?.value || '';
+        const sets = (fac && facs[fac] && facs[fac].roi_sets) || [];
+        const hasSetup = !!(roiSetSel && roiSetSel.value && sets.some(s => s && s.name === roiSetSel.value));
+        [tabArena, tabBg, tabRegions].forEach(btn => { if (btn){ btn.disabled = !hasSetup; btn.title = hasSetup ? '' : 'Select a Facility and Setup first'; }});
+      } catch {}
+    }
   });
 </script>
 {% endblock %}

@@ -89,6 +89,12 @@ body{
 .tab{color:var(--muted); text-decoration:none; padding:8px 12px; border-radius:8px; border:1px solid transparent}
 .tab:hover{color:var(--text); background:rgba(255,255,255,0.04); border-color:var(--border)}
 .tab.active{color:#fff; background:linear-gradient(180deg, var(--primary), var(--primary-600)); border-color:transparent}
+/* Per-tab active colors */
+.tab.tab-browser.active{ background: linear-gradient(180deg, #4f8cff, #3c6fe0); color:#fff; border-color:transparent }
+.tab.tab-preproc.active{ background: linear-gradient(180deg, #a66cff, #864de6); color:#fff; border-color:transparent }
+.tab.tab-annotator.active{ background: linear-gradient(180deg, #ffcc33, #f5b400); color:#1b2430; border-color:transparent }
+.tab.tab-importer.active{ background: linear-gradient(180deg, #34c759, #2eae4f); color:#fff; border-color:transparent }
+.tab.tab-settings.active{ background: linear-gradient(180deg, #ff6b6b, #e65555); color:#fff; border-color:transparent }
 
 .container{max-width:1200px; margin:28px auto; padding:0 18px}
 
@@ -169,6 +175,7 @@ select:focus{border-color:var(--primary); outline:none}
 .btn.primary{background:linear-gradient(180deg, var(--primary), var(--primary-600)); border-color:transparent}
 .btn:hover{filter:brightness(1.05)}
 .btn.success{background:linear-gradient(180deg, #34c759, #2eae4f); border-color:transparent; color:#fff}
+.btn:disabled, .btn[disabled]{ opacity:0.5; cursor:not-allowed; filter:none }
 
 /* Icon-only button (transparent) */
 .icon-btn{
