@@ -47,6 +47,13 @@ def load_config() -> Dict[str, Any]:
 CONFIG: Dict[str, Any] = load_config()
 
 
+def _config_path() -> Path:
+    cfg_path = os.getenv('CHEESEPIE_CONFIG')
+    if cfg_path:
+        return Path(cfg_path).expanduser()
+    return Path(__file__).parent.joinpath('config.json')
+
+
 def cfg_default_animals() -> List[str]:
     vals = CONFIG.get('annotator', {}).get('default_animals', ["R", "G", "B", "Y"])
     if not isinstance(vals, list):
@@ -211,6 +218,7 @@ def cfg_importer_facilities() -> Dict[str, Any]:
                     'treatment_defaults': def_times,
                     'path_time_regex': str(fcfg.get('path_time_regex', '')).strip() if isinstance(fcfg, dict) else '',
                     'camera_glob': str(fcfg.get('camera_glob', '')).strip() if isinstance(fcfg, dict) else '',
+                    'roi_sets': fcfg.get('roi_sets', []) if isinstance(fcfg, dict) else [],
                 }
             except Exception:
                 continue
@@ -367,8 +375,9 @@ def api_preproc_state():
             st = json.loads(s_path.read_text(encoding='utf-8'))
             arena = st.get('arena')
             bg = st.get('background')
+            regions = st.get('regions')
         except Exception:
-            arena = None; bg = None
+            arena = None; bg = None; regions = None
     if arena is None:
         a_path = _arena_path_for(vpath)
         if a_path.exists():
@@ -380,7 +389,7 @@ def api_preproc_state():
         b_path = _background_path_for(vpath)
         if b_path.exists():
             bg = str(b_path)
-    return jsonify({'ok': True, 'arena': arena, 'background': bg})
+    return jsonify({'ok': True, 'arena': arena, 'background': bg, 'regions': regions if 'regions' in locals() else None})
 
 
 @app.route('/api/preproc/arena', methods=['POST'])
@@ -451,6 +460,104 @@ def api_preproc_background():
         return jsonify({'ok': True, 'path': str(bpath), 'state': str(s_path)})
     except Exception as e:
         return jsonify({'error': f'Failed to save background: {e}'}), 500
+
+
+@app.route('/api/preproc/regions', methods=['POST'])
+def api_preproc_regions():
+    payload = request.json or {}
+    video = str(payload.get('video', '')).strip()
+    regions = payload.get('regions')
+    if not video or not isinstance(regions, dict):
+        return jsonify({'error': 'Missing video or regions'}), 400
+    vpath = Path(video).expanduser()
+    if not vpath.exists() or not vpath.is_file():
+        return jsonify({'error': 'Video file not found'}), 404
+    s_path = _preproc_state_path_for(vpath)
+    try:
+        st = json.loads(s_path.read_text(encoding='utf-8')) if s_path.exists() else {}
+    except Exception:
+        st = {}
+    st['regions'] = regions
+    try:
+        s_path.parent.mkdir(parents=True, exist_ok=True)
+        s_path.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding='utf-8')
+        return jsonify({'ok': True, 'state': str(s_path)})
+    except Exception as e:
+        return jsonify({'error': f'Failed to save regions: {e}'}), 500
+
+
+@app.route('/api/preproc/setup/save', methods=['POST'])
+def api_preproc_setup_save():
+    payload = request.json or {}
+    facility = str(payload.get('facility', '')).strip()
+    setup_name = str(payload.get('setup_name', '')).strip()
+    preproc = payload.get('preproc') or {}
+    items = payload.get('items') or []
+    if not facility or not setup_name:
+        return jsonify({'error': 'Missing facility or setup_name'}), 400
+    facilities = CONFIG.get('importer', {}).get('facilities', {})
+    if facility not in facilities:
+        return jsonify({'error': 'Unknown facility'}), 404
+    # Build setup structure
+    def _to_int(x, default=None):
+        try:
+            return int(x)
+        except Exception:
+            return default
+    setup_obj: Dict[str, Any] = {
+        'name': setup_name,
+        'preproc': {
+            'arena_width_cm': _to_int(preproc.get('arena_width_cm')),
+            'arena_height_cm': _to_int(preproc.get('arena_height_cm')),
+            'grid_cols': _to_int(preproc.get('grid_cols')),
+            'grid_rows': _to_int(preproc.get('grid_rows')),
+            'bg_frames': _to_int(preproc.get('bg_frames')),
+            'bg_quantile': _to_int(preproc.get('bg_quantile')),
+        },
+        'items': [],
+    }
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        name = str(it.get('name', '')).strip()
+        if not name:
+            continue
+        enabled = bool(it.get('enabled', False))
+        sheltered = bool(it.get('sheltered', False))
+        cells_raw = it.get('cells') or []
+        cells_out: List[List[int]] = []
+        if isinstance(cells_raw, list):
+            for c in cells_raw:
+                try:
+                    if isinstance(c, (list, tuple)) and len(c) >= 2:
+                        r = int(c[0]); c2 = int(c[1])
+                    elif isinstance(c, dict) and 'r' in c and 'c' in c:
+                        r = int(c.get('r')); c2 = int(c.get('c'))
+                    else:
+                        continue
+                    cells_out.append([r, c2])
+                except Exception:
+                    continue
+        setup_obj['items'].append({'name': name, 'enabled': enabled, 'sheltered': sheltered, 'cells': cells_out})
+
+    # Insert or replace setup in CONFIG
+    roi_sets = facilities[facility].setdefault('roi_sets', [])
+    replaced = False
+    for i, s in enumerate(roi_sets):
+        if isinstance(s, dict) and str(s.get('name', '')).strip() == setup_name:
+            roi_sets[i] = setup_obj
+            replaced = True
+            break
+    if not replaced:
+        roi_sets.append(setup_obj)
+
+    # Persist CONFIG to disk
+    try:
+        path = _config_path()
+        path.write_text(json.dumps(CONFIG, ensure_ascii=False, indent=2), encoding='utf-8')
+    except Exception as e:
+        return jsonify({'error': f'Failed to write config: {e}'}), 500
+    return jsonify({'ok': True, 'facility': facility, 'setup': setup_name, 'path': str(_config_path())})
 
 
 @app.route('/annotator')

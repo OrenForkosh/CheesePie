@@ -1,428 +1,1314 @@
-{% extends "base.html" %}
-{% block content %}
+{% extends "base.html" %} {% block content %}
 <section class="panel">
   <div class="panel-header">
     <div>
       <h1>Preprocessing</h1>
-      <p class="muted">Prepare a video for tracking: define arena and background.</p>
+      <p class="muted">
+        Prepare a video for tracking: define arena and background.
+      </p>
     </div>
   </div>
 
   <div class="controls" style="grid-template-columns: 2fr 1fr">
     <div class="control-group" style="grid-column: 1 / -1">
       <label>Video</label>
-      <input type="text" id="preproc-video-path" value="{{ video or '' }}" readonly />
+      <input
+        type="text"
+        id="preproc-video-path"
+        value="{{ video or '' }}"
+        readonly
+      />
     </div>
 
     <div class="control-group" style="grid-column: 1 / 2">
-      <div class="video-wrap"><div class="video-preview">
-        <div style="position:relative">
-          <video id="pp-video" controls preload="metadata" style="display:block; width:100%; height:auto"></video>
-          <canvas id="pp-overlay" style="position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:auto"></canvas>
+      <div class="video-wrap">
+        <div class="video-preview">
+          <div style="position: relative">
+            <video
+              id="pp-video"
+              preload="metadata"
+              style="display: block; width: 100%; height: auto"
+            ></video>
+            <canvas
+              id="pp-processed"
+              style="
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                height: 100%;
+                pointer-events: none;
+                display: none;
+              "
+            ></canvas>
+            <canvas
+              id="pp-overlay"
+              style="
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                height: 100%;
+                pointer-events: auto;
+              "
+            ></canvas>
+            <div
+              id="pp-handle-tl"
+              style="
+                position: absolute;
+                width: 12px;
+                height: 12px;
+                background: #4f8cff;
+                border: 2px solid #fff;
+                border-radius: 2px;
+                transform: translate(-50%, -50%);
+                display: none;
+                cursor: nwse-resize;
+              "
+            ></div>
+            <div
+              id="pp-handle-br"
+              style="
+                position: absolute;
+                width: 12px;
+                height: 12px;
+                background: #4f8cff;
+                border: 2px solid #fff;
+                border-radius: 2px;
+                transform: translate(-50%, -50%);
+                display: none;
+                cursor: nwse-resize;
+              "
+            ></div>
+          </div>
+          <div class="controls-row" style="margin-top: 8px">
+            <button
+              class="icon-btn"
+              id="pp-play"
+              title="Play"
+              aria-label="Play"
+              style="margin-left: 6px"
+            >
+              ▶
+            </button>
+            <div class="fill">
+              <input
+                type="range"
+                id="pp-seek"
+                min="0"
+                value="0"
+                step="0.01"
+                style="width: 100%"
+              />
+            </div>
+            <div
+              class="muted"
+              id="pp-time"
+              style="
+                margin-right: 6px;
+                font-family: ui-monospace, Menlo, Monaco, Consolas, monospace;
+              "
+            >
+              00:00 / 00:00
+            </div>
+          </div>
+          <div
+            class="controls-row"
+            style="margin-top: 6px; align-items: center"
+          >
+            <label for="video-filter" class="muted">Filter</label>
+            <div class="fill">
+              <select id="video-filter" style="width: 100%">
+                <option value="none" selected>None</option>
+                <option value="invert">Invert colors</option>
+                <option value="histeq">Histogram equalization</option>
+              </select>
+            </div>
+            <span class="muted" style="min-width: 1px"></span>
+          </div>
         </div>
-      </div></div>
-      <div class="muted" style="margin-top:6px">Tip: Click to set top-left, then bottom-right of the arena.</div>
+      </div>
+      <div class="muted" style="margin-top: 6px">
+        Tip: Click to set top-left, then bottom-right of the arena.
+      </div>
     </div>
 
     <div class="control-group" style="grid-column: 2 / 3">
-      <div class="tabs small" style="display:flex; gap:8px; margin-bottom:8px">
+      <div class="kv" style="margin-bottom:8px">
+        <div class="k">Facility</div>
+        <select id="pp-facility"></select>
+        <div class="k">Setup</div>
+        <div style="display:flex; gap:6px; align-items:center">
+          <select id="pp-setup" style="flex:1"></select>
+          <button class="btn mini" id="pp-save-setup" title="Save current settings as a setup (overwrite or add new)">Save...</button>
+        </div>
+        <div class="k"></div>
+        <div class="v"><span id="pp-setup-status" class="muted"></span></div>
+      </div>
+      <div
+        class="tabs small"
+        style="display: flex; gap: 8px; margin-bottom: 8px"
+      >
         <button class="btn mini" id="tab-arena">Arena</button>
         <button class="btn mini" id="tab-background">Background</button>
+        <button class="btn mini" id="tab-regions">Regions</button>
       </div>
       <div id="pane-arena">
         <div class="kv">
-          <div class="k">Grid cols</div><input type="number" id="grid-cols" min="1" value="6" />
-          <div class="k">Grid rows</div><input type="number" id="grid-rows" min="1" value="4" />
-          <div class="k">Width (cm)</div><input type="number" id="arena-wcm" min="1" value="40" />
-          <div class="k">Height (cm)</div><input type="number" id="arena-hcm" min="1" value="30" />
+          <div class="k">Grid cols</div>
+          <input type="number" id="grid-cols" min="1" value="6" />
+          <div class="k">Grid rows</div>
+          <input type="number" id="grid-rows" min="1" value="4" />
+          <div class="k">Width (cm)</div>
+          <input type="number" id="arena-wcm" min="1" value="40" />
+          <div class="k">Height (cm)</div>
+          <input type="number" id="arena-hcm" min="1" value="30" />
         </div>
-        <div class="muted" style="margin-top:6px">Arena is axis-aligned rectangle within the frame. Click Mark to define: top-left then bottom-right. Drag handles to refine while marking. Arrow keys nudge (Shift = 10px).</div>
-        <div style="display:flex; gap:8px; align-items:center; margin-top:8px">
-          <label style="display:flex; align-items:center; gap:6px"><input type="checkbox" id="grid-labels"> Show grid indices</label>
-          <label style="display:flex; align-items:center; gap:6px"><input type="checkbox" id="snap-grid"> Snap to grid</label>
+        <div class="muted" style="margin-top: 6px">
+          Arena is axis-aligned rectangle within the frame. Click Mark to
+          define: top-left then bottom-right. Drag handles to refine while
+          marking. Arrow keys nudge (Shift = 10px).
+        </div>
+        <div
+          style="display: flex; gap: 8px; align-items: center; margin-top: 8px"
+        >
           <button class="btn" id="arena-mark">Mark</button>
           <span class="muted" id="arena-status"></span>
         </div>
       </div>
-      <div id="pane-background" style="display:none">
+      <div id="pane-background" style="display: none">
         <div class="kv">
-          <div class="k">Frames</div><input type="number" id="bg-frames" min="5" max="200" value="25" />
-          <div class="k">Quantile</div><input type="number" id="bg-quant" min="0" max="100" step="1" value="50" />
+          <div class="k">Frames</div>
+          <input type="number" id="bg-frames" min="5" max="200" value="25" />
+          <div class="k">Quantile</div>
+          <input
+            type="number"
+            id="bg-quant"
+            min="0"
+            max="100"
+            step="1"
+            value="50"
+          />
         </div>
-        <div style="display:flex; gap:8px; align-items:center; margin:8px 0">
+        <div
+          style="display: flex; gap: 8px; align-items: center; margin: 8px 0"
+        >
           <button class="btn" id="bg-run">Run</button>
           <button class="btn" id="bg-save">Save</button>
           <span class="muted" id="bg-status"></span>
         </div>
-        <canvas id="bg-canvas" style="width:100%; max-width:100%; border:1px solid var(--border); border-radius:8px"></canvas>
+        <canvas
+          id="bg-canvas"
+          style="
+            width: 100%;
+            max-width: 100%;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+          "
+        ></canvas>
+      </div>
+      <div id="pane-regions" style="display: none">
+        <div class="table-wrap" style="padding: 0; margin-top: 8px">
+          <table
+            id="roi-table"
+            style="width: 100%; border-collapse: collapse; font-size: 13px"
+          >
+            <thead>
+              <tr>
+                <th style="text-align: left; padding: 6px">Name</th>
+                <th style="text-align: left; padding: 6px">Enabled</th>
+                <th style="text-align: left; padding: 6px">Sheltered</th>
+                <th style="text-align: left; padding: 6px">Cells</th>
+                <th style="text-align: left; padding: 6px"></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div
+          style="
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-top: 8px;
+            justify-content: flex-end;
+          "
+        >
+          <button
+            class="btn mini"
+            id="roi-move-toggle"
+            title="Drag ROI cells on video"
+          >
+            Move ROI
+          </button>
+          <button class="btn" id="roi-save">Save Regions</button>
+        </div>
+        <div class="muted" style="margin-top: 6px">
+          Tip: Click "Edit" for a region, then click grid cells in the
+          overlay to toggle. Click again to finish.
+        </div>
       </div>
     </div>
   </div>
 </section>
 
 <script>
-window.addEventListener('DOMContentLoaded', () => {
-  const videoPath = {{ (video or '')|tojson }};
-  const v = document.getElementById('pp-video');
-  const overlay = document.getElementById('pp-overlay');
-  const arenaPane = document.getElementById('pane-arena');
-  const bgPane = document.getElementById('pane-background');
-  const tabArena = document.getElementById('tab-arena');
-  const tabBg = document.getElementById('tab-background');
-  const colsEl = document.getElementById('grid-cols');
-  const rowsEl = document.getElementById('grid-rows');
-  const wcmEl = document.getElementById('arena-wcm');
-  const hcmEl = document.getElementById('arena-hcm');
-  const gridLabelsEl = document.getElementById('grid-labels');
-  const snapGridEl = document.getElementById('snap-grid');
-  const arenaMarkBtn = document.getElementById('arena-mark');
-  const arenaStatus = document.getElementById('arena-status');
-  let marking = false;
-  const bgFramesEl = document.getElementById('bg-frames');
-  const bgQuantEl = document.getElementById('bg-quant');
-  const bgRunBtn = document.getElementById('bg-run');
-  const bgSaveBtn = document.getElementById('bg-save');
-  const bgStatus = document.getElementById('bg-status');
-  const bgCanvas = document.getElementById('bg-canvas');
+  window.addEventListener('DOMContentLoaded', () => {
+    const videoPath = {{ (video or '')|tojson }};
+    // Optional step override from query string (e.g., step=arena|background|regions)
+    let urlStep = '';
+    try { urlStep = new URLSearchParams(location.search).get('step') || ''; } catch {}
+    const v = document.getElementById('pp-video');
+    const overlay = document.getElementById('pp-overlay');
+    const hTL = document.getElementById('pp-handle-tl');
+    const hBR = document.getElementById('pp-handle-br');
+    const arenaPane = document.getElementById('pane-arena');
+    const bgPane = document.getElementById('pane-background');
+    const regionsPane = document.getElementById('pane-regions');
+    const tabArena = document.getElementById('tab-arena');
+    const tabBg = document.getElementById('tab-background');
+    const tabRegions = document.getElementById('tab-regions');
+    const colsEl = document.getElementById('grid-cols');
+    const rowsEl = document.getElementById('grid-rows');
+    const wcmEl = document.getElementById('arena-wcm');
+    const hcmEl = document.getElementById('arena-hcm');
+    const arenaMarkBtn = document.getElementById('arena-mark');
+    const arenaStatus = document.getElementById('arena-status');
+    let marking = false;
+    const filterSel = document.getElementById('video-filter');
+    const processed = document.getElementById('pp-processed');
+    const bgFramesEl = document.getElementById('bg-frames');
+    const bgQuantEl = document.getElementById('bg-quant');
+    const bgRunBtn = document.getElementById('bg-run');
+    const bgSaveBtn = document.getElementById('bg-save');
+    const bgStatus = document.getElementById('bg-status');
+    const bgCanvas = document.getElementById('bg-canvas');
+    const saveSetupBtn = document.getElementById('pp-save-setup');
+    const setupStatus = document.getElementById('pp-setup-status');
+    // Regions UI elements and state
+    // Global facility/setup controls
+    const roiFacilitySel = document.getElementById('pp-facility');
+    const roiSetSel = document.getElementById('pp-setup');
+    const roiTableBody = document.querySelector('#roi-table tbody');
+    const roiSaveBtn = document.getElementById('roi-save');
+    const roiMoveBtn = document.getElementById('roi-move-toggle');
+    let regionsState = null; // { facility, set, items:[{name, enabled, sheltered, cells:[{r,c}]}] }
+    let editingRoiIndex = -1;
+    let moveRoiMode = false;
+    let moveStartCell = null;
+    let moveOriginalCells = null;
 
-  if (videoPath){
-    v.innerHTML = '';
-    const src = document.createElement('source');
-    src.src = `/media?path=${encodeURIComponent(videoPath)}`;
-    v.appendChild(src);
-    v.load();
-  }
-  // Default: allow interacting with video controls when not marking
-  overlay.style.pointerEvents = 'none';
+    if (videoPath){
+      v.innerHTML = '';
+      const src = document.createElement('source');
+      src.src = `/media?path=${encodeURIComponent(videoPath)}`;
+      v.appendChild(src);
+      v.load();
+    }
+    // External controls
+    const playBtn = document.getElementById('pp-play');
+    const seek = document.getElementById('pp-seek');
+    const timeLbl = document.getElementById('pp-time');
+    function fmtTime(sec){
+      if (!isFinite(sec)) return '00:00:00.000';
+      const totalMs = Math.max(0, Math.round(sec * 1000));
+      const h = Math.floor(totalMs / 3600000);
+      const rem = totalMs % 3600000;
+      const m = Math.floor(rem / 60000);
+      const rem2 = rem % 60000;
+      const s = Math.floor(rem2 / 1000);
+      const ms = rem2 % 1000;
+      const pad2 = (n) => String(n).padStart(2, '0');
+      const pad3 = (n) => String(n).padStart(3, '0');
+      return `${pad2(h)}:${pad2(m)}:${pad2(s)}.${pad3(ms)}`;
+    }
+    // Persist preproc context per video
+    const PCTX_KEY = 'ppctx:' + (videoPath || '');
+    function savePctx(){ try { localStorage.setItem(PCTX_KEY, JSON.stringify({ t: v.currentTime||0, f: filterSel.value||'none' })); } catch {} }
+    function loadPctx(){ try { const raw = localStorage.getItem(PCTX_KEY); return raw? JSON.parse(raw) : null; } catch { return null; } }
 
-  // Arena selection state (video-space pixels)
-  const state = { tl: null, br: null };
-  let hoverBR = null; // provisional bottom-right while marking
-  let dragging = null; // 'tl' or 'br'
+    v.addEventListener('loadedmetadata', () => {
+      seek.max = String(Math.max(0, v.duration||0));
+      const ctx = loadPctx();
+      if (ctx){
+        try { v.currentTime = Math.max(0, Math.min((v.duration||0)-0.05, Number(ctx.t)||0)); } catch {}
+        if (ctx.f){ try { filterSel.value = ctx.f; applyFilter(); } catch {} }
+      }
+      timeLbl.textContent = `${fmtTime(v.currentTime||0)} / ${fmtTime(v.duration||0)}`;
+      resizeOverlay();
+    });
+    v.addEventListener('timeupdate', () => {
+      if (!seek.dragging) { seek.value = String(v.currentTime||0); }
+      timeLbl.textContent = `${fmtTime(v.currentTime||0)} / ${fmtTime(v.duration||0)}`;
+      savePctx();
+    });
+    function updatePlayUI(){
+      const isPaused = v.paused;
+      playBtn.textContent = isPaused ? '▶' : '⏸';
+      playBtn.title = isPaused ? 'Play' : 'Pause';
+      playBtn.setAttribute('aria-label', isPaused ? 'Play' : 'Pause');
+    }
+    playBtn.addEventListener('click', () => { if (v.paused) { v.play(); } else { v.pause(); } });
+    v.addEventListener('play', updatePlayUI);
+    v.addEventListener('pause', updatePlayUI);
+    v.addEventListener('loadedmetadata', updatePlayUI);
+    seek.addEventListener('input', () => { seek.dragging = true; v.currentTime = Number(seek.value||0); });
+    seek.addEventListener('change', () => { seek.dragging = false; savePctx(); });
+    // Default: allow interacting with video controls when not marking
+    overlay.style.pointerEvents = 'none';
+    // Handles always interactive
+    hTL.style.pointerEvents = 'auto';
+    hBR.style.pointerEvents = 'auto';
+    // Processed canvas starts hidden
+    processed.style.display = 'none';
+    // Helper: check arena availability
+    function hasArena(){ return !!(state.tl && state.br); }
+    // Initialize Regions UI with defaults
+    try {
+      regionsState = defaultRegionsState();
+      populateRoiFacility();
+      populateRoiSets();
+      applySetupDefaults();
+      renderRoiUI();
+      roiFacilitySel?.addEventListener('change', () => { regionsState.facility = roiFacilitySel.value; populateRoiSets(); applySetupDefaults(); renderRoiUI(); drawOverlay(); });
+      roiSetSel?.addEventListener('change', () => { regionsState.set = roiSetSel.value; applySetupDefaults(); renderRoiUI(); drawOverlay(); });
+      roiMoveBtn?.addEventListener('click', () => { moveRoiMode = !moveRoiMode; roiMoveBtn.classList.toggle('primary', moveRoiMode); roiMoveBtn.textContent = moveRoiMode ? 'Moving…' : 'Move ROI'; });
+      roiSaveBtn?.addEventListener('click', async () => { if (!videoPath) return; try{ const r = await fetch('/api/preproc/regions', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ video: videoPath, regions: regionsState }) }); const d2 = await r.json(); arenaStatus.textContent = (!r.ok || d2.error) ? 'Error saving regions' : 'Regions saved'; } catch { arenaStatus.textContent = 'Error saving regions'; } });
+    } catch {}
+    // Wire Save... button even if init block failed
+    try { saveSetupBtn?.addEventListener('click', onSaveSetup); } catch {}
+    // If native prompts are blocked in this environment, fallback to custom modal
+    // Replace handler to open a lightweight modal
+    try {
+      saveSetupBtn?.removeEventListener('click', onSaveSetup);
+    } catch {}
+    try {
+      saveSetupBtn?.addEventListener('click', () => {
+        try{
+          // Create drawer lazily if missing
+          let backdrop = document.getElementById('pp-save-backdrop');
+          let drawer = document.getElementById('pp-save-drawer');
+          if (!backdrop){
+            backdrop = document.createElement('div');
+            backdrop.id = 'pp-save-backdrop';
+            backdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.35);display:none;z-index:9998;';
+            document.body.appendChild(backdrop);
+          }
+          if (!drawer){
+            drawer = document.createElement('div');
+            drawer.id = 'pp-save-drawer';
+            drawer.style.cssText = 'position:fixed;top:0;right:0;height:100%;width:380px;max-width:92%;background:var(--panel);color:var(--text);box-shadow:-8px 0 24px var(--shadow);transform:translateX(100%);transition:transform 220ms ease;z-index:9999;display:flex;flex-direction:column;border-left:1px solid var(--border);';
+            drawer.innerHTML = `
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border)">
+                <div style="font-weight:600">Save Setup</div>
+                <button class="btn mini" id="pp-save-close" type="button" aria-label="Close">✕</button>
+              </div>
+              <div style="padding:14px 16px;flex:1;overflow:auto">
+                <label class="muted" style="font-size:12px">Setup name</label>
+                <input id="pp-save-name" type="text" style="width:100%;margin:6px 0 10px 0;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)" />
+                <div class="muted" id="pp-save-hint" style="margin-top:6px;font-size:12px">If a setup with this name exists, it will be overwritten; otherwise a new setup will be created.</div>
+                <div id="pp-save-preview" style="margin-top:12px;border-top:1px dashed var(--border);padding-top:12px;font-size:12px;color:var(--muted)"></div>
+              </div>
+              <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
+                <button class="btn mini" id="pp-save-cancel" type="button">Cancel</button>
+                <button class="btn mini primary" id="pp-save-confirm" type="button">Save</button>
+              </div>`;
+            document.body.appendChild(drawer);
+          }
+          const nameInput = document.getElementById('pp-save-name');
+          const cancelBtn = document.getElementById('pp-save-cancel');
+          const confirmBtn = document.getElementById('pp-save-confirm');
+          const closeBtn = document.getElementById('pp-save-close');
+          // Open drawer
+          backdrop.style.display = 'block';
+          try { document.body.style.overflow = 'hidden'; } catch {}
+          requestAnimationFrame(()=>{ try{ drawer.style.transform = 'translateX(0)'; }catch{} });
+          if (nameInput){ nameInput.value = roiSetSel?.value || 'Default'; setTimeout(()=>{ try{ nameInput.focus(); nameInput.select(); }catch{} }, 50); }
+          // Name status / overwrite hint and dynamic Save label, plus preview
+          const hintEl = document.getElementById('pp-save-hint');
+          const previewEl = document.getElementById('pp-save-preview');
+          function refreshSaveState(){
+            const facs = (window.CHEESEPIE && window.CHEESEPIE.importer && window.CHEESEPIE.importer.facilities) || {};
+            const facility = roiFacilitySel?.value || '';
+            const sets = (((facs[facility]||{}).roi_sets)||[]);
+            const val = String(nameInput?.value||'').trim();
+            const exists = !!sets.find(s => (s&&s.name)===val);
+            if (confirmBtn){ confirmBtn.textContent = exists ? 'Overwrite' : 'Save'; confirmBtn.disabled = val.length===0; }
+            if (hintEl){ hintEl.textContent = exists ? 'This will overwrite the existing setup.' : 'A new setup will be created with this name.'; }
+            // Preview summary
+            try{
+              const cols = Math.max(1, Number(colsEl.value||1));
+              const rows = Math.max(1, Number(rowsEl.value||1));
+              const wcm = Math.max(0, Number(wcmEl.value||0));
+              const hcm = Math.max(0, Number(hcmEl.value||0));
+              const bgf = Math.max(1, Number(bgFramesEl.value||1));
+              const bgq = Math.max(0, Math.min(100, Number(bgQuantEl.value||0)));
+              const roiCount = (regionsState?.items||[]).length;
+              const withCells = (regionsState?.items||[]).filter(it => (it.cells||[]).length>0);
+              const names = withCells.slice(0,4).map(it => `${it.name}(${it.cells.length})`).join(', ');
+              const more = withCells.length>4 ? `, +${withCells.length-4} more` : '';
+              previewEl.innerHTML = `
+                <div style="margin-bottom:8px"><span class="badge"><span class="dot"></span>Preview</span></div>
+                <div>Arena: ${wcm}×${hcm} cm · Grid: ${cols}×${rows}</div>
+                <div>Background: ${bgf} frames · q=${bgq}%</div>
+                <div>ROIs: ${roiCount} (${withCells.length} with cells${withCells.length?`: ${names}${more}`:''})</div>
+              `;
+            } catch {}
+          }
+          try{ nameInput?.addEventListener('input', refreshSaveState); refreshSaveState(); } catch {}
+          // Focus trap inside drawer
+          function trapTab(ev){
+            if (ev.key !== 'Tab') return;
+            const focusables = drawer.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+            const list = Array.from(focusables).filter(el => !el.hasAttribute('disabled'));
+            if (!list.length) return;
+            const first = list[0]; const last = list[list.length-1];
+            if (ev.shiftKey && document.activeElement === first){ ev.preventDefault(); last.focus(); }
+            else if (!ev.shiftKey && document.activeElement === last){ ev.preventDefault(); first.focus(); }
+          }
+          document.addEventListener('keydown', trapTab);
+          function close(){
+            try{ drawer.style.transform = 'translateX(100%)'; }catch{}
+            setTimeout(()=>{ try{ backdrop.style.display = 'none'; document.body.style.overflow=''; saveSetupBtn?.focus(); document.removeEventListener('keydown', trapTab); }catch{} }, 200);
+          }
+          // Close on background click
+          backdrop.onclick = (e) => { try{ if (e.target === backdrop) close(); }catch{} };
+          cancelBtn?.addEventListener('click', close, { once:true });
+          closeBtn?.addEventListener('click', close, { once:true });
+          nameInput?.addEventListener('keydown', (ev)=>{ if (ev.key==='Escape'){ ev.preventDefault(); close(); } if (ev.key==='Enter'){ ev.preventDefault(); confirmBtn?.click(); } });
+          confirmBtn?.addEventListener('click', async () => {
+            const name = (nameInput?.value||'').trim(); if (!name) return;
+            try { window.__ppSaveName = name; } catch {}
+            await onSaveSetup();
+            close();
+          }, { once:true });
+        } catch {}
+      });
+    } catch {}
+    // Frame step helpers
+    let preprocFps = 30;
+    fetch(`/api/media_meta?path=${encodeURIComponent(videoPath||'')}`).then(r=>r.json()).then(meta => {
+      const f = meta && meta.streams && meta.streams.video && meta.streams.video.fps;
+      if (typeof f === 'number' && isFinite(f) && f>0) preprocFps = f;
+    }).catch(()=>{});
+    function stepFrames(n){ const dt = 1/Math.max(1, preprocFps); v.pause(); try{ v.currentTime = Math.max(0, Math.min((v.duration||0), (v.currentTime||0) + n*dt)); }catch{} }
+    function seekSeconds(d){ try{ v.currentTime = Math.max(0, Math.min((v.duration||0), (v.currentTime||0) + d)); }catch{} }
+    document.getElementById('pp-step-back')?.addEventListener('click', ()=> stepFrames(-1));
+    document.getElementById('pp-step-fwd')?.addEventListener('click', ()=> stepFrames(+1));
+    document.getElementById('pp-seek-back')?.addEventListener('click', ()=> seekSeconds(-10));
+    document.getElementById('pp-seek-fwd')?.addEventListener('click', ()=> seekSeconds(+10));
+    window.addEventListener('keydown', (ev)=>{
+      const tag = (ev.target && ev.target.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
+      if (marking) return;
+      // Stop ROI editing on Enter
+      if (ev.key === 'Enter' && editingRoiIndex >= 0){
+        ev.preventDefault();
+        editingRoiIndex = -1; renderRoiUI(); drawOverlay();
+        return;
+      }
+      if (ev.key === ' '){ ev.preventDefault(); if (v.paused) v.play(); else v.pause(); return; }
+      if (ev.key === ','){ ev.preventDefault(); stepFrames(-1); return; }
+      if (ev.key === '.'){ ev.preventDefault(); stepFrames(+1); return; }
+      if (ev.key.toLowerCase() === 'j'){ ev.preventDefault(); seekSeconds(-10); return; }
+      if (ev.key.toLowerCase() === 'l'){ ev.preventDefault(); seekSeconds(+10); return; }
+    });
 
-  function resizeOverlay(){
-    const rect = v.getBoundingClientRect();
-    overlay.width = rect.width; overlay.height = rect.height;
-    drawOverlay();
-  }
-  window.addEventListener('resize', resizeOverlay);
-  v.addEventListener('loadedmetadata', resizeOverlay);
-  v.addEventListener('resize', resizeOverlay);
+    // Arena selection state (video-space pixels)
+    const state = { tl: null, br: null };
+    let hoverBR = null; // provisional bottom-right while marking
+    let dragging = null; // 'tl' or 'br'
+
+    function resizeOverlay(){
+      const rect = v.getBoundingClientRect();
+      overlay.width = rect.width; overlay.height = rect.height;
+      processed.width = rect.width; processed.height = rect.height;
+      drawOverlay();
+    }
+    window.addEventListener('resize', resizeOverlay);
+    v.addEventListener('loadedmetadata', resizeOverlay);
+    v.addEventListener('resize', resizeOverlay);
 
   function drawOverlay(){
-    const ctx = overlay.getContext('2d');
-    ctx.clearRect(0,0,overlay.width, overlay.height);
-    if (!state.tl) return;
-    const rect = v.getBoundingClientRect();
-    const scaleX = rect.width / v.videoWidth;
-    const scaleY = rect.height / v.videoHeight;
-    const brPoint = state.br || hoverBR;
-    if (!brPoint) return; // nothing to draw yet
-    const x = state.tl.x * scaleX;
-    const y = state.tl.y * scaleY;
-    const w = Math.max(0, (brPoint.x - state.tl.x) * scaleX);
-    const h = Math.max(0, (brPoint.y - state.tl.y) * scaleY);
-    ctx.strokeStyle = '#4f8cff';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x, y, w, h);
-    // draw grid
-    const cols = Math.max(1, Number(colsEl.value||1));
-    const rows = Math.max(1, Number(rowsEl.value||1));
-    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-    ctx.lineWidth = 1;
-    for (let i=1; i<cols; i++){
-      const gx = x + (w * i/cols);
-      ctx.beginPath(); ctx.moveTo(gx, y); ctx.lineTo(gx, y+h); ctx.stroke();
-    }
-    for (let j=1; j<rows; j++){
-      const gy = y + (h * j/rows);
-      ctx.beginPath(); ctx.moveTo(x, gy); ctx.lineTo(x+w, gy); ctx.stroke();
-    }
-    if (gridLabelsEl.checked){
-      ctx.fillStyle = 'rgba(0,0,0,0.5)';
-      ctx.font = '12px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-      for (let r=0; r<rows; r++){
-        for (let c=0; c<cols; c++){
-          const cx = x + (c+0.5)*w/cols;
-          const cy = y + (r+0.5)*h/rows;
-          ctx.fillText(`${r+1},${c+1}`, cx, cy);
+      const ctx = overlay.getContext('2d');
+      ctx.clearRect(0,0,overlay.width, overlay.height);
+      // Draw ROI cell highlights if available
+      const rect = v.getBoundingClientRect();
+      const scaleX = rect.width / (v.videoWidth||1);
+      const scaleY = rect.height / (v.videoHeight||1);
+      const isRegions = (regionsPane && regionsPane.style.display !== 'none');
+      if (regionsState && regionsState.items && state.tl && (state.br || hoverBR)){
+        // Always draw all ROIs: fill assigned cells, outline bounding box, and label name
+        const cols = Math.max(1, Number(colsEl.value||1));
+        const rows = Math.max(1, Number(rowsEl.value||1));
+        const arX = state.tl.x * scaleX;
+        const arY = state.tl.y * scaleY;
+        const arW = ((state.br || hoverBR).x - state.tl.x) * scaleX;
+        const arH = ((state.br || hoverBR).y - state.tl.y) * scaleY;
+        const palette = ['#4f8cff','#ff6b6b','#ffd166','#7cd67c','#a66cff','#34c759','#2aa9ff','#ff5cab','#00d1c7','#ff9f1a','#00c2a8'];
+        regionsState.items.forEach((it, i) => {
+          const color = palette[i % palette.length];
+          const cells = it.cells || [];
+          if (cells.length === 0) return;
+          // Fill cells
+          const alpha = (editingRoiIndex===i) ? 0.35 : 0.20;
+          ctx.fillStyle = hexToRgba(color, alpha);
+          let minC=Infinity, minR=Infinity, maxC=-Infinity, maxR=-Infinity;
+          cells.forEach(cell => {
+            const cx = Number(cell.c)||0;
+            const cy = Number(cell.r)||0;
+            minC = Math.min(minC, cx); maxC = Math.max(maxC, cx);
+            minR = Math.min(minR, cy); maxR = Math.max(maxR, cy);
+            const x = arX + (arW * cx / cols);
+            const y = arY + (arH * cy / rows);
+            const w = arW / cols;
+            const h = arH / rows;
+            ctx.fillRect(Math.round(x)+0.5, Math.round(y)+0.5, Math.round(w)-1, Math.round(h)-1);
+          });
+          if (isFinite(minC) && isFinite(minR) && isFinite(maxC) && isFinite(maxR)){
+            // Outline bbox
+            const bx = arX + (arW * minC / cols);
+            const by = arY + (arH * minR / rows);
+            const bw = arW * (maxC - minC + 1) / cols;
+            const bh = arH * (maxR - minR + 1) / rows;
+            ctx.strokeStyle = color; ctx.lineWidth = 2;
+            ctx.strokeRect(Math.round(bx)+0.5, Math.round(by)+0.5, Math.round(bw)-1, Math.round(bh)-1);
+            // Label name (top-left of bbox)
+            const label = String(it.name || '');
+            if (label){
+              const tx = Math.round(bx) + 6; const ty = Math.round(by) + 14;
+              ctx.font = '12px sans-serif';
+              const m = ctx.measureText(label);
+              ctx.fillStyle = 'rgba(0,0,0,0.55)';
+              ctx.fillRect(tx-4, ty-12, Math.ceil(m.width)+8, 16);
+              ctx.fillStyle = '#fff';
+              ctx.fillText(label, tx, ty);
+            }
+          }
+        });
+      }
+      // Draw full-frame grid in Regions step
+      const cols = Math.max(1, Number(colsEl.value||1));
+      const rows = Math.max(1, Number(rowsEl.value||1));
+      // Arena rectangle and grid (if arena known)
+      if (state.tl && (state.br || hoverBR)){
+        const brPoint = state.br || hoverBR;
+        const x = state.tl.x * scaleX;
+        const y = state.tl.y * scaleY;
+        const w = Math.max(0, (brPoint.x - state.tl.x) * scaleX);
+        const h = Math.max(0, (brPoint.y - state.tl.y) * scaleY);
+        ctx.strokeStyle = '#4f8cff';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, w, h);
+        // draw grid inside the arena (same as Arena tab)
+        ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+        ctx.lineWidth = 1;
+        for (let i=-1; i<cols+2; i++){
+          const gx = x + (w * i/cols);
+          ctx.beginPath(); ctx.moveTo(Math.round(gx)+0.5, y - (h * 1/rows)); ctx.lineTo(Math.round(gx)+0.5, y + h + (h * 1/rows)); ctx.stroke();
+        }
+        for (let j=-1; j<rows+2; j++){
+          const gy = y + (h * j/rows);
+          ctx.beginPath(); ctx.moveTo(x - (w * 1/cols), Math.round(gy)+0.5); ctx.lineTo(x + w + (w * 1/cols), Math.round(gy)+0.5); ctx.stroke();
+        }
+        const wcm = Number(wcmEl.value||0), hcm = Number(hcmEl.value||0);
+        if (wcm && hcm){
+          ctx.fillStyle = 'rgba(0,0,0,0.5)';
+          ctx.fillRect(x+6, y+6, 90, 18);
+          ctx.fillStyle = '#fff';
+          ctx.font = '12px sans-serif';
+          ctx.fillText(`${wcm}×${hcm} cm`, x+10, y+19);
+        }
+        if (state.br){
+          hTL.style.left = `${x}px`; hTL.style.top = `${y}px`; hTL.style.display = '';
+          hBR.style.left = `${x + w}px`; hBR.style.top = `${y + h}px`; hBR.style.display = '';
+        } else {
+          hTL.style.display = 'none';
+          hBR.style.display = 'none';
         }
       }
-    }
-    // label dims
-    const wcm = Number(wcmEl.value||0), hcm = Number(hcmEl.value||0);
-    if (wcm && hcm){
-      ctx.fillStyle = 'rgba(0,0,0,0.5)';
-      ctx.fillRect(x+6, y+6, 90, 18);
-      ctx.fillStyle = '#fff';
-      ctx.font = '12px sans-serif';
-      ctx.fillText(`${wcm}×${hcm} cm`, x+10, y+19);
-    }
-    // corner handles only when final points exist
-    if (state.br){
-      ctx.fillStyle = '#4f8cff';
-      const s = 6;
-      ctx.fillRect(x - s, y - s, s*2, s*2);
-      ctx.fillRect(x + w - s, y + h - s, s*2, s*2);
-    }
   }
 
-  colsEl.addEventListener('change', drawOverlay);
-  rowsEl.addEventListener('change', drawOverlay);
-  wcmEl.addEventListener('change', drawOverlay);
-  hcmEl.addEventListener('change', drawOverlay);
+    colsEl.addEventListener('change', drawOverlay);
+    rowsEl.addEventListener('change', drawOverlay);
+    wcmEl.addEventListener('change', drawOverlay);
+    hcmEl.addEventListener('change', drawOverlay);
 
-  overlay.addEventListener('click', (ev) => {
-    if (!marking) return;
-    if (!v.videoWidth || !v.videoHeight) return;
-    const r = overlay.getBoundingClientRect();
-    const sx = (ev.clientX - r.left) / r.width;
-    const sy = (ev.clientY - r.top) / r.height;
-    const px = Math.max(0, Math.min(v.videoWidth-1, Math.round(sx * v.videoWidth)));
-    const py = Math.max(0, Math.min(v.videoHeight-1, Math.round(sy * v.videoHeight)));
-    lastHandle = pickHandle(ev) || lastHandle;
-    const p = snapCoord(px, py);
-    if (!state.tl){
-      state.tl = {x:p.x, y:p.y}; state.br = null;
-    } else if (!state.br){
-      state.br = {x:Math.max(p.x, state.tl.x), y:Math.max(p.y, state.tl.y)};
-      drawOverlay();
-      // finished marking -> auto-save and exit marking mode
-      saveArena();
-      marking = false; arenaMarkBtn.classList.remove('primary'); arenaMarkBtn.textContent = 'Mark';
-    } else {
-      state.tl = {x:p.x, y:p.y}; state.br = null;
+    // ROI adjacency helpers
+    function cellKey(c){ return `${c.r},${c.c}`; }
+    function isAdjacentToAny(list, cell){
+      for (const c of (list||[])){
+        const dr = Math.abs((c.r||0) - (cell.r||0));
+        const dc = Math.abs((c.c||0) - (cell.c||0));
+        if (dr + dc === 1) return true; // 4-neighbor adjacency
+      }
+      return false;
     }
-    drawOverlay();
-  });
+    function isConnected(list){
+      const arr = Array.isArray(list) ? list.slice() : [];
+      if (arr.length <= 1) return true;
+      const set = new Set(arr.map(cellKey));
+      const q = [arr[0]];
+      const seen = new Set([cellKey(arr[0])]);
+      while (q.length){
+        const cur = q.shift();
+        const nbs = [
+          { r: cur.r-1, c: cur.c },
+          { r: cur.r+1, c: cur.c },
+          { r: cur.r, c: cur.c-1 },
+          { r: cur.r, c: cur.c+1 },
+        ];
+        for (const nb of nbs){
+          const k = cellKey(nb);
+          if (set.has(k) && !seen.has(k)){
+            seen.add(k); q.push(nb);
+          }
+        }
+      }
+      return seen.size === set.size;
+    }
 
-  function pickHandle(ev){
-    if (!state.tl || !state.br) return null;
-    const rect = v.getBoundingClientRect();
-    const scaleX = rect.width / v.videoWidth;
-    const scaleY = rect.height / v.videoHeight;
-    const x = state.tl.x * scaleX;
-    const y = state.tl.y * scaleY;
-    const w = (state.br.x - state.tl.x) * scaleX;
-    const h = (state.br.y - state.tl.y) * scaleY;
-    const s = 8;
-    const mx = ev.clientX - overlay.getBoundingClientRect().left;
-    const my = ev.clientY - overlay.getBoundingClientRect().top;
-    function within(ax, ay){ return (mx >= ax - s) && (mx <= ax + s) && (my >= ay - s) && (my <= ay + s); }
-    if (within(x, y)) return 'tl';
-    if (within(x+w, y+h)) return 'br';
-    return null;
-  }
-  let lastHandle = null;
-  overlay.addEventListener('mousedown', (ev) => { if (!marking) return; dragging = pickHandle(ev); lastHandle = dragging || lastHandle; });
-  window.addEventListener('mouseup', () => { if (dragging) { dragging = null; if (state.tl && state.br) saveArena(); } });
-  window.addEventListener('mousemove', (ev) => {
-    if (!dragging) {
-      if (!marking) return;
-      // live preview while marking (TL chosen, BR pending)
-      if (state.tl && !state.br){
+    overlay.addEventListener('click', (ev) => {
+      // Regions edit mode
+      if (!marking && editingRoiIndex >= 0 && regionsState){
+        if (!v.videoWidth || !v.videoHeight) return;
         const r = overlay.getBoundingClientRect();
         const sx = (ev.clientX - r.left) / r.width;
         const sy = (ev.clientY - r.top) / r.height;
-        const p = snapCoord(Math.round(sx * v.videoWidth), Math.round(sy * v.videoHeight));
-        hoverBR = { x: Math.max(p.x, state.tl.x), y: Math.max(p.y, state.tl.y) };
+        const px = Math.max(0, Math.min(v.videoWidth-1, Math.round(sx * v.videoWidth)));
+        const py = Math.max(0, Math.min(v.videoHeight-1, Math.round(sy * v.videoHeight)));
+        const cell = arenaCellAt(px, py);
+        if (!cell) return;
+        const cols = Math.max(1, Number(colsEl.value||1));
+        const rows = Math.max(1, Number(rowsEl.value||1));
+        if (cell.r < 0 || cell.c < 0 || cell.r >= rows || cell.c >= cols) return;
+        const list = regionsState.items[editingRoiIndex].cells || [];
+        const idx = list.findIndex(c => c.r===cell.r && c.c===cell.c);
+        if (idx>=0){
+          // Tentative removal; ensure remaining stays connected
+          const next = list.filter((_,i)=>i!==idx);
+          if (isConnected(next)){
+            list.splice(idx, 1);
+          } else {
+            arenaStatus.textContent = 'Cells must remain connected';
+          }
+        } else {
+          // Tentative add; must be adjacent to an existing cell (unless first)
+          if (list.length === 0 || isAdjacentToAny(list, cell)){
+            list.push({ r: cell.r, c: cell.c });
+          } else {
+            arenaStatus.textContent = 'New cells must touch existing selection';
+          }
+        }
+        renderRoiUI();
         drawOverlay();
+        return;
       }
-      return;
-    }
-    const r = overlay.getBoundingClientRect();
-    const sx = (ev.clientX - r.left) / r.width;
-    const sy = (ev.clientY - r.top) / r.height;
-    const p = snapCoord(Math.round(sx * v.videoWidth), Math.round(sy * v.videoHeight));
-    if (dragging === 'tl'){
-      state.tl = {x: Math.min(p.x, state.br.x-1), y: Math.min(p.y, state.br.y-1)};
-    } else if (dragging === 'br'){
-      state.br = {x: Math.max(p.x, state.tl.x+1), y: Math.max(p.y, state.tl.y+1)};
-    }
-    drawOverlay();
-  });
-  overlay.addEventListener('mouseleave', () => { if (marking && !state.br){ hoverBR = null; drawOverlay(); } });
-
-  function snapCoord(px, py){
-    if (!snapGridEl.checked) return {x: clamp(px, 0, v.videoWidth-1), y: clamp(py, 0, v.videoHeight-1)};
-    const cols = Math.max(1, Number(colsEl.value||1));
-    const rows = Math.max(1, Number(rowsEl.value||1));
-    const stepX = v.videoWidth / cols;
-    const stepY = v.videoHeight / rows;
-    const sx = Math.round(px / stepX) * stepX;
-    const sy = Math.round(py / stepY) * stepY;
-    return { x: clamp(Math.round(sx), 0, v.videoWidth-1), y: clamp(Math.round(sy), 0, v.videoHeight-1) };
-  }
-  function clamp(val, a, b){ return Math.max(a, Math.min(b, val)); }
-
-  window.addEventListener('keydown', (ev) => {
-    if (!marking || !state.tl || !state.br || !lastHandle) return;
-    const step = ev.shiftKey ? 10 : 1;
-    let dx = 0, dy = 0;
-    if (ev.key === 'ArrowLeft') dx = -step;
-    else if (ev.key === 'ArrowRight') dx = step;
-    else if (ev.key === 'ArrowUp') dy = -step;
-    else if (ev.key === 'ArrowDown') dy = step;
-    else return;
-    ev.preventDefault();
-    const h = lastHandle;
-    const cur = { x: h==='tl'?state.tl.x:state.br.x, y: h==='tl'?state.tl.y:state.br.y };
-    let nx = cur.x + dx, ny = cur.y + dy;
-    const p = snapCoord(nx, ny);
-    if (h === 'tl'){
-      state.tl = { x: clamp(p.x, 0, state.br.x-1), y: clamp(p.y, 0, state.br.y-1) };
-    } else {
-      state.br = { x: clamp(p.x, state.tl.x+1, v.videoWidth-1), y: clamp(p.y, state.tl.y+1, v.videoHeight-1) };
-    }
-    drawOverlay();
-  });
-
-  arenaMarkBtn.addEventListener('click', () => {
-    marking = !marking;
-    if (marking){
-      state.tl = null; state.br = null; hoverBR = null; lastHandle = null; dragging = null;
-      arenaStatus.textContent = 'Marking: click top-left then bottom-right';
-      arenaMarkBtn.classList.add('primary');
-      arenaMarkBtn.textContent = 'Marking…';
-      overlay.style.pointerEvents = 'auto';
-    } else {
-      arenaStatus.textContent = '';
-      arenaMarkBtn.classList.remove('primary');
-      arenaMarkBtn.textContent = 'Mark';
-      overlay.style.pointerEvents = 'none';
-    }
-    drawOverlay();
-  });
-
-  async function saveArena(){
-    if (!videoPath || !state.tl || !state.br) return;
-    const payload = {
-      video: videoPath,
-      arena: {
-        tl: state.tl, br: state.br,
-        cols: Math.max(1, Number(colsEl.value||1)),
-        rows: Math.max(1, Number(rowsEl.value||1)),
-        width_cm: Math.max(0, Number(wcmEl.value||0)),
-        height_cm: Math.max(0, Number(hcmEl.value||0)),
+      if (!marking) return;
+      if (!v.videoWidth || !v.videoHeight) return;
+      const r = overlay.getBoundingClientRect();
+      const sx = (ev.clientX - r.left) / r.width;
+      const sy = (ev.clientY - r.top) / r.height;
+      const px = Math.max(0, Math.min(v.videoWidth-1, Math.round(sx * v.videoWidth)));
+      const py = Math.max(0, Math.min(v.videoHeight-1, Math.round(sy * v.videoHeight)));
+      lastHandle = pickHandle(ev) || lastHandle;
+      const p = snapCoord(px, py);
+      if (!state.tl){
+        state.tl = {x:p.x, y:p.y}; state.br = null;
+      } else if (!state.br){
+        state.br = {x:Math.max(p.x, state.tl.x), y:Math.max(p.y, state.tl.y)};
+        drawOverlay();
+        // finished marking -> auto-save and exit marking mode
+        saveArena();
+        marking = false; arenaMarkBtn.classList.remove('primary'); arenaMarkBtn.textContent = 'Mark';
+      } else {
+        state.tl = {x:p.x, y:p.y}; state.br = null;
       }
-    };
-    arenaStatus.textContent = 'Saving…';
-    try{
-      const r = await fetch('/api/preproc/arena', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-      const d = await r.json();
-      if (!r.ok || d.error){ arenaStatus.textContent = 'Error: ' + (d.error || r.statusText); }
-      else { arenaStatus.textContent = 'Saved'; }
-    } catch(e){ arenaStatus.textContent = 'Error: ' + e; }
-  }
+      drawOverlay();
+    });
 
-  tabArena.addEventListener('click', () => { arenaPane.style.display=''; bgPane.style.display='none'; });
-  tabBg.addEventListener('click', () => { arenaPane.style.display='none'; bgPane.style.display=''; });
-
-  // Background computation
-  bgRunBtn.addEventListener('click', async () => {
-    if (!v.duration || !v.videoWidth){ bgStatus.textContent = 'Video not ready'; return; }
-    const N = Math.max(5, Math.min(200, Number(bgFramesEl.value || 25)));
-    const qPct = Math.max(0, Math.min(100, Number(bgQuantEl.value || 50)));
-    bgStatus.textContent = `Sampling ${N} frames…`;
-    await computeBackground(N, qPct/100);
-  });
-
-  bgSaveBtn.addEventListener('click', async () => {
-    if (!videoPath){ bgStatus.textContent = 'Missing video'; return; }
-    const ctx = bgCanvas.getContext('2d');
-    if (!bgCanvas.width || !bgCanvas.height){ bgStatus.textContent = 'No background to save'; return; }
-    try{
-      const dataUrl = bgCanvas.toDataURL('image/png');
-      const r = await fetch('/api/preproc/background', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ video: videoPath, image: dataUrl }) });
-      const d = await r.json();
-      if (!r.ok || d.error){ bgStatus.textContent = 'Error: ' + (d.error || r.statusText); }
-      else { bgStatus.textContent = 'Saved'; }
-    } catch(e){ bgStatus.textContent = 'Error: ' + e; }
-  });
-
-  async function computeBackground(nFrames, quant){
-    // Work at <= 640px width for performance
-    const maxW = 640;
-    const scale = Math.min(1, maxW / v.videoWidth);
-    const w = Math.max(1, Math.round(v.videoWidth * scale));
-    const h = Math.max(1, Math.round(v.videoHeight * scale));
-    const work = document.createElement('canvas'); work.width = w; work.height = h;
-    const wctx = work.getContext('2d');
-    const frames = [];
-    const times = new Set();
-    for (let i=0;i<nFrames;i++){
-      const t = Math.random() * Math.max(0.1, v.duration - 0.1);
-      times.add(t);
+    function pickHandle(ev){
+      if (!state.tl || !state.br) return null;
+      const rect = v.getBoundingClientRect();
+      const scaleX = rect.width / v.videoWidth;
+      const scaleY = rect.height / v.videoHeight;
+      const x = state.tl.x * scaleX;
+      const y = state.tl.y * scaleY;
+      const w = (state.br.x - state.tl.x) * scaleX;
+      const h = (state.br.y - state.tl.y) * scaleY;
+      const s = 8;
+      const mx = ev.clientX - overlay.getBoundingClientRect().left;
+      const my = ev.clientY - overlay.getBoundingClientRect().top;
+      function within(ax, ay){ return (mx >= ax - s) && (mx <= ax + s) && (my >= ay - s) && (my <= ay + s); }
+      if (within(x, y)) return 'tl';
+      if (within(x+w, y+h)) return 'br';
+      return null;
     }
-    const arrTimes = Array.from(times).slice(0, nFrames).sort((a,b)=>a-b);
-    let captured = 0;
-    for (const t of arrTimes){
-      await new Promise((resolve) => {
-        const onSeeked = () => {
-          try{
-            wctx.drawImage(v, 0, 0, w, h);
-            const id = wctx.getImageData(0,0,w,h);
-            frames.push(id.data);
-            captured++;
-            bgStatus.textContent = `Captured ${captured}/${arrTimes.length} frames…`;
-          }catch{}
-          v.removeEventListener('seeked', onSeeked);
-          resolve();
-        };
-        v.addEventListener('seeked', onSeeked);
-        try{ v.currentTime = Math.min(Math.max(0.05, t), Math.max(0.05, v.duration-0.05)); } catch{ v.removeEventListener('seeked', onSeeked); resolve(); }
-      });
-    }
-    if (frames.length === 0){ bgStatus.textContent = 'No frames captured'; return; }
-    // Compute per-pixel quantile across frames
-    bgStatus.textContent = 'Computing background…';
-    const out = new Uint8ClampedArray(w*h*4);
-    const K = frames.length;
-    const qi = Math.max(0, Math.min(K-1, Math.round(quant * (K-1))));
-    for (let i=0, p=0; i<w*h; i++, p+=4){
-      // Gather channel arrays
-      const r = new Uint8Array(K), g = new Uint8Array(K), b = new Uint8Array(K), a = new Uint8Array(K);
-      for (let k=0;k<K;k++){
-        const f = frames[k];
-        r[k] = f[p]; g[k] = f[p+1]; b[k] = f[p+2]; a[k] = f[p+3];
+    let lastHandle = null;
+    overlay.addEventListener('mousedown', (ev) => {
+      if (!marking && moveRoiMode && editingRoiIndex>=0 && regionsState){
+        // start ROI move drag
+        const r = overlay.getBoundingClientRect();
+        const sx = (ev.clientX - r.left) / r.width;
+        const sy = (ev.clientY - r.top) / r.height;
+        const px = Math.max(0, Math.min(v.videoWidth-1, Math.round(sx * v.videoWidth)));
+        const py = Math.max(0, Math.min(v.videoHeight-1, Math.round(sy * v.videoHeight)));
+        // Use arena-aligned grid mapping for the starting cell
+        moveStartCell = arenaCellAt(px, py);
+        moveOriginalCells = (regionsState.items[editingRoiIndex].cells || []).map(c => ({...c}));
+        dragging = 'roi-move';
+        return;
       }
-      r.sort(); g.sort(); b.sort(); a.sort();
-      out[p] = r[qi]; out[p+1] = g[qi]; out[p+2] = b[qi]; out[p+3] = 255;
-    }
-    const ctx = bgCanvas.getContext('2d');
-    bgCanvas.width = w; bgCanvas.height = h;
-    const img = new ImageData(out, w, h);
-    ctx.putImageData(img, 0, 0);
-    bgStatus.textContent = `Done (frames=${K}, q=${Math.round(quant*100)}%)`;
-  }
-
-  // Load existing preproc state
-  (async function initLoad(){
-    if (!videoPath) return;
-    try{
-      const r = await fetch(`/api/preproc/state?video=${encodeURIComponent(videoPath)}`);
-      const d = await r.json();
-      if (r.ok && d && d.ok){
-        if (d.arena){
-          const a = d.arena;
-          state.tl = a.tl || null; state.br = a.br || null;
-          if (a.cols) colsEl.value = a.cols;
-          if (a.rows) rowsEl.value = a.rows;
-          if (a.width_cm) wcmEl.value = a.width_cm;
-          if (a.height_cm) hcmEl.value = a.height_cm;
+      if (!marking) return; dragging = pickHandle(ev); lastHandle = dragging || lastHandle;
+    });
+    // Handle elements enable dragging even when not marking
+    hTL.addEventListener('mousedown', (ev) => { ev.preventDefault(); dragging = 'tl'; lastHandle = 'tl'; });
+    hBR.addEventListener('mousedown', (ev) => { ev.preventDefault(); dragging = 'br'; lastHandle = 'br'; });
+    window.addEventListener('mouseup', () => { if (dragging) {
+      if (dragging === 'roi-move'){ saveRegionsOverlayOnly(); }
+      dragging = null; if (state.tl && state.br) saveArena();
+    } });
+    window.addEventListener('mousemove', (ev) => {
+      if (!dragging) {
+        if (!marking) return;
+        // live preview while marking (TL chosen, BR pending)
+        if (state.tl && !state.br){
+          const r = overlay.getBoundingClientRect();
+          const sx = (ev.clientX - r.left) / r.width;
+          const sy = (ev.clientY - r.top) / r.height;
+          const p = snapCoord(Math.round(sx * v.videoWidth), Math.round(sy * v.videoHeight));
+          hoverBR = { x: Math.max(p.x, state.tl.x), y: Math.max(p.y, state.tl.y) };
           drawOverlay();
         }
-        if (d.background){
-          const img = new Image();
-          img.onload = () => {
-            bgCanvas.width = img.width; bgCanvas.height = img.height;
-            const c = bgCanvas.getContext('2d'); c.drawImage(img, 0, 0);
-          };
-          img.src = `/media?path=${encodeURIComponent(d.background)}`;
+        return;
+      }
+      const r = overlay.getBoundingClientRect();
+      const sx = (ev.clientX - r.left) / r.width;
+      const sy = (ev.clientY - r.top) / r.height;
+      if (dragging === 'roi-move' && moveRoiMode && editingRoiIndex>=0 && regionsState){
+        const px = Math.max(0, Math.min(v.videoWidth-1, Math.round(sx * v.videoWidth)));
+        const py = Math.max(0, Math.min(v.videoHeight-1, Math.round(sy * v.videoHeight)));
+        const cur = arenaCellAt(px, py);
+        if (!cur || !moveStartCell) return;
+        const dr = cur.r - (moveStartCell?.r||0);
+        const dc = cur.c - (moveStartCell?.c||0);
+        const rows = Math.max(1, Number(rowsEl.value||1));
+        const cols = Math.max(1, Number(colsEl.value||1));
+        regionsState.items[editingRoiIndex].cells = (moveOriginalCells||[]).map(c => ({ r: Math.max(0, Math.min(rows-1, c.r + dr)), c: Math.max(0, Math.min(cols-1, c.c + dc)) }));
+        renderRoiUI(); drawOverlay();
+        return;
+      }
+      const p = snapCoord(Math.round(sx * v.videoWidth), Math.round(sy * v.videoHeight));
+      if (dragging === 'tl'){
+        state.tl = {x: Math.min(p.x, state.br.x-1), y: Math.min(p.y, state.br.y-1)};
+      } else if (dragging === 'br'){
+        state.br = {x: Math.max(p.x, state.tl.x+1), y: Math.max(p.y, state.tl.y+1)};
+      }
+      drawOverlay();
+    });
+    overlay.addEventListener('mouseleave', () => { if (marking && !state.br){ hoverBR = null; drawOverlay(); } });
+
+    // --- Filters ---
+    let filterLoop = null;
+    function stopFilter(){ if (filterLoop){ cancelAnimationFrame(filterLoop); filterLoop = null; } }
+    function startHistEq(){
+      processed.style.display = '';
+      v.style.filter = '';
+      const ctx = processed.getContext('2d');
+      const step = () => {
+        if (v.readyState >= 2 && processed.width > 0 && processed.height > 0){
+          try{
+            // Preserve aspect ratio when drawing to processed canvas
+            const vw = v.videoWidth || 0, vh = v.videoHeight || 0;
+            ctx.clearRect(0,0,processed.width, processed.height);
+            if (vw>0 && vh>0){
+              const scale = Math.min(processed.width / vw, processed.height / vh);
+              const dw = Math.round(vw * scale);
+              const dh = Math.round(vh * scale);
+              const dx = Math.round((processed.width - dw)/2);
+              const dy = Math.round((processed.height - dh)/2);
+              ctx.drawImage(v, dx, dy, dw, dh);
+            } else {
+              ctx.drawImage(v, 0, 0, processed.width, processed.height);
+            }
+            const img = ctx.getImageData(0,0,processed.width, processed.height);
+            histEqInPlace(img.data);
+            ctx.putImageData(img, 0, 0);
+          } catch(e) { /* ignore */ }
+        }
+        filterLoop = requestAnimationFrame(step);
+      };
+      step();
+    }
+    function histEqInPlace(pix){
+      const n = pix.length/4;
+      const hr = new Uint32Array(256), hg = new Uint32Array(256), hb = new Uint32Array(256);
+      for (let i=0,p=0;i<n;i++,p+=4){ hr[pix[p]]++; hg[pix[p+1]]++; hb[pix[p+2]]++; }
+      const cdr = new Uint32Array(256), cdg = new Uint32Array(256), cdb = new Uint32Array(256);
+      let sr=0, sg=0, sb=0;
+      for (let i=0;i<256;i++){ sr+=hr[i]; sg+=hg[i]; sb+=hb[i]; cdr[i]=sr; cdg[i]=sg; cdb[i]=sb; }
+      let r0=0,g0=0,b0=0; while(r0<256 && cdr[r0]===0) r0++; while(g0<256 && cdg[g0]===0) g0++; while(b0<256 && cdb[b0]===0) b0++;
+      const nPix = n;
+      const lr = new Uint8Array(256), lg = new Uint8Array(256), lb = new Uint8Array(256);
+      const dr = Math.max(1, nPix - cdr[r0]);
+      const dg = Math.max(1, nPix - cdg[g0]);
+      const db = Math.max(1, nPix - cdb[b0]);
+      for (let i=0;i<256;i++){
+        lr[i] = Math.max(0, Math.min(255, Math.round((cdr[i]-cdr[r0]) * 255 / dr)));
+        lg[i] = Math.max(0, Math.min(255, Math.round((cdg[i]-cdg[g0]) * 255 / dg)));
+        lb[i] = Math.max(0, Math.min(255, Math.round((cdb[i]-cdb[b0]) * 255 / db)));
+      }
+      for (let i=0,p=0;i<n;i++,p+=4){ pix[p]=lr[pix[p]]; pix[p+1]=lg[pix[p+1]]; pix[p+2]=lb[pix[p+2]]; }
+    }
+    function applyFilter(){
+      stopFilter();
+      const mode = filterSel.value;
+      if (mode === 'none'){
+        processed.style.display = 'none';
+        v.style.filter = '';
+      } else if (mode === 'invert'){
+        processed.style.display = 'none';
+        v.style.filter = 'invert(1)';
+      } else if (mode === 'histeq'){
+        startHistEq();
+      }
+    }
+    filterSel.addEventListener('change', applyFilter);
+
+    function snapCoord(px, py){
+      return { x: clamp(Math.round(px), 0, v.videoWidth-1), y: clamp(Math.round(py), 0, v.videoHeight-1) };
+    }
+    function clamp(val, a, b){ return Math.max(a, Math.min(b, val)); }
+
+    // Helper: hex color to rgba string
+    function hexToRgba(hex, a){
+      const h = (hex||'').replace('#','');
+      const r = parseInt(h.substring(0,2)||'0',16);
+      const g = parseInt(h.substring(2,4)||'0',16);
+      const b = parseInt(h.substring(4,6)||'0',16);
+      return `rgba(${r},${g},${b},${a})`;
+    }
+
+    // Map video-space px,py to arena-aligned grid cell (r,c). Returns null if no arena or outside arena.
+  function arenaCellAt(px, py){
+    if (!(state.tl && state.br)) return null;
+    const cols = Math.max(1, Number(colsEl.value||1));
+    const rows = Math.max(1, Number(rowsEl.value||1));
+    const ax = state.tl.x, ay = state.tl.y;
+    const aw = (state.br.x - state.tl.x);
+    const ah = (state.br.y - state.tl.y);
+    if (aw <= 0 || ah <= 0) return null;
+    const rx = px - ax, ry = py - ay;
+    // Allow cells outside the arena by not clamping rx/ry
+    const c = Math.floor(rx * cols / aw);
+    const r = Math.floor(ry * rows / ah);
+    return { r, c, cols, rows };
+  }
+
+    // ---- Regions helpers (global) ----
+    function cellsFromCfg(ci){
+      try{
+        const raw = Array.isArray(ci?.cells) ? ci.cells : [];
+        return raw.map(x => ({ r: Number(x?.[0])||0, c: Number(x?.[1])||0 }));
+      } catch { return []; }
+    }
+    function defaultRegionsState(){
+      const facs = (window.CHEESEPIE && window.CHEESEPIE.importer && window.CHEESEPIE.importer.facilities) || {};
+      const keys = Object.keys(facs);
+      let fac = '';
+      let setName = '';
+      try { fac = localStorage.getItem('cheesepie.preproc.facility') || ''; } catch {}
+      if (!fac || !(fac in facs)) fac = keys[0] || '';
+      const sets = (fac && facs[fac] && facs[fac].roi_sets) || [];
+      try { setName = localStorage.getItem('cheesepie.preproc.setup') || ''; } catch {}
+      if (!setName || !sets.find(s => s.name===setName)) setName = (sets[0] && sets[0].name) || '';
+      const sel = sets.find(s => s.name===setName) || sets[0] || { items: [] };
+      const items = (sel.items || []).map(it => ({ name: it.name, enabled: !!it.enabled, sheltered: !!it.sheltered, cells: cellsFromCfg(it) }));
+      return { facility: fac, set: setName, items };
+    }
+    function populateRoiFacility(){
+      const facs = (window.CHEESEPIE && window.CHEESEPIE.importer && window.CHEESEPIE.importer.facilities) || {};
+      if (!roiFacilitySel) return;
+      roiFacilitySel.innerHTML = '';
+      Object.keys(facs).forEach(k => { const o = document.createElement('option'); o.value=k; o.textContent=k; roiFacilitySel.appendChild(o); });
+    }
+    function populateRoiSets(){
+      const facs = (window.CHEESEPIE && window.CHEESEPIE.importer && window.CHEESEPIE.importer.facilities) || {};
+      if (!roiSetSel || !roiFacilitySel) return;
+      const fac = roiFacilitySel.value;
+      const sets = (fac && facs[fac] && facs[fac].roi_sets) || [];
+      roiSetSel.innerHTML = '';
+      // Rename ROI set => Setup in UI
+      sets.forEach(s => { const o = document.createElement('option'); o.value = s.name; o.textContent = s.name || 'Setup'; roiSetSel.appendChild(o); });
+    }
+    function applySetupDefaults(){
+      try{
+        const facs = (window.CHEESEPIE && window.CHEESEPIE.importer && window.CHEESEPIE.importer.facilities) || {};
+        const fac = roiFacilitySel?.value || '';
+        const setName = roiSetSel?.value || '';
+        const sets = (fac && facs[fac] && facs[fac].roi_sets) || [];
+        const set = sets.find(s => s.name === setName) || {};
+        const pp = set.preproc || {};
+        if (pp.grid_cols) colsEl.value = pp.grid_cols;
+        if (pp.grid_rows) rowsEl.value = pp.grid_rows;
+        if (pp.arena_width_cm) wcmEl.value = pp.arena_width_cm;
+        if (pp.arena_height_cm) hcmEl.value = pp.arena_height_cm;
+        if (pp.bg_frames) bgFramesEl.value = pp.bg_frames;
+        if (pp.bg_quantile !== undefined) bgQuantEl.value = pp.bg_quantile;
+        // Validate config-defined ROI connectivity and bounds; warn if not compliant
+        const cols = Math.max(1, Number(colsEl.value||1));
+        const rows = Math.max(1, Number(rowsEl.value||1));
+        const bad = [];
+        (set.items||[]).forEach(ci => {
+          const cells = (ci.cells||[]).map(x => ({ r:Number(x?.[0])||0, c:Number(x?.[1])||0 }))
+            .filter(c => c.r>=0 && c.c>=0 && c.r<rows && c.c<cols);
+          if (cells.length>0 && !isConnected(cells)) bad.push(ci.name||'');
+        });
+        if (bad.length){ try{ showToast('Some setup ROIs are not connected: ' + bad.slice(0,3).join(', ') + (bad.length>3?'…':''), 'warn'); } catch{} }
+      } catch {}
+    }
+
+    // Toast helper
+    function showToast(msg, kind){
+      try{
+        const t = document.createElement('div');
+        t.textContent = String(msg||'');
+        const bg = kind==='error' ? 'rgba(220,53,69,0.95)' : (kind==='warn' ? 'rgba(255,193,7,0.95)' : 'rgba(33,37,41,0.95)');
+        Object.assign(t.style, {
+          position:'fixed', right:'16px', bottom:'16px', maxWidth:'420px', zIndex:'9999',
+          padding:'10px 12px', borderRadius:'8px', color:'#fff', fontSize:'13px', boxShadow:'0 6px 18px rgba(0,0,0,0.25)',
+          background:bg, opacity:'1'
+        });
+        document.body.appendChild(t);
+        setTimeout(()=>{ try{ t.style.transition='opacity 300ms'; t.style.opacity='0'; }catch{} }, 2000);
+        setTimeout(()=>{ try{ document.body.removeChild(t); }catch{} }, 2400);
+      } catch {}
+    }
+
+    async function onSaveSetup(){
+      try{ setupStatus.textContent = ''; } catch {}
+      const facility = roiFacilitySel?.value || '';
+      const facs = (window.CHEESEPIE && window.CHEEPIE.importer && window.CHEESEPIE.importer.facilities) || {};
+      const sets = (((facs[facility]||{}).roi_sets)||[]);
+      let setupName = (window.__ppSaveName || '').trim();
+      if (setupName){ try { window.__ppSaveName = ''; } catch {} }
+      else {
+        // Ask for name; handle overwrite vs save-as-new
+        try{
+          let name = prompt('Setup name', roiSetSel?.value || 'Default');
+          if (!name) return;
+          name = name.trim();
+          if (!name) return;
+          const exists = sets.find(s => (s&&s.name)===name);
+          if (exists){
+            const doOverwrite = confirm(`Setup "${name}" already exists. Overwrite? Click Cancel to enter a new name.`);
+            if (!doOverwrite){
+              const alt = prompt('New setup name');
+              if (!alt) return;
+              setupName = alt.trim();
+            } else {
+              setupName = name;
+            }
+          } else {
+            setupName = name;
+          }
+        } catch { return; }
+      }
+      // Validate ROI cells before save
+      const cols = Math.max(1, Number(colsEl.value||1));
+      const rows = Math.max(1, Number(rowsEl.value||1));
+      for (const it of (regionsState?.items||[])){
+        const cells = (it.cells||[]).map(c => ({ r:Number(c.r)||0, c:Number(c.c)||0 }));
+        if (cells.some(c => c.r<0 || c.c<0 || c.r>=rows || c.c>=cols)){
+          showToast(`ROI "${it.name}": contains out-of-bounds cells`, 'error');
+          return;
+        }
+        if (cells.length>0 && !isConnected(cells)){
+          showToast(`ROI "${it.name}": cells must be connected`, 'error');
+          return;
         }
       }
-    } catch {}
-  })();
-});
+      const payload = {
+        facility,
+        setup_name: setupName,
+        preproc: {
+          arena_width_cm: Math.max(0, Number(wcmEl.value||0)),
+          arena_height_cm: Math.max(0, Number(hcmEl.value||0)),
+          grid_cols: Math.max(1, Number(colsEl.value||1)),
+          grid_rows: Math.max(1, Number(rowsEl.value||1)),
+          bg_frames: Math.max(1, Number(bgFramesEl.value||1)),
+          bg_quantile: Math.max(0, Math.min(100, Number(bgQuantEl.value||0)))
+        },
+        items: (regionsState?.items||[]).map(it => ({
+          name: it.name,
+          enabled: !!it.enabled,
+          sheltered: !!it.sheltered,
+          cells: (it.cells||[]).map(c => [Number(c.r)||0, Number(c.c)||0])
+        }))
+      };
+      try{
+        const r = await fetch('/api/preproc/setup/save', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        const d = await r.json();
+        if (!r.ok || d.error){ setupStatus.textContent = 'Error: ' + (d.error || r.statusText); return; }
+        // Update local config mirror so UI stays in sync without reload
+        const facs = (window.CHEESEPIE && window.CHEESEPIE.importer && window.CHEESEPIE.importer.facilities) || {};
+        const fac = facs[facility] || (facs[facility] = { roi_sets: [] });
+        const sets = fac.roi_sets || (fac.roi_sets = []);
+        const idx = sets.findIndex(s => (s && s.name) === setupName);
+        const newSetup = { name: setupName, preproc: payload.preproc, items: payload.items };
+        if (idx >= 0) sets[idx] = newSetup; else sets.push(newSetup);
+        populateRoiSets();
+        roiSetSel.value = setupName;
+        try { localStorage.setItem('cheesepie.preproc.setup', setupName); } catch {}
+        applySetupDefaults();
+        renderRoiUI();
+        drawOverlay();
+        setupStatus.textContent = 'Setup saved';
+      } catch(e){ setupStatus.textContent = 'Error: ' + e; }
+    }
+    function renderRoiUI(){
+      const facs = (window.CHEESEPIE && window.CHEESEPIE.importer && window.CHEESEPIE.importer.facilities) || {};
+      if (!regionsState) regionsState = defaultRegionsState();
+      populateRoiFacility();
+      if (regionsState.facility) roiFacilitySel.value = regionsState.facility;
+      populateRoiSets();
+      if (regionsState.set) roiSetSel.value = regionsState.set;
+      try { localStorage.setItem('cheesepie.preproc.facility', roiFacilitySel.value||''); } catch {}
+      try { localStorage.setItem('cheesepie.preproc.setup', roiSetSel.value||''); } catch {}
+      applySetupDefaults();
+      const cfgItems = (((facs[roiFacilitySel.value]||{}).roi_sets||[]).find(s => s.name===roiSetSel.value)||{}).items || [];
+      const map = new Map((regionsState.items||[]).map(it => [it.name, it]));
+      regionsState.facility = roiFacilitySel.value; regionsState.set = roiSetSel.value;
+      regionsState.items = cfgItems.map(ci => ({ name: ci.name, enabled: map.get(ci.name)?.enabled ?? !!ci.enabled, sheltered: map.get(ci.name)?.sheltered ?? !!ci.sheltered, cells: (map.get(ci.name)?.cells && map.get(ci.name).cells.length ? map.get(ci.name).cells : cellsFromCfg(ci)) }));
+      // Table
+      if (!roiTableBody) return;
+      roiTableBody.innerHTML = '';
+      regionsState.items.forEach((it, idx) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td style="padding:6px">${it.name}</td>
+          <td style="padding:6px"><input type="checkbox" ${it.enabled?'checked':''} data-field="enabled"></td>
+          <td style="padding:6px"><input type="checkbox" ${it.sheltered?'checked':''} data-field="sheltered"></td>
+          <td style="padding:6px">${it.cells.length}</td>
+          <td style="padding:6px"><button class="btn mini" data-edit="1">${editingRoiIndex===idx?'Stop':'Edit'}</button></td>
+        `;
+        tr.querySelector('[data-field="enabled"]').addEventListener('change', (e)=>{ regionsState.items[idx].enabled = e.target.checked; drawOverlay(); });
+        tr.querySelector('[data-field="sheltered"]').addEventListener('change', (e)=>{ regionsState.items[idx].sheltered = e.target.checked; drawOverlay(); });
+        tr.querySelector('[data-edit]').addEventListener('click', ()=>{ editingRoiIndex = (editingRoiIndex===idx ? -1 : idx); renderRoiUI(); drawOverlay(); });
+        roiTableBody.appendChild(tr);
+      });
+    }
+
+    window.addEventListener('keydown', (ev) => {
+      if (!state.tl || !state.br || !lastHandle) return;
+      const step = ev.shiftKey ? 10 : 1;
+      let dx = 0, dy = 0;
+      if (ev.key === 'ArrowLeft') dx = -step;
+      else if (ev.key === 'ArrowRight') dx = step;
+      else if (ev.key === 'ArrowUp') dy = -step;
+      else if (ev.key === 'ArrowDown') dy = step;
+      else return;
+      ev.preventDefault();
+      const h = lastHandle;
+      const cur = { x: h==='tl'?state.tl.x:state.br.x, y: h==='tl'?state.tl.y:state.br.y };
+      let nx = cur.x + dx, ny = cur.y + dy;
+      const p = snapCoord(nx, ny);
+      if (h === 'tl'){
+        state.tl = { x: clamp(p.x, 0, state.br.x-1), y: clamp(p.y, 0, state.br.y-1) };
+      } else {
+        state.br = { x: clamp(p.x, state.tl.x+1, v.videoWidth-1), y: clamp(p.y, state.tl.y+1, v.videoHeight-1) };
+      }
+      drawOverlay();
+    });
+
+    arenaMarkBtn.addEventListener('click', () => {
+      marking = !marking;
+      if (marking){
+        state.tl = null; state.br = null; hoverBR = null; lastHandle = null; dragging = null;
+        arenaStatus.textContent = 'Marking: click top-left then bottom-right';
+        arenaMarkBtn.classList.add('primary');
+        arenaMarkBtn.textContent = 'Marking…';
+        overlay.style.pointerEvents = 'auto';
+      } else {
+        arenaStatus.textContent = '';
+        arenaMarkBtn.classList.remove('primary');
+        arenaMarkBtn.textContent = 'Mark';
+        overlay.style.pointerEvents = 'none';
+      }
+      drawOverlay();
+    });
+
+    async function saveArena(){
+      if (!videoPath || !state.tl || !state.br) return;
+      const payload = {
+        video: videoPath,
+        arena: {
+          tl: state.tl, br: state.br,
+          cols: Math.max(1, Number(colsEl.value||1)),
+          rows: Math.max(1, Number(rowsEl.value||1)),
+          width_cm: Math.max(0, Number(wcmEl.value||0)),
+          height_cm: Math.max(0, Number(hcmEl.value||0)),
+        }
+      };
+      arenaStatus.textContent = 'Saving…';
+      try{
+        const r = await fetch('/api/preproc/arena', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        const d = await r.json();
+        if (!r.ok || d.error){ arenaStatus.textContent = 'Error: ' + (d.error || r.statusText); }
+        else { arenaStatus.textContent = 'Saved'; }
+      } catch(e){ arenaStatus.textContent = 'Error: ' + e; }
+    }
+
+  tabArena.addEventListener('click', () => {
+    arenaPane.style.display=''; bgPane.style.display='none'; regionsPane.style.display='none';
+    if (!marking) overlay.style.pointerEvents = 'none';
+    drawOverlay();
+  });
+  tabBg.addEventListener('click', () => {
+    arenaPane.style.display='none'; bgPane.style.display=''; regionsPane.style.display='none';
+    if (!marking) overlay.style.pointerEvents = 'none';
+    drawOverlay();
+  });
+  tabRegions.addEventListener('click', () => {
+    if (!(state.tl && state.br)){
+      arenaStatus.textContent = 'Please mark the arena first to use Regions.';
+      return;
+    }
+    arenaPane.style.display='none'; bgPane.style.display='none'; regionsPane.style.display='';
+    overlay.style.pointerEvents = 'auto';
+    drawOverlay();
+  });
+    // persist active preproc step
+    tabArena.addEventListener('click', () => { try { localStorage.setItem('cheesepie.preproc.step', 'arena'); } catch {} });
+    tabBg.addEventListener('click', () => { try { localStorage.setItem('cheesepie.preproc.step', 'background'); } catch {} });
+    tabRegions.addEventListener('click', () => { try { localStorage.setItem('cheesepie.preproc.step', 'regions'); } catch {} });
+
+    // Background computation
+    bgRunBtn.addEventListener('click', async () => {
+      if (!v.duration || !v.videoWidth){ bgStatus.textContent = 'Video not ready'; return; }
+      const N = Math.max(5, Math.min(200, Number(bgFramesEl.value || 25)));
+      const qPct = Math.max(0, Math.min(100, Number(bgQuantEl.value || 50)));
+      bgStatus.textContent = `Sampling ${N} frames…`;
+      await computeBackground(N, qPct/100);
+    });
+
+    bgSaveBtn.addEventListener('click', async () => {
+      if (!videoPath){ bgStatus.textContent = 'Missing video'; return; }
+      const ctx = bgCanvas.getContext('2d');
+      if (!bgCanvas.width || !bgCanvas.height){ bgStatus.textContent = 'No background to save'; return; }
+      try{
+        const dataUrl = bgCanvas.toDataURL('image/png');
+        const r = await fetch('/api/preproc/background', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ video: videoPath, image: dataUrl }) });
+        const d = await r.json();
+        if (!r.ok || d.error){ bgStatus.textContent = 'Error: ' + (d.error || r.statusText); }
+        else { bgStatus.textContent = 'Saved'; }
+      } catch(e){ bgStatus.textContent = 'Error: ' + e; }
+    });
+
+    async function computeBackground(nFrames, quant){
+      // Work at <= 640px width for performance
+      const maxW = 640;
+      const scale = Math.min(1, maxW / v.videoWidth);
+      const w = Math.max(1, Math.round(v.videoWidth * scale));
+      const h = Math.max(1, Math.round(v.videoHeight * scale));
+      const work = document.createElement('canvas'); work.width = w; work.height = h;
+      const wctx = work.getContext('2d');
+      const frames = [];
+      const times = new Set();
+      for (let i=0;i<nFrames;i++){
+        const t = Math.random() * Math.max(0.1, v.duration - 0.1);
+        times.add(t);
+      }
+      const arrTimes = Array.from(times).slice(0, nFrames).sort((a,b)=>a-b);
+      let captured = 0;
+      for (const t of arrTimes){
+        await new Promise((resolve) => {
+          const onSeeked = () => {
+            try{
+              wctx.drawImage(v, 0, 0, w, h);
+              const id = wctx.getImageData(0,0,w,h);
+              frames.push(id.data);
+              captured++;
+              bgStatus.textContent = `Captured ${captured}/${arrTimes.length} frames…`;
+            }catch{}
+            v.removeEventListener('seeked', onSeeked);
+            resolve();
+          };
+          v.addEventListener('seeked', onSeeked);
+          try{ v.currentTime = Math.min(Math.max(0.05, t), Math.max(0.05, v.duration-0.05)); } catch{ v.removeEventListener('seeked', onSeeked); resolve(); }
+        });
+      }
+      if (frames.length === 0){ bgStatus.textContent = 'No frames captured'; return; }
+      // Compute per-pixel quantile across frames
+      bgStatus.textContent = 'Computing background…';
+      const out = new Uint8ClampedArray(w*h*4);
+      const K = frames.length;
+      const qi = Math.max(0, Math.min(K-1, Math.round(quant * (K-1))));
+      for (let i=0, p=0; i<w*h; i++, p+=4){
+        // Gather channel arrays
+        const r = new Uint8Array(K), g = new Uint8Array(K), b = new Uint8Array(K), a = new Uint8Array(K);
+        for (let k=0;k<K;k++){
+          const f = frames[k];
+          r[k] = f[p]; g[k] = f[p+1]; b[k] = f[p+2]; a[k] = f[p+3];
+        }
+        r.sort(); g.sort(); b.sort(); a.sort();
+        out[p] = r[qi]; out[p+1] = g[qi]; out[p+2] = b[qi]; out[p+3] = 255;
+      }
+      const ctx = bgCanvas.getContext('2d');
+      bgCanvas.width = w; bgCanvas.height = h;
+      const img = new ImageData(out, w, h);
+      ctx.putImageData(img, 0, 0);
+      bgStatus.textContent = `Done (frames=${K}, q=${Math.round(quant*100)}%)`;
+    }
+
+    // Load existing preproc state
+    (async function initLoad(){
+      if (!videoPath) return;
+      // restore last step
+      try {
+        const step = (urlStep || localStorage.getItem('cheesepie.preproc.step') || 'arena');
+        if (step === 'regions' && !(state.tl && state.br)){
+          arenaPane.style.display=''; bgPane.style.display='none'; regionsPane.style.display='none';
+        } else if (step === 'regions'){
+          arenaPane.style.display='none'; bgPane.style.display='none'; regionsPane.style.display='';
+          overlay.style.pointerEvents = 'auto';
+        } else if (step === 'background'){
+          arenaPane.style.display='none'; bgPane.style.display=''; regionsPane.style.display='none';
+        } else {
+          arenaPane.style.display=''; bgPane.style.display='none'; regionsPane.style.display='none';
+        }
+        drawOverlay();
+      } catch {}
+      try{
+        const r = await fetch(`/api/preproc/state?video=${encodeURIComponent(videoPath)}`);
+        const d = await r.json();
+        if (r.ok && d && d.ok){
+          if (d.arena){
+            const a = d.arena;
+            state.tl = a.tl || null; state.br = a.br || null;
+            if (a.cols) colsEl.value = a.cols;
+            if (a.rows) rowsEl.value = a.rows;
+            if (a.width_cm) wcmEl.value = a.width_cm;
+            if (a.height_cm) hcmEl.value = a.height_cm;
+            drawOverlay();
+          }
+          if (d.background){
+            const img = new Image();
+            img.onload = () => {
+              bgCanvas.width = img.width; bgCanvas.height = img.height;
+              const c = bgCanvas.getContext('2d'); c.drawImage(img, 0, 0);
+            };
+            img.src = `/media?path=${encodeURIComponent(d.background)}`;
+          }
+          // Regions: apply loaded state to existing UI
+          if (d.regions) {
+            regionsState = d.regions;
+          }
+          renderRoiUI();
+          drawOverlay();
+        }
+      } catch {}
+    })();
+  });
 </script>
 {% endblock %}

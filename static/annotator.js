@@ -49,7 +49,7 @@
   const timelineCanvas = byId('timeline');
   const legendEl = byId('legend');
   const detailsEl = byId('event-details');
-  const videoPathEl = byId('video-path');
+  const annotVideoPathEl = byId('annotator-video-path');
   const typesListEl = byId('types-list');
   const miceInput = byId('mice-input');
   const tblBody = $('#events-table tbody');
@@ -65,11 +65,24 @@
   const typeSaveBtn = byId('type-save');
   const typeCancelBtn = byId('type-cancel');
 
-  if (videoPathEl) videoPathEl.textContent = videoPath || 'No video selected';
+  if (annotVideoPathEl) annotVideoPathEl.value = videoPath || '';
   if (!videoPath) {
     detailsEl.textContent = 'No video path provided. Return to Browser and select a video.';
     return;
   }
+
+  // Persist/resume video context (position, rate, paused)
+  const CTX_KEY = 'annctx:' + videoPath;
+  function loadCtx(){
+    try { const raw = localStorage.getItem(CTX_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
+  }
+  function saveCtx(){
+    try {
+      const data = { position: videoEl.currentTime||0, rate: videoEl.playbackRate||1, paused: !!videoEl.paused, ts: Date.now() };
+      localStorage.setItem(CTX_KEY, JSON.stringify(data));
+    } catch {}
+  }
+  const saveCtxDebounced = (() => { let to=null; return ()=>{ clearTimeout(to); to=setTimeout(saveCtx, 400); }; })();
 
   // State
   const state = {
@@ -164,8 +177,27 @@
 
   videoEl.addEventListener('loadedmetadata', () => {
     if (!state.duration || !isFinite(state.duration)) state.duration = videoEl.duration || 0;
+    // Restore context
+    const ctx = loadCtx();
+    if (ctx){
+      try { videoEl.playbackRate = Math.max(0.25, Math.min(3, Number(ctx.rate)||1)); } catch {}
+      try {
+        const dur = videoEl.duration || 0;
+        if (dur>0 && ctx.position!=null){
+          const pos = Math.max(0, Math.min(dur-0.05, Number(ctx.position)||0));
+          videoEl.currentTime = pos;
+        }
+      } catch {}
+      try { if (ctx.paused === false) videoEl.play(); } catch {}
+    }
     resizeCanvas();
   }, {once:true});
+
+  // Save context on changes
+  videoEl.addEventListener('timeupdate', saveCtxDebounced);
+  videoEl.addEventListener('play', saveCtxDebounced);
+  videoEl.addEventListener('pause', saveCtxDebounced);
+  window.addEventListener('beforeunload', saveCtx);
 
   // Load annotations
   const LS_KEY = 'ann:' + videoPath;
@@ -266,6 +298,7 @@
   function setRate(v){
     const val = Math.max(Number(rateInput.min)||0.25, Math.min(Number(rateInput.max)||3, v));
     videoEl.playbackRate = val; rateInput.value = String(val); updateRateUI(val);
+    saveCtxDebounced();
   }
   // init
   setRate(parseFloat(rateInput.value)||1);

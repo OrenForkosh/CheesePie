@@ -170,6 +170,13 @@ select:focus{border-color:var(--primary); outline:none}
 .btn:hover{filter:brightness(1.05)}
 .btn.success{background:linear-gradient(180deg, #34c759, #2eae4f); border-color:transparent; color:#fff}
 
+/* Icon-only button (transparent) */
+.icon-btn{
+  background:transparent; border:none; padding:6px; border-radius:8px; color:var(--text); cursor:pointer; outline:none;
+}
+.icon-btn:focus{outline:none}
+.icon-btn:active{transform:translateY(0.5px)}
+
 /* nicer range slider */
 input[type="range"]{
   -webkit-appearance:none; appearance:none; height:6px; border-radius:999px; background:linear-gradient(90deg, var(--primary), var(--primary-600)) 0/var(--pct, 0%) 100% no-repeat, #1a2136; border:1px solid var(--border);

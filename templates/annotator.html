@@ -11,7 +11,13 @@
       <h1>Annotator</h1>
       <p class="muted">Annotate behaviors by type with precise timing.</p>
     </div>
-    <div class="muted" id="video-path" style="max-width:580px; word-break:break-all"></div>
+  </div>
+
+  <div class="controls" style="grid-template-columns: 1fr">
+    <div class="control-group">
+      <label for="annotator-video-path">Video</label>
+      <input type="text" id="annotator-video-path" value="{{ video or '' }}" readonly />
+    </div>
   </div>
 
   <div class="annotator-layout">

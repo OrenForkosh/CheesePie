@@ -139,7 +139,7 @@
       const path = rows[0].dataset.path;
       fetch(`/api/fileinfo?path=${encodeURIComponent(path)}`)
         .then(r => r.json())
-        .then(info => { renderDetails(info); updateActionsPanel(info); })
+        .then(info => { try { localStorage.setItem('cheesepie.lastVideo', info.path); } catch {} renderDetails(info); updateActionsPanel(info); })
         .catch(() => { detailsEl.innerHTML = '<div class="muted">Failed to load details.</div>'; updateActionsPanel(); });
       if (placeholder) placeholder.style.display = 'none';
       return;
@@ -253,6 +253,7 @@
       const openAnnotBtn = document.getElementById('open-annotator');
       if (openAnnotBtn){
         openAnnotBtn.addEventListener('click', () => {
+          try { localStorage.setItem('cheesepie.lastVideo', currentInfo.path); } catch {}
           const url = `/annotator?video=${encodeURIComponent(currentInfo.path)}`;
           window.location.href = url;
         });
@@ -260,7 +261,10 @@
       const preprocBtn = document.getElementById('act-preproc');
       if (preprocBtn){
         preprocBtn.addEventListener('click', () => {
-          const url = `/preproc?video=${encodeURIComponent(currentInfo.path)}`;
+          try { localStorage.setItem('cheesepie.lastVideo', currentInfo.path); } catch {}
+          let step = '';
+          try { step = localStorage.getItem('cheesepie.preproc.step') || ''; } catch {}
+          const url = `/preproc?video=${encodeURIComponent(currentInfo.path)}${step?`&step=${encodeURIComponent(step)}`:''}`;
           window.location.href = url;
         });
       }
@@ -482,13 +486,30 @@
     loadList();
   });
 
-  // load last folder from localStorage (only on browser page)
+  // load last context (prefer last selected video)
   try {
-    const last = localStorage.getItem(LS_KEY);
-    if (last && listEl){
-      currentDir = last;
-      if (dirInput) dirInput.value = currentDir;
-      loadList();
+    if (listEl){
+      const lastVideo = localStorage.getItem('cheesepie.lastVideo');
+      if (lastVideo){
+        const pdir = parentDir(lastVideo);
+        if (pdir){ currentDir = pdir; if (dirInput) dirInput.value = pdir; try { localStorage.setItem(LS_KEY, pdir); } catch {} }
+        desiredSelectPath = lastVideo;
+        loadList();
+      } else {
+        const last = localStorage.getItem(LS_KEY);
+        if (last){ currentDir = last; if (dirInput) dirInput.value = currentDir; loadList(); }
+      }
+    }
+  } catch {}
+
+  // Enhance top nav: attach last video to Annotator/Preproc links
+  try {
+    const lastVideo = localStorage.getItem('cheesepie.lastVideo');
+    if (lastVideo){
+      const annTab = document.querySelector('a.tab[href="/annotator"]');
+      const ppTab = document.querySelector('a.tab[href="/preproc"]');
+      if (annTab){ annTab.addEventListener('click', (e) => { e.preventDefault(); window.location.href = `/annotator?video=${encodeURIComponent(lastVideo)}`; }); }
+      if (ppTab){ ppTab.addEventListener('click', (e) => { e.preventDefault(); const step = localStorage.getItem('cheesepie.preproc.step') || ''; window.location.href = `/preproc?video=${encodeURIComponent(lastVideo)}${step?`&step=${encodeURIComponent(step)}`:''}`; }); }
     }
   } catch {}
 

@@ -26,6 +26,32 @@
         "cameras": 12,
         "camera_glob": "**/*cam{cam:02d}*",
         "path_time_regex": "(?P<year>\\d{4})(?P<month>\\d{2})(?P<day>\\d{2})[\\/](?P<hour>\\d{2})(?::?(?P<minute>\\d{2}))?",
+        "roi_sets": [
+          {
+            "name": "Default",
+            "preproc": {
+              "arena_width_cm": 40,
+              "arena_height_cm": 30,
+              "grid_cols": 6,
+              "grid_rows": 4,
+              "bg_frames": 25,
+              "bg_quantile": 50
+            },
+            "items": [
+              {"name": "Feeder1",   "enabled": true,  "sheltered": false, "cells": [[3,0]]},
+              {"name": "Feeder2",   "enabled": true,  "sheltered": false, "cells": [[3,5]]},
+              {"name": "Water1",    "enabled": true,  "sheltered": false, "cells": [[2,0]]},
+              {"name": "Water2",    "enabled": true,  "sheltered": false, "cells": [[2,5]]},
+              {"name": "SmallNest", "enabled": true,  "sheltered": true,  "cells": [[0,0],[0,1]]},
+              {"name": "Labyrinth", "enabled": true,  "sheltered": false, "cells": [[1,2]]},
+              {"name": "BigNest",   "enabled": true,  "sheltered": true,  "cells": [[0,4],[0,5]]},
+              {"name": "(BigNest)", "enabled": false, "sheltered": true,  "cells": []},
+              {"name": "Block",     "enabled": true,  "sheltered": false, "cells": [[2,2]]},
+              {"name": "Ramp1",     "enabled": true,  "sheltered": false, "cells": [[1,0]]},
+              {"name": "Ramp2",     "enabled": true,  "sheltered": false, "cells": [[1,5]]}
+            ]
+          }
+        ],
         "experiments": {
           "THREE_CHAMBERS": [
             {"name": "wt", "start_time": "20:00", "end_time": "08:00"},
@@ -47,6 +73,25 @@
         "cameras": 8,
         "camera_glob": "**/*cam{cam:02d}*",
         "path_time_regex": "(?P<year>\\d{4})(?P<month>\\d{2})(?P<day>\\d{2})[_-](?P<hour>\\d{2})(?P<minute>\\d{2})(?:(?P<second>\\d{2}))?",
+        "roi_sets": [
+          {
+            "name": "Default",
+            "preproc": {
+              "arena_width_cm": 40,
+              "arena_height_cm": 40,
+              "grid_cols": 5,
+              "grid_rows": 5,
+              "bg_frames": 20,
+              "bg_quantile": 50
+            },
+            "items": [
+              {"name": "Feeder1", "enabled": true, "sheltered": false, "cells": [[4,0]]},
+              {"name": "Feeder2", "enabled": true, "sheltered": false, "cells": [[4,4]]},
+              {"name": "Water1",  "enabled": true, "sheltered": false, "cells": [[3,0]]},
+              {"name": "Water2",  "enabled": true, "sheltered": false, "cells": [[3,4]]}
+            ]
+          }
+        ],
         "experiments": {
           "PECKING_ORDER": [
             {"name": "pilot", "start_time": "08:00", "end_time": "12:00"},
