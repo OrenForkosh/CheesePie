@@ -91,10 +91,22 @@ body{
 .tab.active{color:#fff; background:linear-gradient(180deg, var(--primary), var(--primary-600)); border-color:transparent}
 /* Per-tab active colors */
 .tab.tab-browser.active{ background: linear-gradient(180deg, #4f8cff, #3c6fe0); color:#fff; border-color:transparent }
-.tab.tab-preproc.active{ background: linear-gradient(180deg, #a66cff, #864de6); color:#fff; border-color:transparent }
+.tab.tab-preproc.active{ background: linear-gradient(180deg, #ff6bd6, #ff3fb1); color:#fff; border-color:transparent }
 .tab.tab-annotator.active{ background: linear-gradient(180deg, #ffcc33, #f5b400); color:#1b2430; border-color:transparent }
 .tab.tab-importer.active{ background: linear-gradient(180deg, #34c759, #2eae4f); color:#fff; border-color:transparent }
 .tab.tab-settings.active{ background: linear-gradient(180deg, #ff6b6b, #e65555); color:#fff; border-color:transparent }
+
+/* Themed action buttons to match tab colors */
+.btn.themed-preproc{ background: linear-gradient(180deg, #ff6bd6, #ff3fb1); border-color:transparent; color:#fff }
+.btn.themed-annotator{ background: linear-gradient(180deg, #ffcc33, #f5b400); border-color:transparent; color:#1b2430 }
+.btn.themed-importer{ background: linear-gradient(180deg, #34c759, #2eae4f); border-color:transparent; color:#fff }
+.btn.themed-settings{ background: linear-gradient(180deg, #ff6b6b, #e65555); border-color:transparent; color:#fff }
+.btn.themed-browser{ background: linear-gradient(180deg, #4f8cff, #3c6fe0); border-color:transparent; color:#fff }
+/* Equalize action button widths in Browser actions panel */
+#actions .btn:not(.mini){ width: calc(8ch + 28px); text-align:center }
+/* Track/Analyze themed buttons */
+.btn.themed-track{ background: linear-gradient(180deg, #00d1c7, #00b3ac); border-color:transparent; color:#fff }
+.btn.themed-analyze{ background: linear-gradient(180deg, #a66cff, #864de6); border-color:transparent; color:#fff }
 
 .container{max-width:1200px; margin:28px auto; padding:0 18px}
 

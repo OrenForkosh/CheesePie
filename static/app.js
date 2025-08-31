@@ -224,8 +224,8 @@
           <span class="muted">${rows.length} selected</span>
         </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px">
-          <button class="btn" id="act-track">Track</button>
-          <button class="btn" id="act-analyze">Analyze</button>
+          <button class="btn themed-track" id="act-track">Track</button>
+          <button class="btn themed-analyze" id="act-analyze">Analyze</button>
         </div>
       `;
       if (placeholder) placeholder.style.display = 'none';
@@ -243,9 +243,9 @@
           <button class="btn mini" id="clear-selection">Clear selection</button>
           <span class="muted">1 selected</span>
         </div>`;
-      const annotatePart = isSupportedVideo ? `<button class="btn primary" id="open-annotator" title="Annotate selected video">Annotate</button>` : (isVideo ? `<div class="muted">Only ${VISIBLE_EXTS.join(', ')} videos can be opened in the Annotator for now.</div>` : '');
-      const preprocPart = `<button class="btn" id="act-preproc">Preproc</button>`;
-      const trackAnalyze = `<button class="btn" id="act-track">Track</button><button class="btn" id="act-analyze">Analyze</button>`;
+      const annotatePart = isSupportedVideo ? `<button class=\"btn themed-annotator\" id=\"open-annotator\" title=\"Annotate selected video\">Annotate</button>` : (isVideo ? `<div class=\"muted\">Only ${VISIBLE_EXTS.join(', ')} videos can be opened in the Annotator for now.</div>` : '');
+      const preprocPart = `<button class=\"btn themed-preproc\" id=\"act-preproc\">Preproc</button>`;
+      const trackAnalyze = `<button class=\"btn themed-track\" id=\"act-track\">Track</button><button class=\"btn themed-analyze\" id=\"act-analyze\">Analyze</button>`;
       actionsEl.innerHTML = `${topBar}<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px">${annotatePart} ${preprocPart} ${trackAnalyze}</div>`;
       if (placeholder) placeholder.style.display = 'none';
       const clearBtn = document.getElementById('clear-selection');

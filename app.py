@@ -54,6 +54,174 @@ def _config_path() -> Path:
     return Path(__file__).parent.joinpath('config.json')
 
 
+# ----- MATLAB Engine integration -----
+MATLAB_ENG = None
+MATLAB_LOCK = threading.Lock()
+MATLAB_INIT_ERR = None  # store last init error string for diagnostics
+MATLAB_WARM_THREAD: Optional[threading.Thread] = None
+MATLAB_WARM_KICKED = False
+
+
+def cfg_matlab() -> Dict[str, Any]:
+    m = CONFIG.get('matlab', {})
+    # Normalize and ensure required functions are allowed
+    raw_wl = m.get('whitelist', ['segment_frame'])
+    wl_set = set()
+    if isinstance(raw_wl, list):
+        for f in raw_wl:
+            try:
+                s = str(f).strip()
+                if s:
+                    wl_set.add(s)
+            except Exception:
+                continue
+    # Always include our app's functions
+    wl_set.update({'segment_frame', 'Segment'})
+    return {
+        'enabled': bool(m.get('enabled', True)),
+        'mode': str(m.get('mode', 'engine')).strip() or 'engine',
+        'binary': str(m.get('binary', '/Applications/MATLAB_R2025a.app/bin/matlab')).strip(),
+        'paths': m.get('paths', ['./matlab']),
+        'whitelist': sorted(wl_set)
+    }
+
+
+def _mat_to_py(obj):
+    try:
+        import matlab
+    except Exception:
+        matlab = None
+    # Basic conversions
+    if obj is None:
+        return None
+    # MATLAB numeric arrays -> nested lists
+    if hasattr(obj, '__class__') and obj.__class__.__name__ in ('double', 'single', 'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32', 'int64', 'uint64'):
+        try:
+            return [list(row) for row in obj]
+        except Exception:
+            # Fallback for vectors
+            try:
+                return list(obj)
+            except Exception:
+                return obj
+    # MATLAB logical arrays
+    if hasattr(obj, '__class__') and obj.__class__.__name__ == 'logical':
+        try:
+            return [[bool(v) for v in row] for row in obj]
+        except Exception:
+            try:
+                return [bool(v) for v in obj]
+            except Exception:
+                return bool(obj)
+    # Chars/strings
+    if isinstance(obj, str):
+        return obj
+    # MATLAB struct array
+    if hasattr(obj, '_fieldnames'):
+        out_list = []
+        try:
+            # struct array
+            for i in range(len(obj)):
+                s = obj[i]
+                d = {}
+                for f in s._fieldnames:
+                    d[str(f)] = _mat_to_py(getattr(s, f))
+                out_list.append(d)
+            return out_list
+        except Exception:
+            # single struct
+            d = {}
+            try:
+                for f in obj._fieldnames:
+                    d[str(f)] = _mat_to_py(getattr(obj, f))
+                return d
+            except Exception:
+                return str(obj)
+    # Cell arrays -> list
+    try:
+        if hasattr(obj, '__len__') and not isinstance(obj, (dict, str, bytes)):
+            return [ _mat_to_py(x) for x in obj ]
+    except Exception:
+        pass
+    # Fallback
+    try:
+        return json.loads(json.dumps(obj))
+    except Exception:
+        return str(obj)
+
+
+def _ensure_matlab_started():
+    global MATLAB_ENG
+    if MATLAB_ENG is not None:
+        return MATLAB_ENG
+    if not cfg_matlab().get('enabled', True):
+        return None
+    global MATLAB_INIT_ERR
+    try:
+        import matlab.engine
+    except Exception as e:
+        MATLAB_INIT_ERR = f"Import failed: {e}"
+        return None
+    try:
+        # Start MATLAB Engine
+        MATLAB_ENG = matlab.engine.start_matlab()
+        # Add configured paths
+        for p in cfg_matlab().get('paths', []):
+            try:
+                MATLAB_ENG.addpath(str(Path(p).expanduser().resolve()), nargout=0)
+            except Exception:
+                pass
+        return MATLAB_ENG
+    except Exception as e:
+        MATLAB_ENG = None
+        MATLAB_INIT_ERR = f"Start failed: {e}"
+        return None
+
+
+def warmup_matlab_async() -> None:
+    """Start MATLAB Engine in a background thread (non-blocking)."""
+    global MATLAB_WARM_THREAD
+    if not cfg_matlab().get('enabled', True):
+        return
+    # If already warmed or warming, skip
+    if MATLAB_ENG is not None:
+        return
+    if MATLAB_WARM_THREAD is not None and MATLAB_WARM_THREAD.is_alive():
+        return
+
+    def _bg_start():
+        try:
+            _ensure_matlab_started()
+        except Exception:
+            pass
+
+    t = threading.Thread(target=_bg_start, name='matlab-warmup', daemon=True)
+    MATLAB_WARM_THREAD = t
+    t.start()
+
+
+@app.before_request
+def _kickoff_matlab_warmup_once():
+    """Kick off warmup on first request (Flask 2/3 compatible)."""
+    global MATLAB_WARM_KICKED
+    if MATLAB_WARM_KICKED:
+        return
+    MATLAB_WARM_KICKED = True
+    try:
+        warmup_matlab_async()
+    except Exception:
+        pass
+
+
+# Also trigger warmup on import in non-reloader or child process
+try:
+    flag = os.environ.get('WERKZEUG_RUN_MAIN')
+    if flag == 'true' or flag is None:
+        warmup_matlab_async()
+except Exception:
+    pass
+
+
 def cfg_default_animals() -> List[str]:
     vals = CONFIG.get('annotator', {}).get('default_animals', ["R", "G", "B", "Y"])
     if not isinstance(vals, list):
@@ -251,8 +419,58 @@ def cfg_importer_source_exts() -> List[str]:
     return out or ['.mp4']
 
 
+def cfg_browser_required_filename_regex():
+    """Return compiled regex for required filenames, or None to disable.
+    Config: browser.required_filename_regex (string). If empty/false, disabled.
+    Defaults to: ^([A-Za-z0-9_]+)(?:-[A-Za-z0-9_]+)?\.exp\d{4}\.day\d{2}\.cam\d{2}\.(mp4|avi)$
+    """
+    pat = CONFIG.get('browser', {}).get(
+        'required_filename_regex',
+        r'^([A-Za-z0-9_]+)(?:-[A-Za-z0-9_]+)?\.exp\d{4}\.day\d{2}\.cam\d{2}\.(mp4|avi)$'
+    )
+    try:
+        s = str(pat).strip()
+        if not s:
+            return None
+        return re.compile(s)
+    except Exception:
+        return None
+
+
 @app.context_processor
 def inject_public_config():
+    # Colors configuration for the Colors tab
+    colors_cfg = CONFIG.get('colors', {}) if isinstance(CONFIG.get('colors', {}), dict) else {}
+    mice = colors_cfg.get('mice', ['R', 'G', 'B', 'Y'])
+    if not isinstance(mice, list):
+        mice = ['R', 'G', 'B', 'Y']
+    # Keep at most 4 entries and stringify
+    mice_out = []
+    for m in mice[:4]:
+        try:
+            s = str(m).strip()
+            if s:
+                mice_out.append(s)
+        except Exception:
+            continue
+    if not mice_out:
+        mice_out = ['R', 'G', 'B', 'Y']
+    default_palette = {
+        'R': '#ff4f4f',
+        'G': '#34c759',
+        'B': '#4f8cff',
+        'Y': '#ffd166',
+    }
+    pal_cfg = colors_cfg.get('palette', {}) if isinstance(colors_cfg.get('palette', {}), dict) else {}
+    palette_out = dict(default_palette)
+    for k, v in pal_cfg.items():
+        try:
+            ks = str(k).strip()
+            vs = str(v).strip()
+            if ks and vs:
+                palette_out[ks] = vs
+        except Exception:
+            continue
     return {
         'public_config': {
             'annotator': {
@@ -269,6 +487,10 @@ def inject_public_config():
             'importer': {
                 'facilities': cfg_importer_facilities(),
             },
+            'colors': {
+                'mice': mice_out,
+                'palette': palette_out,
+            }
         }
     }
 
@@ -281,6 +503,8 @@ def list_dir_contents(directory: Path, query: str | None = None) -> List[Dict[st
     q = (query or "").strip()
     q_lower = q.lower()
     allowed_exts = set(cfg_browser_visible_extensions())
+    # Optional filename regex filter from config
+    name_re = cfg_browser_required_filename_regex()
 
     for entry in sorted(directory.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
         # Skip hidden files by default
@@ -296,6 +520,9 @@ def list_dir_contents(directory: Path, query: str | None = None) -> List[Dict[st
         # Filter files by configured extensions; keep directories for navigation
         if entry.is_file():
             if entry.suffix.lower() not in allowed_exts:
+                continue
+            # Enforce filename pattern (if configured)
+            if name_re is not None and not name_re.match(entry.name):
                 continue
 
         stat = entry.stat()
@@ -484,6 +711,182 @@ def api_preproc_regions():
         return jsonify({'ok': True, 'state': str(s_path)})
     except Exception as e:
         return jsonify({'error': f'Failed to save regions: {e}'}), 500
+
+
+@app.route('/api/matlab/engine', methods=['POST'])
+def api_matlab_engine():
+    cfg = cfg_matlab()
+    if not cfg.get('enabled', True):
+        return jsonify({'error': 'MATLAB integration disabled'}), 503
+    eng = _ensure_matlab_started()
+    if eng is None:
+        return jsonify({'error': 'MATLAB Engine not available', 'details': MATLAB_INIT_ERR}), 503
+    payload = request.json or {}
+    func = str(payload.get('func', '')).strip()
+    args = payload.get('args', [])
+    nout = payload.get('nargout', 1)
+    if not func:
+        return jsonify({'error': 'Missing func'}), 400
+    wl = set(cfg.get('whitelist', []))
+    if wl and func not in wl:
+        return jsonify({'error': 'Function not allowed'}), 403
+    # Convert args: allow scalars, strings, lists (as double matrix)
+    margs = []
+    try:
+        import matlab
+    except Exception:
+        matlab = None
+    try:
+        for a in (args or []):
+            if isinstance(a, (int, float)):
+                margs.append(a)
+            elif isinstance(a, str):
+                margs.append(a)
+            elif isinstance(a, list):
+                # Convert list of lists to matlab.double
+                try:
+                    margs.append(matlab.double(a))
+                except Exception:
+                    margs.append(a)
+            else:
+                margs.append(a)
+    except Exception:
+        margs = args or []
+    try:
+        with MATLAB_LOCK:
+            out = eng.feval(func, *margs, nargout=int(nout) if isinstance(nout, int) else 1)
+        res = _mat_to_py(out)
+        return jsonify({'ok': True, 'data': res})
+    except Exception as e:
+        return jsonify({'error': f'MATLAB call failed: {e}'}), 500
+
+
+@app.route('/api/matlab/segment_frame', methods=['POST'])
+def api_matlab_segment_frame():
+    cfg = cfg_matlab()
+    if not cfg.get('enabled', True):
+        return jsonify({'error': 'MATLAB integration disabled'}), 503
+    eng = _ensure_matlab_started()
+    if eng is None:
+        return jsonify({'error': 'MATLAB Engine not available', 'details': MATLAB_INIT_ERR}), 503
+    payload = request.json or {}
+    image_data = payload.get('image')
+    image_path = payload.get('path')
+    if not image_data and not image_path:
+        return jsonify({'error': 'Provide image (data URL) or path'}), 400
+    # Write data URL to temp file if provided
+    tmp_path: Optional[Path] = None
+    try:
+        if image_data and not image_path:
+            import base64
+            idx = image_data.find('base64,')
+            b64 = image_data[idx+7:] if idx >= 0 else image_data
+            raw = base64.b64decode(b64)
+            from tempfile import NamedTemporaryFile
+            f = NamedTemporaryFile(delete=False, suffix='.png')
+            f.write(raw); f.flush(); f.close()
+            tmp_path = Path(f.name)
+            image_path = str(tmp_path)
+        # Call MATLAB function segment_frame with image path
+        func = 'segment_frame'
+        wl = set(cfg.get('whitelist', []))
+        if wl and func not in wl:
+            return jsonify({'error': 'Function not allowed'}), 403
+        with MATLAB_LOCK:
+            out = eng.feval(func, str(image_path), nargout=1)
+        mask = _mat_to_py(out)
+        return jsonify({'ok': True, 'mask': mask})
+    except Exception as e:
+        return jsonify({'error': f'Segmentation failed: {e}'}), 500
+    finally:
+        try:
+            if tmp_path and tmp_path.exists():
+                tmp_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
+@app.route('/api/matlab/segment_colors', methods=['POST'])
+def api_matlab_segment_colors():
+    cfg = cfg_matlab()
+    if not cfg.get('enabled', True):
+        return jsonify({'error': 'MATLAB integration disabled'}), 503
+    eng = _ensure_matlab_started()
+    if eng is None:
+        return jsonify({'error': 'MATLAB Engine not available', 'details': MATLAB_INIT_ERR}), 503
+    payload = request.json or {}
+    image_data = payload.get('image')
+    image_path = payload.get('path')
+    bg_data = payload.get('background')
+    bg_path = payload.get('background_path')
+    if not (image_data or image_path):
+        return jsonify({'error': 'Provide image (data URL) or path'}), 400
+    if not (bg_data or bg_path):
+        return jsonify({'error': 'Provide background (data URL) or background_path'}), 400
+    tmp_path: Optional[Path] = None
+    try:
+        if image_data and not image_path:
+            import base64
+            idx = image_data.find('base64,')
+            b64 = image_data[idx+7:] if idx >= 0 else image_data
+            raw = base64.b64decode(b64)
+            from tempfile import NamedTemporaryFile
+            f = NamedTemporaryFile(delete=False, suffix='.png')
+            f.write(raw); f.flush(); f.close()
+            tmp_path = Path(f.name)
+            image_path = str(tmp_path)
+        # Handle background
+        tmp_bg: Optional[Path] = None
+        if bg_data and not bg_path:
+            import base64
+            idx2 = bg_data.find('base64,')
+            b64b = bg_data[idx2+7:] if idx2 >= 0 else bg_data
+            rawb = base64.b64decode(b64b)
+            from tempfile import NamedTemporaryFile
+            fb = NamedTemporaryFile(delete=False, suffix='.png')
+            fb.write(rawb); fb.flush(); fb.close()
+            tmp_bg = Path(fb.name)
+            bg_path = str(tmp_bg)
+        # Call MATLAB function 'Segment' with image + background (returns index map)
+        func = 'Segment'
+        wl = set(cfg.get('whitelist', []))
+        if wl and func not in wl:
+            return jsonify({'error': 'Function not allowed'}), 403
+        with MATLAB_LOCK:
+            out = eng.feval(func, str(image_path), str(bg_path), nargout=1)
+        index_map = _mat_to_py(out)
+        return jsonify({'ok': True, 'index': index_map})
+    except Exception as e:
+        return jsonify({'error': f'Color segmentation failed: {e}'}), 500
+    finally:
+        try:
+            if tmp_path and tmp_path.exists():
+                tmp_path.unlink(missing_ok=True)
+            if 'tmp_bg' in locals() and tmp_bg and tmp_bg.exists():
+                tmp_bg.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
+@app.route('/api/matlab/status')
+def api_matlab_status():
+    cfg = cfg_matlab()
+    enabled = bool(cfg.get('enabled', True))
+    # Ensure warmup is in progress if enabled
+    if enabled:
+        try:
+            warmup_matlab_async()
+        except Exception:
+            pass
+    ready = MATLAB_ENG is not None
+    starting = enabled and not ready and (MATLAB_WARM_THREAD is not None and MATLAB_WARM_THREAD.is_alive())
+    return jsonify({
+        'ok': True,
+        'enabled': enabled,
+        'ready': bool(ready),
+        'starting': bool(starting),
+        'error': MATLAB_INIT_ERR,
+    })
 
 
 @app.route('/api/preproc/setup/save', methods=['POST'])

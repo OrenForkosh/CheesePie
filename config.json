@@ -102,4 +102,12 @@
       }
     }
   }
+  ,
+  "matlab": {
+    "enabled": true,
+    "mode": "engine",
+    "binary": "/Applications/MATLAB_R2025a.app/bin/matlab",
+    "paths": ["./matlab"],
+    "whitelist": ["segment_frame"]
+  }
 }
