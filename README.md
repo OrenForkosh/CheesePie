@@ -12,6 +12,22 @@ Local Flask app for browsing, preprocessing (arena/background/regions), annotati
   Or start in one line:
   - `source .venv/bin/activate && pip install -r requirements.txt && python app.py`
 
+### Start Script
+
+- macOS/Linux:
+  - `chmod +x start.sh && ./start.sh`
+- Windows (PowerShell):
+  - `pwsh -File scripts/start.ps1` (or `powershell -ExecutionPolicy Bypass -File scripts/start.ps1`)
+
+What it does:
+- Creates/activates `.venv`, installs `requirements.txt`, and runs `app.py`.
+- Respects `PYTHON` to choose the interpreter and `PORT` to set the port (defaults to `8000`).
+- MATLAB Engine auto-setup (optional):
+  - If `matlab.enabled` is true and the engine is missing, you can auto-install before start:
+    - `./start.sh --setup-matlab` (auto-detects MATLAB), or provide a path:
+    - `./start.sh --setup-matlab --matlab-root "/Applications/MATLAB_R2025a.app"`
+  - You can also run the helper directly: `bash scripts/setup_matlab_engine.sh [MATLAB_ROOT]`.
+
 ## MATLAB Engine Integration
 
 You can call MATLAB functions from Python via the MATLAB Engine. The app exposes safe endpoints and a sample segmentation flow on the Preproc page.

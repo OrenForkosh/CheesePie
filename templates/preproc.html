@@ -128,9 +128,7 @@
           </div>
         </div>
       </div>
-      <div class="muted" style="margin-top: 6px">
-        Tip: Click to set top-left, then bottom-right of the arena.
-      </div>
+      
     </div>
 
     <div class="control-group" style="grid-column: 2 / 3">
@@ -210,6 +208,9 @@
         ></canvas>
       </div>
       <div id="pane-regions" style="display: none">
+        <div id="regions-disabled-note" class="muted" style="display:none; margin: 4px 0 0 0;">
+          Mark the arena first to enable Regions.
+        </div>
         <div class="table-wrap" style="padding: 0; margin-top: 8px">
           <table
             id="roi-table"
@@ -859,7 +860,7 @@
       }
       // (Blob overlay removed)
       const isRegions = (regionsPane && regionsPane.style.display !== 'none');
-      if (!isColors && regionsState && regionsState.items && state.tl && (state.br || hoverBR)){
+      if (isRegions && regionsState && regionsState.items && state.tl && (state.br || hoverBR)){
         // Always draw all ROIs: fill assigned cells, outline bounding box, and label name
         const cols = Math.max(1, Number(colsEl.value||1));
         const rows = Math.max(1, Number(rowsEl.value||1));
@@ -1049,6 +1050,7 @@
         state.tl = {x:p.x, y:p.y}; state.br = null;
       }
       drawOverlay();
+      try { updateRegionsEnablement(); } catch {}
     });
 
     function pickHandle(ev){
@@ -1620,6 +1622,7 @@
         tr.querySelector('[data-edit]').addEventListener('click', ()=>{ editingRoiIndex = (editingRoiIndex===idx ? -1 : idx); renderRoiUI(); drawOverlay(); });
         roiTableBody.appendChild(tr);
       });
+      try { updateRegionsEnablement(); } catch {}
     }
 
     window.addEventListener('keydown', (ev) => {
@@ -1678,7 +1681,7 @@
         const r = await fetch('/api/preproc/arena', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
         const d = await r.json();
         if (!r.ok || d.error){ arenaStatus.textContent = 'Error: ' + (d.error || r.statusText); }
-        else { arenaStatus.textContent = 'Saved'; }
+        else { arenaStatus.textContent = 'Saved'; try { updateRegionsEnablement(); } catch {} }
       } catch(e){ arenaStatus.textContent = 'Error: ' + e; }
     }
 
@@ -1700,14 +1703,13 @@
   });
   tabRegions.addEventListener('click', () => {
     if (tabRegions.disabled) return;
-    if (!(state.tl && state.br)){
-      arenaStatus.textContent = 'Please mark the arena first to use Regions.';
-      return;
-    }
+    const haveArena = !!(state.tl && state.br);
+    if (!haveArena){ arenaStatus.textContent = 'Please mark the arena first to use Regions.'; }
     arenaPane.style.display='none'; bgPane.style.display='none'; regionsPane.style.display=''; colorsPane.style.display='none';
-    overlay.style.pointerEvents = 'auto';
+    overlay.style.pointerEvents = haveArena ? 'auto' : 'none';
     stopColorsLoop();
     setActivePreprocTab('regions');
+    updateRegionsEnablement();
     drawOverlay();
   });
     // persist active preproc step
@@ -1866,6 +1868,19 @@
         [tabArena, tabBg, tabRegions, tabColors].forEach(btn => { if (btn){ btn.disabled = !hasSetup; btn.title = hasSetup ? '' : 'Select a Facility and Setup first'; }});
         // Colors requires background
         if (tabColors){ tabColors.disabled = tabColors.disabled || !hasBackground; tabColors.title = (!hasSetup ? 'Select a Facility and Setup first' : (!hasBackground ? 'Compute or load a background first' : '')); }
+        // Update Regions table enablement
+        try { updateRegionsEnablement(); } catch {}
+      } catch {}
+    }
+
+    function updateRegionsEnablement(){
+      try{
+        const table = document.getElementById('roi-table');
+        const note = document.getElementById('regions-disabled-note');
+        const enabled = !!(state.tl && state.br);
+        if (!enabled) { editingRoiIndex = -1; }
+        if (note) note.style.display = enabled ? 'none' : '';
+        if (table){ Array.from(table.querySelectorAll('input, button')).forEach(el => { el.disabled = !enabled; }); }
       } catch {}
     }
   });

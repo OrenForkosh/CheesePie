@@ -1,5 +1,7 @@
 (() => {
   const $ = (sel, el = document) => el.querySelector(sel);
+  // Global MATLAB status indicator in header
+  const mlDot = $('#ml-dot');
   const listEl = $('#file-list');
   // App-level script runs on all pages; guard browser-only bits.
   const detailsEl = $('#details');
@@ -90,8 +92,7 @@
       row.dataset.path = item.path;
       row.dataset.isdir = item.is_dir ? '1' : '0';
       const icon = document.createElement('div');
-      icon.className = 'icon';
-      icon.textContent = item.is_dir ? '📁' : '📄';
+      icon.className = 'icon ' + (item.is_dir ? 'folder' : 'file');
       const name = document.createElement('div');
       name.className = 'name';
       name.textContent = item.name;
@@ -533,4 +534,49 @@
   applyThemeBtn?.addEventListener('click', () => {
     applyTheme(themeSelect?.value || 'dark');
   });
+
+  // MATLAB status polling (header dot)
+  async function updateMatlabIndicator(){
+    if (!mlDot) return;
+    try {
+      const r = await fetch('/api/matlab/status', { cache: 'no-store' });
+      const d = await r.json();
+      const cls = ['ml-off','ml-unknown','ml-starting','ml-ready','ml-error'];
+      cls.forEach(c => mlDot.classList.remove(c));
+      let title = 'MATLAB: Disabled';
+      if (!d || d.error){
+        mlDot.classList.add('ml-error');
+        title = 'MATLAB: Error' + (d && d.error ? (' - ' + d.error) : '');
+      } else if (!d.enabled){
+        mlDot.classList.add('ml-off');
+        title = 'MATLAB: Disabled';
+      } else if (d.ready){
+        mlDot.classList.add('ml-ready');
+        title = 'MATLAB: Ready';
+      } else if (d.starting){
+        mlDot.classList.add('ml-starting');
+        title = 'MATLAB: Starting…';
+      } else {
+        mlDot.classList.add('ml-unknown');
+        title = 'MATLAB: Unknown';
+      }
+      mlDot.setAttribute('title', title);
+      mlDot.setAttribute('aria-label', title);
+    } catch (e) {
+      if (mlDot){
+        const cls = ['ml-off','ml-unknown','ml-starting','ml-ready','ml-error'];
+        cls.forEach(c => mlDot.classList.remove(c));
+        mlDot.classList.add('ml-error');
+        mlDot.setAttribute('title', 'MATLAB: Error');
+        mlDot.setAttribute('aria-label', 'MATLAB: Error');
+      }
+    }
+  }
+  // Poll more frequently until ready; then slow down
+  (function scheduleMatlabPoll(){
+    updateMatlabIndicator().finally(() => {
+      // Quick follow-up checks during startup, then relax
+      setTimeout(scheduleMatlabPoll,  mlDot && (mlDot.classList.contains('ml-starting') || mlDot.classList.contains('ml-unknown')) ? 3000 : 15000);
+    });
+  })();
 })();

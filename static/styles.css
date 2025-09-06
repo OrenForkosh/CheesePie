@@ -1,6 +1,7 @@
 :root{
   --bg:#0f1115; --surface:#151823; --panel:#1b2030; --muted:#9aa4b2; --text:#e4e7ee;
   --primary:#4f8cff; --primary-600:#3c6fe0; --accent:#7c4dff; --border:#2a3144; --shadow:rgba(0,0,0,0.35);
+  --icon-folder:#4f8cff; --icon-file:#7c4dff;
 }
 /* Light theme overrides */
 :root[data-theme="light"]{
@@ -27,24 +28,87 @@
   --bg:#000000; --surface:#0a0a0a; --panel:#0a0a0a; --muted:#bfbfbf; --text:#ffffff;
   --primary:#00e5ff; --primary-600:#00b3cc; --accent:#ffea00; --border:#2b2b2b; --shadow:rgba(0,0,0,0.7);
 }
-/* Mouse theme (colorful) */
+/* Mouse theme (cheese-yellow background, flat vibrant UI) */
 :root[data-theme="mouse"]{
-  --bg:#fff6a6; --surface:#ffeaf3; --panel:#ffd6ea; --muted:#7a5a66; --text:#2b2415;
-  --primary:#34c759; --primary-600:#2eae4f; --accent:#ff5cab; --border:transparent; --shadow:rgba(0,0,0,0);
+  --bg:#f5c12e;        /* cheese yellow */
+  --surface:#ffffff;   /* cards, banner, surfaces */
+  --panel:#ffffff;     /* header/panels */
+  --muted:#667085;     /* subdued text */
+  --text:#1b2430;      /* primary text */
+  --primary:#2ec66d;   /* lively green */
+  --primary-600:#25a759;
+  --accent:#ff5cab;    /* hot pink accents */
+  --browser:#4f8cff;   /* per-tab colors */
+  --preproc:#ff66c4;
+  --annotator:#ffd54a;
+  --importer:#30c159;
+  --settings:#ff6b6b;
+  --border:#e6eaf2;    /* soft border */
+  --shadow:rgba(0,0,0,0.06);
+  --icon-folder: var(--browser);
+  --icon-file: var(--accent);
 }
+
+/* Mouse component tweaks */
+:root[data-theme="mouse"] body{ background:var(--bg); }
+:root[data-theme="mouse"] .app-header{ background: var(--panel); }
+:root[data-theme="mouse"] .app-header{ box-shadow:none; border-bottom-color:transparent }
+:root[data-theme="mouse"] .panel{ background:var(--panel); border-color:transparent; box-shadow:none }
+:root[data-theme="mouse"] .file-item:hover{ background:#f2f6ff }
+:root[data-theme="mouse"] .file-item.active{ background:#e8f0ff }
+:root[data-theme="mouse"] .video-preview{ background:var(--surface) }
+:root[data-theme="mouse"] .video-preview video{ background:var(--surface) }
+:root[data-theme="mouse"] .bottom-banner{ background: var(--surface); border-top-color:transparent; box-shadow:none }
+
+/* Mouse: tabs/buttons colors */
+:root[data-theme="mouse"] .tab.active{ background: var(--primary); border-color: transparent; color:#fff }
+:root[data-theme="mouse"] .tab.tab-browser.active{ background: var(--browser); color:#fff; border-color:transparent }
+:root[data-theme="mouse"] .tab.tab-preproc.active{ background: var(--preproc); color:#fff; border-color:transparent }
+:root[data-theme="mouse"] .tab.tab-annotator.active{ background: var(--annotator); color:#2b2415; border-color:transparent }
+:root[data-theme="mouse"] .tab.tab-importer.active{ background: var(--importer); color:#fff; border-color:transparent }
+:root[data-theme="mouse"] .tab.tab-settings.active{ background: var(--settings); color:#fff; border-color:transparent }
+
+:root[data-theme="mouse"] .btn.primary{ background: var(--primary); border-color: transparent; color:#fff }
+:root[data-theme="mouse"] .btn.success{ background: var(--importer); border-color: transparent; color:#fff }
+:root[data-theme="mouse"] .btn.themed-preproc{ background: var(--preproc); border-color: transparent; color:#fff }
+:root[data-theme="mouse"] .btn.themed-annotator{ background: var(--annotator); border-color: transparent; color:#2b2415 }
+:root[data-theme="mouse"] .btn.themed-importer{ background: var(--importer); border-color: transparent; color:#fff }
+:root[data-theme="mouse"] .btn.themed-settings{ background: var(--settings); border-color: transparent; color:#fff }
+:root[data-theme="mouse"] .btn.themed-browser{ background: var(--browser); border-color: transparent; color:#fff }
+
+/* Mouse: remove borders on structural elements */
+:root[data-theme="mouse"] .layout{ border-top-color:transparent }
+:root[data-theme="mouse"] .file-list{ border-right-color:transparent }
+:root[data-theme="mouse"] .file-item{ border-bottom-color:transparent }
+:root[data-theme="mouse"] .video-preview{ border-color:var(--border) }
+:root[data-theme="mouse"] .timeline-wrap{ border-color:var(--border) }
+:root[data-theme="mouse"] .video-wrap{ border-color:var(--border); background:var(--surface) }
+:root[data-theme="mouse"] .badge{ border-color:transparent }
+:root[data-theme="mouse"] .badge .dot{ background: var(--accent) }
 /* Mouse theme component tweaks */
 :root[data-theme="mouse"] body{ background:var(--bg); }
 :root[data-theme="mouse"] .app-header{ background: var(--panel); }
 :root[data-theme="mouse"] .app-header{ box-shadow:none; border-bottom-color:transparent }
 :root[data-theme="mouse"] .panel{ background:var(--panel); border-color:transparent; box-shadow:none }
-:root[data-theme="mouse"] .file-item:hover{ background:#ffeaf3 }
-:root[data-theme="mouse"] .file-item.active{ background:#ffd6ea }
-:root[data-theme="mouse"] .video-preview{ background:#ffeef6 }
+:root[data-theme="mouse"] .file-item:hover{ background:#f2f6ff }
+:root[data-theme="mouse"] .file-item.active{ background:#e8f0ff }
+:root[data-theme="mouse"] .video-preview{ background:var(--surface) }
+:root[data-theme="mouse"] .bottom-banner{ background: var(--surface); border-top-color:transparent; box-shadow:none }
 
 /* Mouse: flatten gradients and accents */
 :root[data-theme="mouse"] .tab.active{ background: var(--primary); border-color: transparent; color:#fff }
+:root[data-theme="mouse"] .tab.tab-browser.active{ background: var(--browser); color:#fff; border-color:transparent }
+:root[data-theme="mouse"] .tab.tab-preproc.active{ background: var(--preproc); color:#fff; border-color:transparent }
+:root[data-theme="mouse"] .tab.tab-annotator.active{ background: var(--annotator); color:#2b2415; border-color:transparent }
+:root[data-theme="mouse"] .tab.tab-importer.active{ background: var(--importer); color:#fff; border-color:transparent }
+:root[data-theme="mouse"] .tab.tab-settings.active{ background: var(--settings); color:#fff; border-color:transparent }
 :root[data-theme="mouse"] .btn.primary{ background: var(--primary); border-color: transparent; color:#fff }
-:root[data-theme="mouse"] .btn.success{ background: #34c759; border-color: transparent; color:#fff }
+:root[data-theme="mouse"] .btn.success{ background: var(--importer); border-color: transparent; color:#fff }
+:root[data-theme="mouse"] .btn.themed-preproc{ background: var(--preproc); border-color: transparent; color:#fff }
+:root[data-theme="mouse"] .btn.themed-annotator{ background: var(--annotator); border-color: transparent; color:#2b2415 }
+:root[data-theme="mouse"] .btn.themed-importer{ background: var(--importer); border-color: transparent; color:#fff }
+:root[data-theme="mouse"] .btn.themed-settings{ background: var(--settings); border-color: transparent; color:#fff }
+:root[data-theme="mouse"] .btn.themed-browser{ background: var(--browser); border-color: transparent; color:#fff }
 :root[data-theme="mouse"] input[type="range"]{ background: var(--primary) 0/var(--pct, 0%) 100% no-repeat, var(--panel); border:1px solid var(--border) }
 :root[data-theme="mouse"] .chip.active{ background: var(--primary); border-color: transparent }
 :root[data-theme="mouse"] .cam-btn.active{ background: var(--primary); border-color: transparent }
@@ -58,19 +122,21 @@
 :root[data-theme="mouse"] .timeline-wrap{ border-color:transparent }
 :root[data-theme="mouse"] .video-wrap{ border-color:transparent }
 :root[data-theme="mouse"] .badge{ border-color:transparent }
+:root[data-theme="mouse"] .badge .dot{ background: var(--accent) }
 :root[data-theme="mouse"] input[type="text"],
 :root[data-theme="mouse"] input[type="date"],
 :root[data-theme="mouse"] input[type="time"],
 :root[data-theme="mouse"] input[type="datetime-local"],
 :root[data-theme="mouse"] input[type="number"],
 :root[data-theme="mouse"] textarea,
-:root[data-theme="mouse"] select{ border-color:transparent; background:var(--surface) }
-:root[data-theme="mouse"] .clear-x{ border-color:transparent; background:var(--surface) }
+:root[data-theme="mouse"] select{ border-color:var(--border); background:var(--surface) }
+:root[data-theme="mouse"] .clear-x{ border-color:var(--border); background:var(--surface) }
 *{box-sizing:border-box}
 html,body{height:100%}
 body{
   margin:0; background:linear-gradient(180deg, #0d1017, #0c0e14 40%, var(--bg));
   color:var(--text); font:14px/1.4 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Inter,Helvetica,Arial,sans-serif;
+  padding-bottom:44px; /* reserve space for bottom banner */
 }
 :root[data-theme="light"] body{ background:var(--bg); }
 
@@ -85,6 +151,7 @@ body{
 .brand{display:flex; align-items:center; gap:10px}
 .brand .logo{font-size:20px; filter:drop-shadow(0 2px 6px rgba(255,255,255,0.12))}
 .brand .title{font-weight:700; letter-spacing:0.4px}
+.header-right{display:flex; align-items:center; gap:12px}
 .tabs{display:flex; gap:6px}
 .tab{color:var(--muted); text-decoration:none; padding:8px 12px; border-radius:8px; border:1px solid transparent}
 .tab:hover{color:var(--text); background:rgba(255,255,255,0.04); border-color:var(--border)}
@@ -118,6 +185,27 @@ body{
 :root[data-theme="light"] .panel{ background:var(--panel); }
 .panel.center{display:flex; align-items:center; justify-content:center; min-height:50vh}
 .panel-header{display:flex; align-items:flex-end; justify-content:space-between; padding:18px 18px 0}
+
+/* MATLAB header indicator */
+.ml-ind{display:flex; align-items:center}
+.ml-dot{width:10px; height:10px; border-radius:999px; background:var(--muted); display:inline-block; box-shadow:0 0 0 2px rgba(0,0,0,0.15) inset; transition:background 0.2s ease, box-shadow 0.2s ease}
+.ml-dot.ml-off{ background:#6b7280 }
+.ml-dot.ml-unknown{ background:#6b7280 }
+.ml-dot.ml-starting{ background:#ffcc33; box-shadow:0 0 6px 1px rgba(255,204,51,0.6) }
+.ml-dot.ml-ready{ background:#34c759; box-shadow:0 0 6px 1px rgba(52,199,89,0.6) }
+.ml-dot.ml-error{ background:#ff6b6b; box-shadow:0 0 6px 1px rgba(255,107,107,0.6) }
+
+/* Bottom banner */
+.bottom-banner{
+  position:fixed; left:0; right:0; bottom:0; z-index:20;
+  background:linear-gradient(90deg, #121725, #0f1421);
+  border-top:1px solid var(--border);
+  box-shadow:0 -8px 24px var(--shadow);
+}
+:root[data-theme="light"] .bottom-banner{ background:linear-gradient(90deg, #ffffff, #f9fbff); }
+.bb-content{ max-width:1200px; margin:0 auto; padding:8px 18px; display:flex; align-items:center; justify-content:space-between; gap:12px }
+.bb-right{ display:flex; align-items:center; gap:8px }
+.bb-label{ font-size:12px }
 .panel h1{margin:0; font-size:18px}
 .muted{color:var(--muted)}
 
@@ -213,7 +301,24 @@ input[type="range"]::-moz-range-track{height:6px; border-radius:999px; backgroun
 .file-item{display:flex; align-items:center; gap:12px; padding:12px 16px; border-bottom:1px solid #20263a; cursor:pointer}
 .file-item:hover{background:#171c2b}
 :root[data-theme="light"] .file-item:hover{background:#eef2f9}
-.file-item .icon{width:28px; height:28px; display:grid; place-items:center; border-radius:8px; background:#1f2540}
+.file-item .icon{
+  width:22px; height:22px; display:inline-block;
+  color: var(--icon-file);
+}
+.file-item .icon::before{
+  content:""; display:block; width:100%; height:100%; background: currentColor;
+  -webkit-mask-repeat:no-repeat; -webkit-mask-position:center; -webkit-mask-size:contain;
+  mask-repeat:no-repeat; mask-position:center; mask-size:contain;
+}
+.file-item .icon.folder{ color: var(--icon-folder); }
+.file-item .icon.folder::before{
+  -webkit-mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 7h6l2 2h10a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z"/></svg>');
+          mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 7h6l2 2h10a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z"/></svg>');
+}
+.file-item .icon.file::before{
+  -webkit-mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M6 3h7l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M13 3v5h5"/></svg>');
+          mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M6 3h7l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M13 3v5h5"/></svg>');
+}
 .file-item .name{font-weight:600}
 .file-item .meta{margin-left:auto; color:var(--muted); font-size:12px}
 .file-item.active{background:#1a2032}
@@ -227,7 +332,7 @@ input[type="range"]::-moz-range-track{height:6px; border-radius:999px; backgroun
 .detail-grid{display:grid; grid-template-columns:96px 1fr; gap:8px; font-size:13px}
 .detail-grid .key{color:var(--muted)}
 
-.video-preview{margin-top:14px; border:1px solid var(--border); border-radius:10px; overflow:hidden; background:#0e1220}
+.video-preview{margin-top:14px; border:none; border-radius:10px; overflow:hidden; background:#0e1220}
 :root[data-theme="light"] .video-preview{ background:#f3f6fc }
 .video-preview video{display:block; width:100%; height:auto; max-height:300px; background:#0b0f1c}
 
