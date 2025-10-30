@@ -12,21 +12,27 @@
   <div class="controls" style="grid-template-columns: 2fr 1fr">
     <div class="control-group" style="grid-column: 1 / -1">
       <label>Video</label>
-      <input
-        type="text"
-        id="preproc-video-path"
-        value="{{ video or '' }}"
-        readonly
-      />
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
+        <input
+          type="text"
+          id="preproc-video-path"
+          value="{{ video or '' }}"
+          readonly
+          style="flex:1"
+        />
+        <div id="pp-day-strip" class="muted" style="display:flex; gap:6px; flex-wrap:wrap"></div>
+      </div>
     </div>
 
     <div class="control-group" style="grid-column: 1 / 2">
       <div class="video-wrap">
         <div class="video-preview">
+          
           <div style="position: relative">
             <video
               id="pp-video"
               preload="metadata"
+              {% if video %}src="/media?path={{ video|urlencode }}"{% endif %}
               style="display: block; width: 100%; height: auto"
             ></video>
             <canvas
@@ -152,6 +158,7 @@
         <button class="btn mini" id="tab-background">Background</button>
         <button class="btn mini" id="tab-regions">Regions</button>
         <button class="btn mini" id="tab-colors">Colors</button>
+        <button class="btn mini" id="tab-save">Save…</button>
       </div>
       <div id="pane-arena">
         <div class="kv">
@@ -263,6 +270,20 @@
           When open, frames are segmented by color in MATLAB (RGBY). White outlines always show cluster boundaries; enable “Show segments” to overlay colored fills.
         </div>
       </div>
+      <div id="pane-save" style="display:none">
+        <div class="muted" style="margin-bottom:6px">Save arena, regions, and colors to the selected days (backgrounds remain per day).</div>
+        <div id="pp-mday-summary" class="muted" style="margin:6px 0">Group: —</div>
+        <div id="pp-mday-list" style="max-height:160px; overflow:auto; border:1px solid var(--border); border-radius:8px; padding:6px"></div>
+        <div style="display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap">
+          <button class="btn mini" id="pp-mday-all">All</button>
+          <button class="btn mini" id="pp-mday-none">None</button>
+          <span class="muted" id="pp-mday-count"></span>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap">
+          <button class="btn" id="pp-mday-save">Save preproc → selected days</button>
+        </div>
+        <div class="muted" id="pp-mday-status" style="margin-top:6px"></div>
+      </div>
     </div>
   </div>
 </section>
@@ -281,10 +302,12 @@
     const bgPane = document.getElementById('pane-background');
     const regionsPane = document.getElementById('pane-regions');
     const colorsPane = document.getElementById('pane-colors');
+    const savePane = document.getElementById('pane-save');
     const tabArena = document.getElementById('tab-arena');
     const tabBg = document.getElementById('tab-background');
     const tabRegions = document.getElementById('tab-regions');
     const tabColors = document.getElementById('tab-colors');
+    const tabSave = document.getElementById('tab-save');
     const colsEl = document.getElementById('grid-cols');
     const rowsEl = document.getElementById('grid-rows');
     const wcmEl = document.getElementById('arena-wcm');
@@ -300,6 +323,13 @@
     const bgSaveBtn = document.getElementById('bg-save');
     const bgStatus = document.getElementById('bg-status');
     const bgCanvas = document.getElementById('bg-canvas');
+    // Multi-day elements
+    const dayStrip = document.getElementById('pp-day-strip');
+    const mdayList = document.getElementById('pp-mday-list');
+    const mdaySummary = document.getElementById('pp-mday-summary');
+    const mdayCount = document.getElementById('pp-mday-count');
+    const mdayStatus = document.getElementById('pp-mday-status');
+    let dayGroup = null; // { group, items, active }
     // Colors segmentation UI
     const colorsSegments = document.getElementById('pp-colors-segments');
     const colorsStatus = document.getElementById('pp-colors-status');
@@ -328,6 +358,45 @@
     let draggingMarkIdx = -1; // index into colorTokens while dragging
     let hoverTokenIdx = -1; // index of token under cursor
     let lastRectKey = '';
+
+    function regionsAreValid(){
+      try{
+        const cols = Math.max(1, Number(colsEl.value||1));
+        const rows = Math.max(1, Number(rowsEl.value||1));
+        for (const it of (regionsState?.items||[])){
+          const cells = (it.cells||[]).map(c => ({ r:Number(c.r)||0, c:Number(c.c)||0 }));
+          if (cells.length === 0) return false;
+          if (cells.some(c => c.r<0 || c.c<0 || c.r>=rows || c.c>=cols)) return false;
+          if (!isConnected(cells)) return false;
+        }
+        return true;
+      } catch { return false; }
+    }
+    function colorsAreValid(){
+      try{
+        const byMouse = new Map();
+        for (const m of colorMarks){ byMouse.set(m.mouse, true); }
+        for (let i=1;i<=miceCodes.length;i++){ if (!byMouse.get(i)) return false; }
+        return true;
+      } catch { return false; }
+    }
+    function sharedSaveReady(){
+      return !!(state.tl && state.br) && regionsAreValid() && colorsAreValid();
+    }
+    function updateChipColors(){
+      try{
+        if (!dayGroup || !dayStrip) return;
+        const okShared = sharedSaveReady();
+        const byPath = new Map((dayGroup.items||[]).map(it => [it.path, it]));
+        dayStrip.querySelectorAll('button.chip').forEach(ch => {
+          const it = byPath.get(ch.dataset.path||'') || {};
+          const can = !!okShared && !!it.has_background;
+          ch.style.background = can ? '#2f9e44' : '#c92a2a';
+          ch.style.color = '#fff';
+          ch.style.borderColor = 'rgba(0,0,0,0.2)';
+        });
+      } catch {}
+    }
 
     function ensureColorTokens(vDX, vDY, vDW, vDH, tw, th){
       const key = `${vDX},${vDY},${vDW},${vDH},${tw},${th},${miceCodes.join(',')}`;
@@ -450,12 +519,13 @@
 
     // --- Tab selection state (visual) ---
     function setActivePreprocTab(name){
-      [tabArena, tabBg, tabRegions, tabColors].forEach(btn => { try { btn && btn.classList.remove('primary'); } catch {}});
+      [tabArena, tabBg, tabRegions, tabColors, tabSave].forEach(btn => { try { btn && btn.classList.remove('primary'); } catch {}});
       try{
         if (name === 'arena') tabArena?.classList.add('primary');
         else if (name === 'background') tabBg?.classList.add('primary');
         else if (name === 'regions') tabRegions?.classList.add('primary');
         else if (name === 'colors') tabColors?.classList.add('primary');
+        else if (name === 'save') tabSave?.classList.add('primary');
       } catch{}
     }
     // MATLAB segmentation (per-frame Colors tab only)
@@ -472,11 +542,192 @@
     // Move ROI mode removed
 
     if (videoPath){
+      try { v.pause(); } catch {}
+      try { v.removeAttribute('src'); } catch {}
       v.innerHTML = '';
-      const src = document.createElement('source');
-      src.src = `/media?path=${encodeURIComponent(videoPath)}`;
-      v.appendChild(src);
+      v.src = `/media?path=${encodeURIComponent(videoPath)}`;
       v.load();
+      setTimeout(() => { try { if (v.readyState >= 1) onVideoLoadedMetadata(); } catch {} }, 0);
+    // Populate day group
+    async function loadDayGroup(){
+      if (!videoPath || !dayStrip || !mdayList) return;
+      try{
+        const r = await fetch(`/api/preproc/group?video=${encodeURIComponent(videoPath)}`);
+        const d = await r.json();
+        if (!r.ok || d.error){ dayStrip.textContent = 'Group: unavailable'; return; }
+        const items = Array.isArray(d.items) ? d.items : [];
+        dayGroup = { group: d.group, items, active: d.active };
+        // Strip chips
+        dayStrip.innerHTML = '';
+        items.forEach(it => {
+          const chip = document.createElement('button');
+          chip.className = 'chip'; chip.textContent = `Day${it.day}`; chip.title = it.name; chip.dataset.path = it.path;
+          if (it.path === d.active) chip.classList.add('active');
+          chip.addEventListener('click', () => {
+            const step = (localStorage.getItem('cheesepie.preproc.step')||'');
+            window.location.href = `/preproc?video=${encodeURIComponent(it.path)}${step?`&step=${encodeURIComponent(step)}`:''}`;
+          });
+          dayStrip.appendChild(chip);
+        });
+        // After rendering chips, color-code by savability
+        updateChipColors();
+        // Selection list
+        mdaySummary.textContent = `Group: ${d.group || '—'}`;
+        mdayList.innerHTML = '';
+        items.forEach(it => {
+          const row = document.createElement('div');
+          row.style.display = 'flex'; row.style.alignItems = 'center'; row.style.gap = '8px'; row.style.padding = '2px 0';
+          row.innerHTML = `
+            <input type="checkbox" data-path="${it.path}">
+            <span style="min-width:58px">Day${it.day}</span>
+            <span class="muted" style="font-size:12px">${it.has_background?'bg ✓':'bg —'}</span>
+          `;
+          mdayList.appendChild(row);
+        });
+        // Restore previous selection for this group
+        try{
+          const key = `cheesepie.preproc.mday.sel.${d.group}`;
+          const saved = JSON.parse(localStorage.getItem(key) || '[]');
+          const set = new Set(saved);
+          mdayList.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = set.has(cb.getAttribute('data-path')); });
+        } catch{}
+        updateMdayCount();
+        document.getElementById('pp-mday-all')?.addEventListener('click', () => { mdayList.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = true); updateMdayCount(); saveMdaySelection(); });
+        document.getElementById('pp-mday-none')?.addEventListener('click', () => { mdayList.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false); updateMdayCount(); saveMdaySelection(); });
+        mdayList.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.addEventListener('change', () => { updateMdayCount(); saveMdaySelection(); }));
+      } catch { dayStrip.textContent = 'Group: unavailable'; }
+    }
+    function updateMdayCount(){ try{ const n = mdayList.querySelectorAll('input[type="checkbox"]:checked').length; mdayCount.textContent = `${n} selected`; } catch{} }
+    function getSelectedPaths(){ return Array.from(mdayList.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.getAttribute('data-path')); }
+    function saveMdaySelection(){ try{ if (!dayGroup) return; const key = `cheesepie.preproc.mday.sel.${dayGroup.group}`; localStorage.setItem(key, JSON.stringify(getSelectedPaths())); } catch{} }
+    loadDayGroup();
+    // Apply current settings → selected days
+    document.getElementById('pp-mday-apply')?.addEventListener('click', async () => {
+      if (!dayGroup){ mdayStatus.textContent = 'No group'; return; }
+      const targets = getSelectedPaths().filter(p => p && p !== dayGroup.active);
+      if (!targets.length){ mdayStatus.textContent = 'Select at least one day'; return; }
+      // Overwrite check: any target with existing arena/preproc?
+      const byPath = new Map(dayGroup.items.map(it => [it.path, it]));
+      const risky = targets.filter(p => { const it = byPath.get(p)||{}; return it.has_arena || it.has_preproc; });
+      if (risky.length){
+        const ok = confirm(`Overwrite arena/regions for ${risky.length} day(s)?`);
+        if (!ok) return;
+      }
+      mdayStatus.textContent = 'Applying settings…';
+      try{
+        const r = await fetch('/api/preproc/apply_settings', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ from: dayGroup.active, to: targets }) });
+        const d = await r.json();
+        if (!r.ok || d.error){ mdayStatus.textContent = 'Error: ' + (d.error || r.statusText); return; }
+        const okN = (d.results||[]).filter(x => x.ok).length;
+        mdayStatus.textContent = `Applied to ${okN}/${targets.length}`;
+        loadDayGroup();
+      } catch(e){ mdayStatus.textContent = 'Error: ' + e; }
+    });
+    // Recompute backgrounds → selected days
+    document.getElementById('pp-mday-bg')?.addEventListener('click', async () => {
+      const targets = getSelectedPaths();
+      if (!targets.length){ mdayStatus.textContent = 'Select at least one day'; return; }
+      mdayStatus.textContent = `Recomputing backgrounds 0/${targets.length}…`;
+      let done = 0;
+      for (const path of targets){
+        try{
+          await recomputeBackgroundForVideo(path);
+          done++;
+          mdayStatus.textContent = `Recomputing backgrounds ${done}/${targets.length}…`;
+        } catch(e){ mdayStatus.textContent = `Error on ${path}: ${e}`; }
+      }
+      mdayStatus.textContent = `Backgrounds done (${done}/${targets.length})`;
+      loadDayGroup();
+    });
+    async function recomputeBackgroundForVideo(path){
+      const hv = document.createElement('video'); hv.muted = true; hv.preload = 'auto'; hv.playsInline = true; hv.crossOrigin = 'anonymous';
+      hv.style.position = 'fixed'; hv.style.left = '-9999px'; hv.style.top = '0'; hv.style.width = '160px'; hv.style.visibility = 'hidden';
+      const src = document.createElement('source'); src.src = `/media?path=${encodeURIComponent(path)}`; hv.appendChild(src);
+      document.body.appendChild(hv);
+      const N = Math.max(5, Math.min(200, Number(bgFramesEl.value || 25)));
+      const qPct = Math.max(0, Math.min(100, Number(bgQuantEl.value || 50)))/100;
+      await new Promise((res)=>{ hv.addEventListener('loadedmetadata', res, {once:true}); hv.load(); });
+      const maxW = 640; const scale = Math.min(1, maxW / (hv.videoWidth||maxW));
+      const w = Math.max(1, Math.round((hv.videoWidth||maxW) * scale));
+      const h = Math.max(1, Math.round((hv.videoHeight||maxW*9/16) * scale));
+      const work = document.createElement('canvas'); work.width = w; work.height = h; const wctx = work.getContext('2d');
+      const times = new Set(); const dur = Math.max(0.2, Number(hv.duration||0));
+      while (times.size < N){ times.add(Math.random() * Math.max(0.1, dur - 0.2) + 0.1); }
+      const arrTimes = Array.from(times).slice(0, N).sort((a,b)=>a-b);
+      const frames = [];
+      for (const t of arrTimes){
+        await new Promise((resolve) => {
+          const onSeeked = () => { try{ wctx.drawImage(hv, 0, 0, w, h); const id = wctx.getImageData(0,0,w,h); frames.push(id.data); }catch{} hv.removeEventListener('seeked', onSeeked); resolve(); };
+          hv.addEventListener('seeked', onSeeked);
+          try{ hv.currentTime = Math.min(Math.max(0.05, t), Math.max(0.05, dur-0.05)); } catch{ hv.removeEventListener('seeked', onSeeked); resolve(); }
+        });
+      }
+      if (frames.length === 0) throw new Error('No frames');
+      const out = new Uint8ClampedArray(w*h*4); const K = frames.length; const qi = Math.max(0, Math.min(K-1, Math.round(qPct * (K-1))));
+      for (let i=0, p=0; i<w*h; i++, p+=4){
+        const r = new Uint8Array(K), g = new Uint8Array(K), b = new Uint8Array(K), a = new Uint8Array(K);
+        for (let k=0;k<K;k++){ const f = frames[k]; r[k]=f[p]; g[k]=f[p+1]; b[k]=f[p+2]; a[k]=f[p+3]; }
+        r.sort(); g.sort(); b.sort(); a.sort();
+        out[p]=r[qi]; out[p+1]=g[qi]; out[p+2]=b[qi]; out[p+3]=255;
+      }
+      const img = new ImageData(out, w, h); wctx.putImageData(img, 0, 0);
+      const dataUrl = work.toDataURL('image/png');
+      const resp = await fetch('/api/preproc/background', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ video: path, image: dataUrl }) });
+      const jd = await resp.json(); if (!resp.ok || jd.error) throw new Error(jd.error || resp.statusText);
+      try{ document.body.removeChild(hv); } catch{}
+    }
+    // Save shared settings (Arena/Regions/Colors) → selected days
+    document.getElementById('pp-mday-save')?.addEventListener('click', async () => {
+      if (!dayGroup){ mdayStatus.textContent = 'No group'; showModal('Cannot Save','No group of days is available for this video.') return; }
+      const targets = getSelectedPaths();
+      if (!targets.length){ mdayStatus.textContent = 'Select at least one day'; showModal('Cannot Save','Select at least one day to save to.') return; }
+      // Validate backgrounds present for all selected
+      const byPath = new Map(dayGroup.items.map(it => [it.path, it]));
+      const missingBg = targets.filter(p => !(byPath.get(p)||{}).has_background);
+      if (missingBg.length){ mdayStatus.textContent = `Missing background on ${missingBg.length} selected day(s)`; showModal('Cannot Save',`Missing background on ${missingBg.length} selected day(s). Compute background first.`) return; }
+      // Validate Arena
+      if (!(state.tl && state.br)){ mdayStatus.textContent = 'Please mark the Arena first'; showModal('Cannot Save','Please mark the Arena first.') return; }
+      // Validate Regions: every item must have in-bounds and connected cells (reuse quick checks)
+      try{
+        const cols = Math.max(1, Number(colsEl.value||1));
+        const rows = Math.max(1, Number(rowsEl.value||1));
+        for (const it of (regionsState?.items||[])){
+          const cells = (it.cells||[]).map(c => ({ r:Number(c.r)||0, c:Number(c.c)||0 }));
+          if (cells.some(c => c.r<0 || c.c<0 || c.r>=rows || c.c>=cols)){
+            const msg = `ROI "${it.name}": contains out-of-bounds cells`; mdayStatus.textContent = msg; showModal('Cannot Save', msg) return;
+          }
+          if (cells.length===0){ const msg = `ROI "${it.name}": no cells marked`; mdayStatus.textContent = msg; showModal('Cannot Save', msg) return; }
+          if (!isConnected(cells)){ const msg = `ROI "${it.name}": cells must be connected`; mdayStatus.textContent = msg; showModal('Cannot Save', msg) return; }
+        }
+      } catch(e){ /* fall-through */ }
+      // Validate Colors: at least one mark per mouse
+      const byMouse = new Map();
+      for (const m of colorMarks){ byMouse.set(m.mouse, true); }
+      let ok = true;
+      for (let i=1;i<=miceCodes.length;i++){ if (!byMouse.get(i)){ ok = false; break; } }
+      if (!ok){ mdayStatus.textContent = 'Colors: add at least one mark per mouse'; return; }
+      const payload = {
+        targets,
+        preproc: {
+          arena: {
+            tl: state.tl, br: state.br,
+            cols: Math.max(1, Number(colsEl.value||1)),
+            rows: Math.max(1, Number(rowsEl.value||1)),
+            width_cm: Math.max(0, Number(wcmEl.value||0)),
+            height_cm: Math.max(0, Number(hcmEl.value||0)),
+          },
+          regions: regionsState,
+          colors: { mice: miceCodes, palette, marks: colorMarks },
+        }
+      };
+      mdayStatus.textContent = 'Saving…';
+      try{
+        const r = await fetch('/api/preproc/save_multi', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        const d = await r.json();
+        if (!r.ok || d.error){ const msg = (d && d.error) || r.statusText || 'Save failed'; mdayStatus.textContent = 'Error: ' + msg; showModal('Save Failed', msg) return; }
+        mdayStatus.textContent = `Saved ${d.saved||0}/${targets.length}`;
+      } catch(e){ mdayStatus.textContent = 'Error: ' + e; showModal('Save Failed', String(e)) }
+    });
     }
     // External controls
     const playBtn = document.getElementById('pp-play');
@@ -500,7 +751,7 @@
     function savePctx(){ try { localStorage.setItem(PCTX_KEY, JSON.stringify({ t: v.currentTime||0, f: filterSel.value||'none' })); } catch {} }
     function loadPctx(){ try { const raw = localStorage.getItem(PCTX_KEY); return raw? JSON.parse(raw) : null; } catch { return null; } }
 
-    v.addEventListener('loadedmetadata', () => {
+    function onVideoLoadedMetadata(){
       seek.max = String(Math.max(0, v.duration||0));
       const ctx = loadPctx();
       if (ctx){
@@ -509,7 +760,8 @@
       }
       timeLbl.textContent = `${fmtTime(v.currentTime||0)} / ${fmtTime(v.duration||0)}`;
       resizeOverlay();
-    });
+    }
+    v.addEventListener('loadedmetadata', onVideoLoadedMetadata);
     v.addEventListener('timeupdate', () => {
       if (!seek.dragging) { seek.value = String(v.currentTime||0); }
       timeLbl.textContent = `${fmtTime(v.currentTime||0)} / ${fmtTime(v.duration||0)}`;
@@ -682,7 +934,8 @@
     // Reset tokens on frame change and re-run segmentation once
     let lastFrameT = -1;
     function onFrameChange(){ dockAllTokens(); try { processColorsFrame(); } catch {} }
-    v.addEventListener('seeked', () => { if (colorsPane && colorsPane.style.display !== 'none') onFrameChange(); });
+    v.addEventListener('seeked', () => { if (colorsPane && colorsPane.style.display !== 'none') onFrameChange(); }
+    v.addEventListener('loadedmetadata', onVideoLoadedMetadata);
     v.addEventListener('timeupdate', () => {
       if (!(colorsPane && colorsPane.style.display !== 'none')) return;
       const t = Number(v.currentTime||0);
@@ -1027,6 +1280,7 @@
         }
         renderRoiUI();
         drawOverlay();
+        updateChipColors();
         return;
       }
       if (!marking) return;
@@ -1101,10 +1355,11 @@
               const m = colorMarks[i];
               if (m.mouse === selectedMouse && Math.abs(m.t - curT) <= dt/2){ colorMarks.splice(i,1); }
             }
-            renderColorsHistogram();
-            drawOverlay();
-            return;
-          }
+          renderColorsHistogram();
+          drawOverlay();
+          updateChipColors();
+          return;
+        }
           // Now, if segmentation is ready and click is inside video, place selected token
           if (!colorIndex || !colorIndexSize) return;
           if (ox < vDX || oy < vDY || ox >= vDX+vDW || oy >= vDY+vDH) return;
@@ -1124,6 +1379,7 @@
           colorMarks.push({ mouse: selectedMouse, code: (miceCodes[selectedMouse-1]||'R'), x: cx, y: cy, t: curT, label });
           renderColorsHistogram();
           drawOverlay();
+          updateChipColors();
         } catch {}
         return;
       }
@@ -1440,13 +1696,34 @@
     function defaultRegionsState(){
       const facs = (window.CHEESEPIE && window.CHEESEPIE.importer && window.CHEESEPIE.importer.facilities) || {};
       const keys = Object.keys(facs);
+      // Guess from video filename
+      function parseCam(path){ try{ const m = String(path||'').match(/\.cam(\d{2})(?:\.|$)/i); return m? Number(m[1]) : null; }catch{return null;} }
+      function parseExperiment(path){ try{ const base = String(path||'').split('/').pop()||''; const pre = base.split('.exp')[0]||''; const name = pre.split('-')[0]||pre; return String(name||'').toUpperCase(); }catch{return '';} }
+      const camNo = parseCam(videoPath);
+      const expName = parseExperiment(videoPath);
       let fac = '';
-      let setName = '';
-      try { fac = localStorage.getItem('cheesepie.preproc.facility') || ''; } catch {}
+      if (keys.length){
+        let best = { k: keys[0], score: -1 };
+        keys.forEach(k => {
+          const facCfg = facs[k]||{};
+          const camList = Array.isArray(facCfg.camera_list) ? facCfg.camera_list : [];
+          const hasCam = (camNo!=null) && camList.includes(camNo);
+          const hasExp = !!(expName && (facCfg.experiments||{})[expName]);
+          const score = (hasCam?2:0) + (hasExp?1:0);
+          if (score > best.score) best = { k, score };
+        });
+        fac = best.k;
+      }
+      // Fallback to persisted choice if guess invalid
+      try { const persisted = localStorage.getItem('cheesepie.preproc.facility') || ''; if (persisted && (persisted in facs)) fac = persisted; } catch {}
       if (!fac || !(fac in facs)) fac = keys[0] || '';
       const sets = (fac && facs[fac] && facs[fac].roi_sets) || [];
-      try { setName = localStorage.getItem('cheesepie.preproc.setup') || ''; } catch {}
-      if (!setName || !sets.find(s => s.name===setName)) setName = (sets[0] && sets[0].name) || '';
+      // Prefer 'Default' setup; else persisted; else first
+      let setName = '';
+      const def = sets.find(s => (s && (s.name||'').toLowerCase()==='default'));
+      if (def) setName = def.name;
+      if (!setName){ try { const persistedSet = localStorage.getItem('cheesepie.preproc.setup') || ''; if (persistedSet && sets.find(s=>s.name===persistedSet)) setName = persistedSet; } catch {} }
+      if (!setName) setName = (sets[0] && sets[0].name) || '';
       const sel = sets.find(s => s.name===setName) || sets[0] || { items: [] };
       const items = (sel.items || []).map(it => ({ name: it.name, enabled: !!it.enabled, sheltered: !!it.sheltered, cells: cellsFromCfg(it) }));
       return { facility: fac, set: setName, items };
@@ -1507,6 +1784,37 @@
         document.body.appendChild(t);
         setTimeout(()=>{ try{ t.style.transition='opacity 300ms'; t.style.opacity='0'; }catch{} }, 2000);
         setTimeout(()=>{ try{ document.body.removeChild(t); }catch{} }, 2400);
+      } catch {}
+    }
+    // Themed modal dialog (lazy-created)
+    function showModal(title, message){
+      try{
+        let backdrop = document.getElementById('pp-modal-backdrop');
+        let modal = document.getElementById('pp-modal');
+        if (!backdrop){
+          backdrop = document.createElement('div');
+          backdrop.id = 'pp-modal-backdrop';
+          backdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);display:none;z-index:9998;';
+          document.body.appendChild(backdrop);
+        }
+        if (!modal){
+          modal = document.createElement('div');
+          modal.id = 'pp-modal';
+          modal.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:min(520px,92%);background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 28px rgba(0,0,0,0.35);z-index:9999;display:none;';
+          modal.innerHTML = `
+            <div style="padding:12px 16px; font-weight:600; border-bottom:1px solid var(--border)" id="pp-modal-title"></div>
+            <div style="padding:14px 16px; white-space:pre-wrap" id="pp-modal-msg"></div>
+            <div style="display:flex;justify-content:flex-end;gap:8px;padding:10px 16px;border-top:1px solid var(--border)">
+              <button class="btn" id="pp-modal-ok">OK</button>
+            </div>`;
+          document.body.appendChild(modal);
+          modal.querySelector('#pp-modal-ok').addEventListener('click', () => { try{ backdrop.style.display='none'; modal.style.display='none'; } catch{} });
+          backdrop.addEventListener('click', () => { try{ backdrop.style.display='none'; modal.style.display='none'; } catch{} });
+        }
+        modal.querySelector('#pp-modal-title').textContent = String(title||'');
+        modal.querySelector('#pp-modal-msg').textContent = String(message||'');
+        backdrop.style.display = '';
+        modal.style.display = '';
       } catch {}
     }
 
@@ -1681,7 +1989,11 @@
         const r = await fetch('/api/preproc/arena', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
         const d = await r.json();
         if (!r.ok || d.error){ arenaStatus.textContent = 'Error: ' + (d.error || r.statusText); }
+<<<<<<< Updated upstream
         else { arenaStatus.textContent = 'Saved'; try { updateRegionsEnablement(); } catch {} }
+=======
+        else { arenaStatus.textContent = 'Saved'; updateChipColors(); }
+>>>>>>> Stashed changes
       } catch(e){ arenaStatus.textContent = 'Error: ' + e; }
     }
 
@@ -1712,11 +2024,20 @@
     updateRegionsEnablement();
     drawOverlay();
   });
+  tabSave.addEventListener('click', () => {
+    if (tabSave.disabled) return;
+    arenaPane.style.display='none'; bgPane.style.display='none'; regionsPane.style.display='none'; colorsPane.style.display='none'; savePane.style.display='';
+    if (!marking) overlay.style.pointerEvents = 'none';
+    stopColorsLoop();
+    setActivePreprocTab('save');
+    drawOverlay();
+  });
     // persist active preproc step
     tabArena.addEventListener('click', () => { try { localStorage.setItem('cheesepie.preproc.step', 'arena'); } catch {} });
     tabBg.addEventListener('click', () => { try { localStorage.setItem('cheesepie.preproc.step', 'background'); } catch {} });
     tabRegions.addEventListener('click', () => { try { localStorage.setItem('cheesepie.preproc.step', 'regions'); } catch {} });
     tabColors?.addEventListener('click', () => { try { localStorage.setItem('cheesepie.preproc.step', 'colors'); } catch {} });
+    tabSave?.addEventListener('click', () => { try { localStorage.setItem('cheesepie.preproc.step', 'save'); } catch {} });
 
     // Background computation
     bgRunBtn.addEventListener('click', async () => {
@@ -1726,7 +2047,7 @@
       bgStatus.textContent = `Sampling ${N} frames…`;
       await computeBackground(N, qPct/100);
       // Mark background as available
-      try { hasBackground = bgCanvas && bgCanvas.width>0 && bgCanvas.height>0; updateTabEnablement(); } catch {}
+      try { hasBackground = bgCanvas && bgCanvas.width>0 && bgCanvas.height>0; updateTabEnablement(); loadDayGroup(); } catch {}
     });
 
     bgSaveBtn.addEventListener('click', async () => {
@@ -1810,6 +2131,10 @@
           stopColorsLoop(); startColorsLoop();
           setActivePreprocTab('colors');
           try { overlay.style.pointerEvents = 'auto'; } catch {}
+        } else if (step === 'save'){
+          arenaPane.style.display='none'; bgPane.style.display='none'; regionsPane.style.display='none'; colorsPane.style.display='none'; savePane.style.display='';
+          stopColorsLoop();
+          setActivePreprocTab('save');
         } else if (step === 'regions' && !(state.tl && state.br)){
           arenaPane.style.display=''; bgPane.style.display='none'; regionsPane.style.display='none';
           setActivePreprocTab('arena');
@@ -1844,7 +2169,7 @@
             img.onload = () => {
               bgCanvas.width = img.width; bgCanvas.height = img.height;
               const c = bgCanvas.getContext('2d'); c.drawImage(img, 0, 0);
-              hasBackground = true; updateTabEnablement();
+              hasBackground = true; updateTabEnablement(); updateChipColors();
             };
             img.src = `/media?path=${encodeURIComponent(d.background)}`;
           }
@@ -1852,9 +2177,17 @@
           if (d.regions) {
             regionsState = d.regions;
           }
+          // Colors: load saved marks
+          try{
+            if (d.colors && Array.isArray(d.colors.marks)){
+              colorMarks.splice(0, colorMarks.length, ...d.colors.marks.map(m => ({ mouse:Number(m.mouse)||1, code:String(m.code||'')||miceCodes[(Number(m.mouse)||1)-1]||'R', x:Number(m.x)||0, y:Number(m.y)||0, t:Number(m.t)||0, label:Number(m.label)||0 })));
+              renderColorsHistogram();
+            }
+          } catch {}
           renderRoiUI();
           drawOverlay();
           updateTabEnablement();
+          updateChipColors();
         }
       } catch {}
     })();
@@ -1865,7 +2198,7 @@
         const fac = roiFacilitySel?.value || '';
         const sets = (fac && facs[fac] && facs[fac].roi_sets) || [];
         const hasSetup = !!(roiSetSel && roiSetSel.value && sets.some(s => s && s.name === roiSetSel.value));
-        [tabArena, tabBg, tabRegions, tabColors].forEach(btn => { if (btn){ btn.disabled = !hasSetup; btn.title = hasSetup ? '' : 'Select a Facility and Setup first'; }});
+        [tabArena, tabBg, tabRegions, tabColors, tabSave].forEach(btn => { if (btn){ btn.disabled = !hasSetup; btn.title = hasSetup ? '' : 'Select a Facility and Setup first'; }});
         // Colors requires background
         if (tabColors){ tabColors.disabled = tabColors.disabled || !hasBackground; tabColors.title = (!hasSetup ? 'Select a Facility and Setup first' : (!hasBackground ? 'Compute or load a background first' : '')); }
         // Update Regions table enablement

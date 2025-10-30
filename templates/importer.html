@@ -1,9 +1,10 @@
-{% extends "base.html" %}
-{% block content %}
+{% extends "base.html" %} {% block content %}
 <div class="panel">
   <div class="panel-header">
     <h1>Importer</h1>
-    <div class="muted">Configure facility, experiment, dates, times, and cameras.</div>
+    <div class="muted">
+      Configure facility, experiment, dates, times, and cameras.
+    </div>
   </div>
   <div class="controls">
     <div class="control-group">
@@ -12,10 +13,23 @@
     </div>
     <div class="control-group">
       <label for="source-dir">Source Folder</label>
-      <input id="source-dir" type="text" readonly placeholder="Select a facility" />
+      <div style="display: flex; gap: 8px; align-items: center">
+        <input
+          id="source-dir"
+          type="text"
+          readonly
+          placeholder="Select a facility"
+          style="flex: 1"
+        />
+        <button
+          class="btn"
+          id="list-btn"
+          title="List all files per camera with progress"
+        >
+          List
+        </button>
+      </div>
     </div>
-
-    
 
     <div class="control-group">
       <label for="experiment-select">Experiment</label>
@@ -28,7 +42,14 @@
 
     <div class="control-group">
       <label for="batch-input">Batch</label>
-      <input id="batch-input" type="number" min="0" step="1" value="1" readonly />
+      <input
+        id="batch-input"
+        type="number"
+        min="0"
+        step="1"
+        value="1"
+        readonly
+      />
     </div>
     <div class="control-group">
       <label>&nbsp;</label>
@@ -53,234 +74,774 @@
       <input id="end-time" type="time" />
     </div>
 
-    <div class="control-group" style="grid-column: 1 / -1;">
+    <div class="control-group" style="grid-column: 1 / -1">
       <label>Cameras</label>
       <div id="cameras-wrap">
-        <div class="cam-toolbar" id="cams-toolbar" hidden>
-          <button type="button" class="btn mini" id="cams-all">All</button>
-          <button type="button" class="btn mini" id="cams-none">None</button>
-          <div class="cam-row" id="cams-row"></div>
+        <div id="cams-topline" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap">
+          <div class="cam-toolbar" id="cams-toolbar" hidden>
+            <button type="button" class="btn mini" id="cams-all">All</button>
+            <button type="button" class="btn mini" id="cams-none">None</button>
+            <div class="cam-row" id="cams-row"></div>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+            <button class="btn primary" id="open-import" title="Open import dialog">Import</button>
+          </div>
         </div>
       </div>
-      <div class="muted" id="cameras-hint" style="margin-top:6px">Select a facility to load available cameras.</div>
-    </div>
-
-    <div class="control-group" style="grid-column: 1 / -1; display:flex; gap:10px; align-items:flex-end; justify-content:flex-end">
-      <label style="margin-left:auto; display:flex; align-items:center; gap:8px"><input id="dry-run" type="checkbox" /> Dry run (write .src only)</label>
-      <button class="btn" id="reset-btn">Reset</button>
-      <button class="btn primary" id="import-btn" disabled>Import</button>
+      <div class="muted" id="cameras-hint" style="margin-top: 6px">
+        Select a facility to load available cameras.
+      </div>
     </div>
   </div>
 </div>
 
+<!-- Import Modal -->
+<div id="import-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:1000; align-items:center; justify-content:center; padding: 24px;">
+  <div class="panel" style="margin:0; width: min(1100px, 96vw); max-height: 90vh; overflow:auto; box-shadow:0 10px 30px rgba(0,0,0,0.25); border-radius: 10px;">
+    <div class="panel-header" style="display:flex; align-items:center; justify-content:space-between">
+      <div style="display:flex; align-items:center; gap:8px">
+        <button class="btn" id="import-close" title="Close" style="font-weight:700; width:32px; height:32px; padding:0; display:inline-flex; align-items:center; justify-content:center">✕</button>
+        <h1 style="margin:0">Import</h1>
+      </div>
+      <div style="display:flex; gap:8px; align-items:center">
+        <button class="btn primary" id="import-btn" disabled title="Complete selections to enable scan">Rescan</button>
+        <button class="btn" id="run-btn" disabled title="Run is available after a successful scan">Run</button>
+      </div>
+    </div>
+    <div id="import-modal-body" style="padding: 8px 12px"></div>
+  </div>
+</div>
+
 <script>
-window.addEventListener('DOMContentLoaded', function(){
-  const CFG = window.CHEESEPIE || {};
-  const FACS = (CFG.importer && CFG.importer.facilities) || {};
+  window.addEventListener("DOMContentLoaded", function () {
+    const CFG = window.CHEESEPIE || {};
+    const FACS = (CFG.importer && CFG.importer.facilities) || {};
 
-  const $ = (s, el=document) => el.querySelector(s);
-  const facilitySel = $('#facility-select');
-  const experimentSel = $('#experiment-select');
-  const treatmentSel = $('#treatment-select');
-  const srcDir = $('#source-dir');
-  const startDate = $('#start-date');
-  const endDate = $('#end-date');
-  const startTime = $('#start-time');
-  const endTime = $('#end-time');
-  const camsWrap = $('#cameras-wrap');
-  const camsToolbar = $('#cams-toolbar');
-  const camsRow = $('#cams-row');
-  const camsAllBtn = $('#cams-all');
-  const camsNoneBtn = $('#cams-none');
-  const batchInput = $('#batch-input');
-  const dryRun = document.getElementById('dry-run');
-  const camsHint = $('#cameras-hint');
-  const importBtn = $('#import-btn');
-  const resetBtn = $('#reset-btn');
+    const $ = (s, el = document) => el.querySelector(s);
+    const facilitySel = $("#facility-select");
+    const experimentSel = $("#experiment-select");
+    const treatmentSel = $("#treatment-select");
+    const srcDir = $("#source-dir");
+    const startDate = $("#start-date");
+    const endDate = $("#end-date");
+    const startTime = $("#start-time");
+    const endTime = $("#end-time");
+    const camsWrap = $("#cameras-wrap");
+    const camsToolbar = $("#cams-toolbar");
+    const camsRow = $("#cams-row");
+    const camsAllBtn = $("#cams-all");
+    const camsNoneBtn = $("#cams-none");
+    const batchInput = $("#batch-input");
+    const listBtn = document.getElementById("list-btn");
+    const camsHint = $("#cameras-hint");
+    const importBtn = $("#import-btn");
+    const runTopBtn = document.getElementById("run-btn");
+    let scanController = null;
+    let scanAnimTimer = null;
+    let scanDotsTimer = null;
+    let scanDotsBase = '';
 
-  function pad2(n){ return String(n).padStart(2,'0'); }
-
-  function setDisabled(el, dis){ el.disabled = !!dis; if (dis) el.value=''; }
-
-  function populateFacilities(){
-    facilitySel.innerHTML = '<option value="">Select facility…</option>';
-    Object.keys(FACS).sort().forEach(k => {
-      const opt = document.createElement('option');
-      opt.value = k; opt.textContent = k;
-      facilitySel.appendChild(opt);
-    });
-  }
-
-  function populateExperiments(fac){
-    experimentSel.innerHTML = '';
-    setDisabled(experimentSel, true);
-    setDisabled(treatmentSel, true);
-    treatmentSel.innerHTML = '';
-    if (!fac || !FACS[fac]) return;
-    const exps = FACS[fac].experiments || {};
-    const names = Object.keys(exps).sort();
-    experimentSel.innerHTML = '<option value="">Select experiment…</option>';
-    names.forEach(name => {
-      const opt = document.createElement('option'); opt.value = name; opt.textContent = name; experimentSel.appendChild(opt);
-    });
-    setDisabled(experimentSel, false);
-    refreshBatch();
-  }
-
-  function populateTreatments(fac, exp){
-    treatmentSel.innerHTML = '';
-    setDisabled(treatmentSel, true);
-    if (!fac || !exp || !FACS[fac]) return;
-    const arr = (FACS[fac].experiments || {})[exp] || [];
-    treatmentSel.innerHTML = '<option value="">Select treatment…</option>';
-    arr.forEach(t => {
-      const opt = document.createElement('option'); opt.value = t; opt.textContent = t; treatmentSel.appendChild(opt);
-    });
-    setDisabled(treatmentSel, false);
-  }
-
-  function applyTreatmentDefaults(fac, exp, trt){
-    if (!fac || !exp || !trt) return;
-    const defs = (((FACS[fac] || {}).treatment_defaults || {})[exp] || {})[trt] || {};
-    if (defs.start_time) startTime.value = defs.start_time;
-    if (defs.end_time) endTime.value = defs.end_time;
-  }
-
-  function populateCameras(fac){
-    camsRow.innerHTML = '';
-    const n = (FACS[fac] && Number(FACS[fac].cameras)) || 0;
-    camsToolbar.hidden = !n;
-    camsHint.textContent = n ? `Pick from ${n} camera(s).` : 'Select a facility to load available cameras.';
-    if (!n) return;
-
-    for (let i = 1; i <= n; i++){
-      const btn = document.createElement('div');
-      btn.className = 'cam-btn';
-      btn.dataset.cam = String(i);
-      btn.textContent = String(i);
-      btn.addEventListener('click', () => {
-        btn.classList.toggle('active');
-        validate();
-      });
-      camsRow.appendChild(btn);
+    function pad2(n) {
+      return String(n).padStart(2, "0");
     }
 
-    camsAllBtn.onclick = () => {
-      camsRow.querySelectorAll('.cam-btn').forEach(el => el.classList.add('active'));
-      validate();
-    };
-    camsNoneBtn.onclick = () => {
-      camsRow.querySelectorAll('.cam-btn').forEach(el => el.classList.remove('active'));
-      validate();
-    };
-  }
-
-  function validate(){
-    const hasFac = !!facilitySel.value;
-    const hasExp = !!experimentSel.value;
-    const hasTrt = !!treatmentSel.value;
-    const hasDates = !!startDate.value && !!endDate.value;
-    const hasTimes = !!startTime.value && !!endTime.value;
-    const anyCam = !!camsRow.querySelector('.cam-btn.active');
-    importBtn.disabled = !(hasFac && hasExp && hasTrt && hasDates && hasTimes && anyCam);
-  }
-
-  facilitySel.addEventListener('change', () => {
-    const fac = facilitySel.value;
-    const src = (FACS[fac] && FACS[fac].source_dir) || '';
-    srcDir.value = src;
-    populateExperiments(fac);
-    populateCameras(fac);
-    // Preselect first experiment and treatment (if available) and apply defaults
-    const exps = Object.keys(((FACS[fac] || {}).experiments || {})).sort();
-    if (exps.length > 0){
-      experimentSel.value = exps[0];
-      populateTreatments(fac, experimentSel.value);
-      const trts = (((FACS[fac] || {}).experiments || {})[experimentSel.value] || []);
-      if (trts.length > 0){
-        treatmentSel.value = trts[0];
-        applyTreatmentDefaults(fac, experimentSel.value, treatmentSel.value);
-      } else {
-        // no treatments; clear times
-        startTime.value = '';
-        endTime.value = '';
+    function ensureErrorBanner() {
+      let eb = document.getElementById("error-banner");
+      if (!eb) {
+        eb = document.createElement("div");
+        eb.id = "error-banner";
+        eb.style.cssText =
+          "display:none; margin:10px 0; padding:8px 12px; border-radius:6px; background:#ffebee; color:#b71c1c; border:1px solid #ef9a9a;";
+        const container =
+          document.querySelector(".panel .controls") || document.body;
+        container.parentElement.insertBefore(eb, container);
       }
-    } else {
-      // no experiments; clear times
-      startTime.value = '';
-      endTime.value = '';
+      return eb;
     }
-    refreshBatch();
-    validate();
-  });
-  experimentSel.addEventListener('change', () => {
-    populateTreatments(facilitySel.value, experimentSel.value);
-    // clear times when experiment changes; treatment selection will set defaults
-    startTime.value = '';
-    endTime.value = '';
-    refreshBatch();
-    validate();
-  });
-  treatmentSel.addEventListener('change', () => {
-    applyTreatmentDefaults(facilitySel.value, experimentSel.value, treatmentSel.value);
-    refreshBatch();
-    validate();
-  });
-  startDate.addEventListener('change', validate);
-  endDate.addEventListener('change', validate);
-  startTime.addEventListener('change', validate);
-  endTime.addEventListener('change', validate);
-
-  resetBtn.addEventListener('click', () => {
-    facilitySel.value = '';
-    srcDir.value = '';
-    experimentSel.innerHTML=''; setDisabled(experimentSel, true);
-    treatmentSel.innerHTML=''; setDisabled(treatmentSel, true);
-    startDate.value = endDate.value = '';
-    startTime.value = endTime.value = '';
-    camsRow.innerHTML=''; camsToolbar.hidden = true; camsHint.textContent = 'Select a facility to load available cameras.';
-    batchInput.value = '1';
-    validate();
-  });
-
-  importBtn.addEventListener('click', async () => {
-    const fac = facilitySel.value;
-    const exp = experimentSel.value;
-    const trt = treatmentSel.value;
-    const sDate = startDate.value; const eDate = endDate.value;
-    const sTime = startTime.value; const eTime = endTime.value;
-    const cams = Array.from(camsRow.querySelectorAll('.cam-btn.active')).map(x => Number(x.dataset.cam));
-    const batch = Math.max(0, Number(batchInput.value || 0));
-    importBtn.disabled = true; importBtn.textContent = 'Importing…';
-    try {
-      const res = await fetch('/api/import/start', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ facility: fac, experiment: exp, treatment: trt, start_date: sDate, end_date: eDate, start_time: sTime, end_time: eTime, cameras: cams, batch, async: true, dry_run: !!dryRun.checked })
-      });
-      const data = await res.json();
-      if (!res.ok || !data || data.error){
-        alert('Import failed: ' + (data && data.error || res.statusText));
-      } else {
-        // Create or show a status panel and start polling if async
-        ensureStatusPanel();
-        renderPlan(data);
-        if (data.job_id){
-          pollStatus(data.job_id);
+    function parseStackLoc(err) {
+      try {
+        const st = String((err && err.stack) || "").split("");
+        for (const line of st) {
+          const m = line.match(/([^\s\(]+):(\d+):(\d+)/);
+          if (m) {
+            return { file: m[1], line: Number(m[2]), col: Number(m[3]) };
+          }
         }
-      }
-    } catch (e){
-      alert('Import error: ' + e);
-    } finally {
-      importBtn.disabled = false; importBtn.textContent = 'Import';
+      } catch {}
+      return null;
     }
-  });
+    function showError(context, err) {
+      const eb = ensureErrorBanner();
+      const msg = err && err.message ? err.message : String(err);
+      const loc = parseStackLoc(err);
+      const locTxt = loc ? ` (at ${loc.file}:${loc.line}:${loc.col})` : "";
+      eb.textContent = `${context}: ${msg}${locTxt}`;
+      eb.style.display = "block";
+      try {
+        console.error(context, err);
+      } catch {}
+    }
+    window.addEventListener("error", (e) => {
+      showError("Unhandled error", (e && e.error) || e.message);
+    });
+    window.addEventListener("unhandledrejection", (e) => {
+      showError("Unhandled promise", (e && e.reason) || "");
+    });
 
-  // Simple status panel under the form
-  function ensureStatusPanel(){
-    let panel = document.getElementById('import-status');
-    if (!panel){
-      panel = document.createElement('div'); panel.id = 'import-status'; panel.className = 'panel';
-      panel.style.marginTop = '16px'; panel.innerHTML = `
+    function formatDate(d) {
+      const y = d.getFullYear();
+      const m = pad2(d.getMonth() + 1);
+      const day = pad2(d.getDate());
+      return `${y}-${m}-${day}`;
+    }
+
+    function combinedSourcePattern(fac) {
+      const f = FACS[fac] || {};
+      const src = (f && f.source_dir) || "";
+      const glob = (f && (f.camera_pattern || f.camera_glob)) || "";
+      if (!src) return "";
+      if (!glob) return src;
+      if (/^\//.test(glob)) return glob;
+      return src.replace(/\/+$/, "") + "/" + glob.replace(/^\/+/, "");
+    }
+
+    function getSelectedCameras() {
+      return Array.from(camsRow.querySelectorAll(".cam-btn.active"))
+        .map((x) => Number(x.dataset.cam))
+        .filter((n) => Number.isFinite(n));
+    }
+
+    function setSelectedCameras(list) {
+      const want = new Set((list || []).map((n) => String(Number(n))));
+      camsRow.querySelectorAll(".cam-btn").forEach((el) => {
+        if (want.has(el.dataset.cam)) el.classList.add("active");
+        else el.classList.remove("active");
+      });
+    }
+
+    function updateUrl() {
+      const params = new URLSearchParams();
+      if (facilitySel.value) params.set("facility", facilitySel.value);
+      if (experimentSel.value) params.set("experiment", experimentSel.value);
+      if (treatmentSel.value) params.set("treatment", treatmentSel.value);
+      const b = (batchInput.value || "").trim();
+      if (b) params.set("batch", b);
+      if (startDate.value) params.set("start_date", startDate.value);
+      if (endDate.value) params.set("end_date", endDate.value);
+      if (startTime.value) params.set("start_time", startTime.value);
+      if (endTime.value) params.set("end_time", endTime.value);
+      const cams = getSelectedCameras();
+      if (cams.length) params.set("cameras", cams.join(","));
+      const qs = params.toString();
+      const url = qs ? `${location.pathname}?${qs}` : location.pathname;
+      window.history.replaceState({}, "", url);
+    }
+
+    function ensureDefaultDates() {
+      const today = new Date();
+      const start = new Date(today);
+      start.setDate(today.getDate() - 4);
+      if (!endDate.value) endDate.value = formatDate(today);
+      if (!startDate.value) startDate.value = formatDate(start);
+    }
+
+    async function initFromUrl() {
+      const params = new URLSearchParams(location.search);
+      const fac = (params.get("facility") || "").toLowerCase();
+      const exp = (params.get("experiment") || "").toUpperCase();
+      const trt = (params.get("treatment") || "").toLowerCase();
+      const b = params.get("batch") || "";
+      const sd = params.get("start_date") || "";
+      const ed = params.get("end_date") || "";
+      const st = params.get("start_time") || "";
+      const et = params.get("end_time") || "";
+      const camParam = (params.get("cameras") || "").trim();
+      const camList = camParam
+        ? camParam
+            .split(",")
+            .map((s) => parseInt(s, 10))
+            .filter((n) => Number.isFinite(n))
+        : [];
+
+      if (sd) startDate.value = sd;
+      if (ed) endDate.value = ed;
+      if (st) startTime.value = st;
+      if (et) endTime.value = et;
+      ensureDefaultDates();
+
+      if (fac && FACS[fac]) {
+        facilitySel.value = fac;
+        facilitySel.dispatchEvent(new Event("change"));
+        if (exp) {
+          experimentSel.value = exp;
+          experimentSel.dispatchEvent(new Event("change"));
+        }
+        if (trt) {
+          treatmentSel.value = trt;
+          treatmentSel.dispatchEvent(new Event("change"));
+        }
+        if (camList.length) {
+          setSelectedCameras(camList);
+        }
+        if (b) {
+          batchInput.value = String(Math.max(0, parseInt(b, 10) || 1));
+        } else {
+          await refreshBatch();
+        }
+        updateUrl();
+        validate();
+      } else {
+        ensureDefaultDates();
+        updateUrl();
+      }
+    }
+
+    function setDisabled(el, dis) {
+      el.disabled = !!dis;
+      if (dis) el.value = "";
+    }
+
+    function populateFacilities() {
+      facilitySel.innerHTML = '<option value="">Select facility…</option>';
+      Object.keys(FACS)
+        .sort()
+        .forEach((k) => {
+          const opt = document.createElement("option");
+          opt.value = k;
+          opt.textContent = k;
+          facilitySel.appendChild(opt);
+        });
+    }
+
+    function populateExperiments(fac) {
+      experimentSel.innerHTML = "";
+      setDisabled(experimentSel, true);
+      setDisabled(treatmentSel, true);
+      treatmentSel.innerHTML = "";
+      if (!fac || !FACS[fac]) return;
+      const exps = FACS[fac].experiments || {};
+      const names = Object.keys(exps).sort();
+      experimentSel.innerHTML = '<option value="">Select experiment…</option>';
+      names.forEach((name) => {
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        experimentSel.appendChild(opt);
+      });
+      setDisabled(experimentSel, false);
+      refreshBatch();
+    }
+
+    function populateTreatments(fac, exp) {
+      treatmentSel.innerHTML = "";
+      setDisabled(treatmentSel, true);
+      if (!fac || !exp || !FACS[fac]) return;
+      const arr = (FACS[fac].experiments || {})[exp] || [];
+      treatmentSel.innerHTML = '<option value="">Select treatment…</option>';
+      arr.forEach((t) => {
+        const opt = document.createElement("option");
+        opt.value = t;
+        opt.textContent = t;
+        treatmentSel.appendChild(opt);
+      });
+      setDisabled(treatmentSel, false);
+    }
+
+    function applyTreatmentDefaults(fac, exp, trt) {
+      if (!fac || !exp || !trt) return;
+      const defs =
+        (((FACS[fac] || {}).treatment_defaults || {})[exp] || {})[trt] || {};
+      if (defs.start_time) startTime.value = defs.start_time;
+      if (defs.end_time) endTime.value = defs.end_time;
+    }
+
+    function populateCameras(fac) {
+      camsRow.innerHTML = "";
+      const list =
+        FACS[fac] && Array.isArray(FACS[fac].camera_list)
+          ? FACS[fac].camera_list
+          : null;
+      const n =
+        list && list.length
+          ? list.length
+          : (FACS[fac] && Number(FACS[fac].cameras)) || 0;
+      camsToolbar.hidden = !n;
+      camsHint.textContent = n
+        ? `Pick from ${n} camera(s).`
+        : "Select a facility to load available cameras.";
+      if (!n) return;
+
+      const items =
+        list && list.length
+          ? list.slice()
+          : Array.from({ length: n }, (_, i) => i + 1);
+      items.forEach((camNum) => {
+        const btn = document.createElement("div");
+        btn.className = "cam-btn";
+        btn.dataset.cam = String(camNum);
+        btn.textContent = String(camNum);
+        btn.addEventListener("click", () => {
+          btn.classList.toggle("active");
+          validate();
+          updateUrl();
+        });
+        camsRow.appendChild(btn);
+      });
+
+      camsAllBtn.onclick = () => {
+        camsRow
+          .querySelectorAll(".cam-btn")
+          .forEach((el) => el.classList.add("active"));
+        validate();
+        updateUrl();
+      };
+      camsNoneBtn.onclick = () => {
+        camsRow
+          .querySelectorAll(".cam-btn")
+          .forEach((el) => el.classList.remove("active"));
+        validate();
+        updateUrl();
+      };
+    }
+
+    function validate() {
+      const hasFac = !!facilitySel.value;
+      const hasExp = !!experimentSel.value;
+      const hasTrt = !!treatmentSel.value;
+      const hasDates = !!startDate.value && !!endDate.value;
+      const hasTimes = !!startTime.value && !!endTime.value;
+      const anyCam = !!camsRow.querySelector(".cam-btn.active");
+      importBtn.disabled = !(
+        hasFac &&
+        hasExp &&
+        hasTrt &&
+        hasDates &&
+        hasTimes &&
+        anyCam
+      );
+      // Scan tooltip
+      let reason = '';
+      if (!hasFac) reason = 'Select a facility';
+      else if (!hasExp || !hasTrt) reason = 'Pick experiment and treatment';
+      else if (!hasDates) reason = 'Set start/end dates';
+      else if (!hasTimes) reason = 'Set start/end times';
+      else if (!anyCam) reason = 'Pick at least one camera';
+      importBtn.title = importBtn.disabled ? (reason || 'Complete selections to enable scan') : '';
+      // If no plan yet, keep Run disabled with tooltip
+      if (runTopBtn && (!window.__DAYS_PLAN__ || !Array.isArray(window.__DAYS_PLAN__) || window.__DAYS_PLAN__.length === 0)) {
+        runTopBtn.disabled = true;
+        runTopBtn.classList.remove('primary');
+        runTopBtn.title = 'Run is available after a successful scan';
+      }
+    }
+
+    facilitySel.addEventListener("change", () => {
+      const fac = facilitySel.value;
+      srcDir.value = combinedSourcePattern(fac);
+      populateExperiments(fac);
+      populateCameras(fac);
+      // Preselect first experiment and treatment (if available) and apply defaults
+      const exps = Object.keys((FACS[fac] || {}).experiments || {}).sort();
+      if (exps.length > 0) {
+        experimentSel.value = exps[0];
+        populateTreatments(fac, experimentSel.value);
+        const trts =
+          ((FACS[fac] || {}).experiments || {})[experimentSel.value] || [];
+        if (trts.length > 0) {
+          treatmentSel.value = trts[0];
+          applyTreatmentDefaults(fac, experimentSel.value, treatmentSel.value);
+        } else {
+          // no treatments; clear times
+          startTime.value = "";
+          endTime.value = "";
+        }
+      } else {
+        // no experiments; clear times
+        startTime.value = "";
+        endTime.value = "";
+      }
+      refreshBatch();
+      validate();
+      updateUrl();
+    });
+    experimentSel.addEventListener("change", () => {
+      populateTreatments(facilitySel.value, experimentSel.value);
+      // clear times when experiment changes; treatment selection will set defaults
+      startTime.value = "";
+      endTime.value = "";
+      refreshBatch();
+      validate();
+      updateUrl();
+    });
+    treatmentSel.addEventListener("change", () => {
+      applyTreatmentDefaults(
+        facilitySel.value,
+        experimentSel.value,
+        treatmentSel.value
+      );
+      refreshBatch();
+      validate();
+      updateUrl();
+    });
+    startDate.addEventListener("change", () => {
+      validate();
+      updateUrl();
+    });
+    endDate.addEventListener("change", () => {
+      validate();
+      updateUrl();
+    });
+    startTime.addEventListener("change", () => {
+      validate();
+      updateUrl();
+    });
+    endTime.addEventListener("change", () => {
+      validate();
+      updateUrl();
+    });
+
+    // reset button removed
+
+    // removed Scan button and handler
+
+    // List button: stream full scan with date/time for in-range and day assignment
+    if (listBtn) {
+      listBtn.addEventListener("click", async () => {
+        const fac = facilitySel.value;
+        if (!fac) {
+          alert("Please select a facility first.");
+          return;
+        }
+        listBtn.disabled = true;
+        listBtn.textContent = "Listing…";
+        try {
+          const chk = await fetch(
+            `/api/import/check_source?facility=${encodeURIComponent(fac)}`
+          );
+          if (!chk.ok) {
+            const d = await chk.json().catch(() => ({}));
+            throw new Error((d && d.error) || "Source folder not accessible");
+          }
+          ensureScanPanel();
+          ensureScanPanel();
+          startScanProgress(`Full scan in ${combinedSourcePattern(fac)} …`, true);
+          const cams = getSelectedCameras();
+          const pattern =
+            (FACS[fac] &&
+              (FACS[fac].camera_pattern || FACS[fac].camera_glob)) ||
+            "";
+          const qs = new URLSearchParams({
+            facility: fac,
+            cameras: cams.join(","),
+            camera_pattern: pattern,
+            start_date: startDate.value || "",
+            end_date: endDate.value || "",
+            start_time: startTime.value || "",
+            end_time: endTime.value || "",
+          });
+          const es = new EventSource(
+            `/api/import/scan_full_stream?${qs.toString()}`
+          );
+          scanController = { close: () => es.close() };
+          const files = [];
+          es.addEventListener("camera", (ev) => {
+            try {
+              const d = JSON.parse(ev.data);
+              if (d && d.camera) {
+                setScanMeta(
+                  `Camera cam${String(d.camera).padStart(2, "0")} — ${d.root}${
+                    d.exists ? "" : " (missing)"
+                  }`
+                );
+                appendDirRow({
+                  camera: d.camera,
+                  path: d.root,
+                  header: true,
+                  exists: d.exists,
+                });
+              }
+            } catch {}
+          });
+          es.addEventListener("dir", (ev) => {
+            try {
+              const d = JSON.parse(ev.data);
+              if (d && d.path) {
+                const run = document.getElementById("scan-running-meta");
+                if (run) run.textContent = `Scanning: ${d.path}`;
+                appendDirRow(d);
+              }
+            } catch {}
+          });
+          es.addEventListener("file", (ev) => {
+            try {
+              const d = JSON.parse(ev.data);
+              if (d && d.path) {
+                files.push(d);
+                appendScanRow(d);
+              }
+            } catch {}
+          });
+          es.addEventListener("done", (ev) => {
+            try {
+              const d = JSON.parse(ev.data);
+              const count = (d && d.total) || files.length;
+              setScanMeta(`${count} file(s) found`);
+              setScanHeaderMeta(formatCount(count));
+            } catch {
+              setScanMeta(`${files.length} file(s) found`);
+              setScanHeaderMeta(formatCount(files.length));
+            }
+            stopScanDots();
+            es.close();
+            stopScanProgress();
+            scanController = null;
+            listBtn.disabled = false;
+            listBtn.textContent = "List";
+          });
+          es.onerror = () => {
+            es.close();
+            stopScanDots();
+            stopScanProgress();
+            scanController = null;
+            listBtn.disabled = false;
+            listBtn.textContent = "List";
+          };
+        } catch (e) {
+          showError("List error", e);
+          stopScanProgress();
+          scanController = null;
+          listBtn.disabled = false;
+          listBtn.textContent = "List";
+        }
+      });
+    }
+
+    // Import button: stream scan then prepare per-day lists
+    async function onStartScan() {
+      const fac = facilitySel.value;
+      const exp = experimentSel.value;
+      const trt = treatmentSel.value;
+      const sDate = startDate.value;
+      const eDate = endDate.value;
+      const sTime = startTime.value;
+      const eTime = endTime.value;
+      const cams = getSelectedCameras();
+      const batch = Math.max(0, Number(batchInput.value || 0));
+      if (
+        !fac ||
+        !exp ||
+        !trt ||
+        !sDate ||
+        !eDate ||
+        !sTime ||
+        !eTime ||
+        cams.length === 0
+      ) {
+        alert(
+          "Please complete selections (facility/experiment/treatment/dates/times/cameras)."
+        );
+        return;
+      }
+      importBtn.disabled = true;
+      importBtn.textContent = "Scanning…";
+      try {
+        const rb = document.getElementById('run-btn');
+        if (rb) {
+          rb.disabled = true;
+          rb.classList.remove('primary');
+          rb.title = 'Run available after scan completes';
+        }
+      } catch {}
+      try {
+        const chk = await fetch(
+          `/api/import/check_source?facility=${encodeURIComponent(fac)}`
+        );
+        if (!chk.ok) {
+          const d = await chk.json().catch(() => ({}));
+          throw new Error((d && d.error) || "Source folder not accessible");
+        }
+        ensureScanPanel();
+        startScanProgress(
+          `Import prep – scanning in ${combinedSourcePattern(fac)} …`,
+          false
+        );
+        const pattern =
+          (FACS[fac] && (FACS[fac].camera_pattern || FACS[fac].camera_glob)) ||
+          "";
+        const qs = new URLSearchParams({
+          facility: fac,
+          cameras: cams.join(","),
+          camera_pattern: pattern,
+          start_date: sDate,
+          end_date: eDate,
+          start_time: sTime,
+          end_time: eTime,
+        });
+        const es = new EventSource(
+          `/api/import/scan_full_stream?${qs.toString()}`
+        );
+        scanController = { close: () => es.close() };
+        const files = [];
+        es.addEventListener("camera", (ev) => {
+          try {
+            const d = JSON.parse(ev.data);
+            if (d && d.camera) {
+              setScanMeta(
+                `Camera cam${String(d.camera).padStart(2, "0")} — ${d.root}${
+                  d.exists ? "" : " (missing)"
+                }`
+              );
+              appendDirRow({
+                camera: d.camera,
+                path: d.root,
+                header: true,
+                exists: d.exists,
+              });
+            }
+          } catch {}
+        });
+        es.addEventListener("dir", (ev) => {
+          try {
+            const d = JSON.parse(ev.data);
+            if (d && d.path) {
+              const run = document.getElementById("scan-running-meta");
+              if (run) run.textContent = `Scanning: ${d.path}`;
+              appendDirRow(d);
+            }
+          } catch {}
+        });
+        es.addEventListener("file", (ev) => {
+          try {
+            const d = JSON.parse(ev.data);
+            if (d && d.path) {
+              files.push(d);
+              appendScanRow(d);
+            }
+          } catch {}
+        });
+        es.addEventListener("done", async () => {
+          try {
+            es.close();
+            stopScanProgress();
+            scanController = null;
+            // Update collapsed header with total files found
+            try { setScanHeaderMeta(formatCount(files.length)); } catch {}
+            ensureDaysPanel();
+            const res = await fetch("/api/import/prepare_from_manifest", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                facility: fac,
+                experiment: exp,
+                treatment: trt,
+                batch,
+                start_date: sDate,
+                end_date: eDate,
+                start_time: sTime,
+                end_time: eTime,
+                cameras: cams,
+                files,
+              }),
+            });
+            const data = await res.json();
+            if (!res.ok || !data || data.error) {
+              throw new Error((data && data.error) || res.statusText);
+            }
+            renderDaysPlan(data);
+            // Bring Day Preparation into focus
+            try {
+              const dp = document.getElementById('days-status');
+              if (dp) dp.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } catch {}
+          } catch (e) {
+            showError("Prepare error", e);
+            expandScanPanelOnError(String((e && e.message) || e || ''));
+          } finally {
+            importBtn.disabled = false;
+            importBtn.textContent = "Rescan";
+          }
+        });
+        es.onerror = () => {
+          es.close();
+          stopScanDots();
+          stopScanProgress();
+          scanController = null;
+          importBtn.disabled = false;
+          importBtn.textContent = "Rescan";
+          expandScanPanelOnError('Scan error');
+        };
+      } catch (e) {
+        showError("Scan error", e);
+        expandScanPanelOnError(String((e && e.message) || e || ''));
+        importBtn.disabled = false;
+        importBtn.textContent = "Rescan";
+      }
+    }
+    if (importBtn) importBtn.addEventListener("click", onStartScan);
+
+    // Day Preparation panel
+    function ensureDaysPanel() {
+      let panel = document.getElementById("days-status");
+      if (!panel) {
+        panel = document.createElement("div");
+        panel.id = "days-status";
+        panel.className = "panel";
+        panel.style.marginTop = "16px";
+        panel.innerHTML = `
+        <div class=\"panel-header\" style=\"display:flex; align-items:center; justify-content:space-between\">\n          <h1>Day Preparation</h1>\n          <div style=\"display:flex; gap:8px; align-items:center\">\n            <button class=\"btn mini\" id=\"show-details\">Show details</button>\n+            <button class=\"btn mini\" id=\"retry-failed\" disabled>Retry failed</button>\n            <button class=\"btn\" id=\"stop-btn\" disabled>Stop</button>\n          </div>\n        </div>
+        <div class="table-wrap">
+          <div id="encode-progress" style="display:none; margin:8px 0">
+            <div id="encode-text" class="muted">Idle</div>
+            <div class="progress"><div id="encode-bar" class="bar" style="width:0%"></div></div>
+          </div>
+          <table id="days-table" style="width:100%; border-collapse:collapse; font-size:13px">
+            <thead>
+              <tr>
+                <th style="text-align:left; padding:6px 4px">Camera</th>
+                <th style="text-align:left; padding:6px 4px">Day</th>
+                <th style="text-align:left; padding:6px 4px">Segments</th>
+                <th style="text-align:left; padding:6px 4px">Status</th>
+                <th style="text-align:left; padding:6px 4px">Path</th>
+                <th style="text-align:left; padding:6px 4px">Duration</th>
+                <th style="text-align:left; padding:6px 4px">Health</th>
+              </tr>
+            </thead>
+            <tbody id="days-body"></tbody>
+          </table>
+        </div>`;
+        const ctrl = document.querySelector(".panel .controls");
+        if (ctrl && ctrl.parentElement) {
+          ctrl.parentElement.insertAdjacentElement("afterend", panel);
+        }
+        // Run button is placed next to Scan at the top
+        const stopBtn = document.getElementById("stop-btn");
+        if (stopBtn) {
+          // Hide legacy Stop button; Run button toggles to Stop in dialog header
+          stopBtn.style.display = 'none';
+        }
+        const detailsBtn = document.getElementById("show-details");
+        if (detailsBtn) {
+          detailsBtn.addEventListener('click', () => {
+            const collapsed = isScanPanelCollapsed();
+            setScanPanelCollapsed(collapsed, true);
+            const nowCollapsed = isScanPanelCollapsed();
+            detailsBtn.textContent = nowCollapsed ? 'Show details' : 'Hide details';
+          });
+        }
+        const retryBtn = document.getElementById("retry-failed");
+        if (retryBtn) retryBtn.addEventListener('click', onRetryFailed);
+      }
+    }
+
+    // Simple status panel under the form
+    function ensureStatusPanel() {
+      let panel = document.getElementById("import-status");
+      if (!panel) {
+        panel = document.createElement("div");
+        panel.id = "import-status";
+        panel.className = "panel";
+        panel.style.marginTop = "16px";
+        panel.innerHTML = `
         <div class="panel-header"><h1>Import Status</h1></div>
         <div class="table-wrap">
           <div style="margin: 8px 0">
@@ -294,62 +855,782 @@ window.addEventListener('DOMContentLoaded', function(){
             <tbody id="status-body"></tbody>
           </table>
         </div>`;
-      document.querySelector('.panel .controls').after(panel);
-    }
-  }
-
-  function renderPlan(data){
-    const body = document.getElementById('status-body'); if (!body) return;
-    const bar = document.getElementById('overall-bar');
-    const txt = document.getElementById('overall-text');
-    let rows = '';
-    for (const cam of data.jobs){
-      for (const d of cam.days){
-        rows += `<tr>
-          <td style="padding:6px 4px">cam${String(cam.camera).padStart(2,'0')}</td>
-          <td style="padding:6px 4px">${String(d.day).padStart(2,'0')}</td>
-          <td style="padding:6px 4px">${d.segments||0}</td>
-          <td style="padding:6px 4px">${d.status||''}</td>
-        </tr>`;
+        document.querySelector(".panel .controls").after(panel);
+        try {
+          const hdr = panel.querySelector('.panel-header');
+          if (hdr) {
+            hdr.style.padding = '8px 12px';
+            hdr.style.alignItems = 'center';
+          }
+        } catch {}
       }
     }
-    body.innerHTML = rows || '<tr><td colspan="4" class="muted" style="padding:6px">No jobs.</td></tr>';
-    if (typeof data.progress === 'number' && typeof data.total === 'number' && data.total > 0){
-      const pct = Math.round(100 * data.progress / data.total);
-      bar.style.width = pct + '%';
-      txt.textContent = `Progress: ${data.progress}/${data.total}`;
+
+    // Scan results panel under the form
+    function ensureScanPanel() {
+      let panel = document.getElementById("import-scan");
+      if (!panel) {
+        panel = document.createElement("div");
+        panel.id = "import-scan";
+        panel.className = "panel";
+        panel.style.marginTop = "16px";
+        panel.innerHTML = `
+        <div class=\"panel-header\" style=\"display:flex; align-items:center; justify-content:space-between\">
+          <h1 id=\"scan-header\" style=\"cursor:pointer; margin:0; display:flex; align-items:center; gap:8px\">Available Files <span id=\"scan-header-meta\" class=\"muted\" style=\"font-size:12px\"></span></h1>
+          <div style=\"display:flex; align-items:center\"><button type=\"button\" id=\"scan-toggle-btn\" class=\"btn mini\">Show</button></div>
+        </div>
+        <div id=\"scan-content\" class=\"table-wrap\" style=\"display:none; padding:8px 12px\">
+          <div id="scan-progress" style="display:none; margin: 8px 0; align-items:center; gap:12px">
+            <div style="flex:1">
+              <div id="scan-running-meta" class="muted" style="margin-bottom:6px"></div>
+              <div class="progress"><div id="scan-bar" class="bar" style="width:0%"></div></div>
+            </div>
+            <button type="button" id="scan-cancel" class="btn" style="white-space:nowrap">Cancel</button>
+          </div>
+          <div id="scan-meta" class="muted" style="margin: 8px 0"></div>
+          <div id="scan-list" style="max-height: 320px; overflow:auto; border:1px solid var(--border); border-radius:6px"></div>
+        </div>`;
+        document.querySelector(".panel .controls").after(panel);
+        // Setup collapse/expand toggle
+        const scanToggleBtn = document.getElementById("scan-toggle-btn");
+        const scanHeader = document.getElementById("scan-header");
+        const scanContent = document.getElementById("scan-content");
+        function setScanCollapsed(collapsed) {
+          if (!scanContent || !scanToggleBtn) return;
+          scanContent.style.display = collapsed ? "none" : "block";
+          scanToggleBtn.textContent = collapsed ? "Show" : "Hide";
+          panel.dataset.collapsed = collapsed ? "1" : "0";
+        }
+        panel.setAttribute('data-collapsed', '1');
+        setScanCollapsed(true);
+        function toggleCollapsed() {
+          const isCollapsed = panel.dataset.collapsed !== '0';
+          setScanCollapsed(!isCollapsed);
+        }
+        if (scanToggleBtn) scanToggleBtn.addEventListener('click', toggleCollapsed);
+        if (scanHeader) scanHeader.addEventListener('click', toggleCollapsed);
+        const cancelBtn = document.getElementById("scan-cancel");
+        cancelBtn.addEventListener("click", () => {
+          try {
+            if (scanController && scanController.close) {
+              scanController.close();
+            }
+          } catch {}
+          // Reset shared scan state and buttons
+          scanController = null;
+          stopScanProgress();
+          setScanMeta("Scan canceled.");
+          if (typeof scanBtn !== "undefined" && scanBtn) {
+            scanBtn.disabled = false;
+            scanBtn.textContent = "Scan";
+          }
+          if (typeof listBtn !== "undefined" && listBtn) {
+            listBtn.disabled = false;
+            listBtn.textContent = "List";
+          }
+        });
+      }
+    }
+
+    function setScanMeta(text) {
+      const meta = document.getElementById("scan-meta");
+      if (meta) meta.textContent = text || "";
+    }
+
+    function setScanHeaderMeta(text) {
+      const m = document.getElementById('scan-header-meta');
+      if (m) m.textContent = text || '';
+    }
+
+    function startScanDots(base) {
+      try { stopScanDots(); } catch {}
+      scanDotsBase = (base && String(base)) || 'Scanning';
+      let i = 0;
+      setScanHeaderMeta(scanDotsBase);
+      scanDotsTimer = setInterval(() => {
+        i = (i + 1) % 4;
+        setScanHeaderMeta(scanDotsBase + '.'.repeat(i));
+      }, 400);
+    }
+
+    function stopScanDots() {
+      if (scanDotsTimer) {
+        clearInterval(scanDotsTimer);
+        scanDotsTimer = null;
+      }
+    }
+
+    function formatCount(n) {
+      try {
+        const v = Number(n || 0);
+        return `${v.toLocaleString()} file(s)`;
+      } catch {
+        return `${n} file(s)`;
+      }
+    }
+
+    function isScanPanelCollapsed() {
+      const panel = document.getElementById('import-scan');
+      if (!panel) return true;
+      return panel.dataset.collapsed !== '0';
+    }
+
+    function setScanPanelCollapsed(collapsed, scrollIntoView) {
+      try {
+        const panel = document.getElementById('import-scan');
+        const content = document.getElementById('scan-content');
+        const btn = document.getElementById('scan-toggle-btn');
+        if (panel && content && btn) {
+          const wantCollapsed = !!collapsed;
+          content.style.display = wantCollapsed ? 'none' : 'block';
+          btn.textContent = wantCollapsed ? 'Show' : 'Hide';
+          panel.dataset.collapsed = wantCollapsed ? '1' : '0';
+          if (!wantCollapsed && scrollIntoView) {
+            panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }
+      } catch {}
+    }
+
+    function startScanProgress(message, expand) {
+      const box = document.getElementById("scan-progress");
+      const bar = document.getElementById("scan-bar");
+      const running = document.getElementById("scan-running-meta");
+      try {
+        const panel = document.getElementById('import-scan');
+        const content = document.getElementById('scan-content');
+        const btn = document.getElementById('scan-toggle-btn');
+        if (panel && content && btn) {
+          const wantExpand = !!expand;
+          content.style.display = wantExpand ? 'block' : 'none';
+          btn.textContent = wantExpand ? 'Hide' : 'Show';
+          panel.dataset.collapsed = wantExpand ? '0' : '1';
+        }
+      } catch {}
+      startScanDots('Scanning');
+      if (box) {
+        box.style.display = "flex";
+      }
+      if (running) {
+        running.textContent = message || "Scanning…";
+      }
+      setScanMeta("");
+      const wrap = document.getElementById("scan-list");
+      if (wrap) {
+        wrap.innerHTML = `
+        <table id="scan-table" style="width:100%; border-collapse:collapse; font-size:13px">
+          <thead>
+            <tr>
+              <th style="text-align:left; padding:6px 4px">Camera</th>
+              <th style="text-align:left; padding:6px 4px">Day</th>
+              <th style="text-align:left; padding:6px 4px">Start</th>
+              <th style="text-align:left; padding:6px 4px">End</th>
+              <th style="text-align:left; padding:6px 4px">Filename</th>
+            </tr>
+          </thead>
+          <tbody id="scan-tbody"></tbody>
+        </table>`;
+      }
+      if (bar) {
+        let pct = 5;
+        if (scanAnimTimer) clearInterval(scanAnimTimer);
+        scanAnimTimer = setInterval(() => {
+          pct = (pct + 7) % 100;
+          bar.style.width = pct + 10 + "%";
+        }, 120);
+      }
+    }
+
+    function stopScanProgress() {
+      const box = document.getElementById("scan-progress");
+      if (box) {
+        box.style.display = "none";
+      }
+      stopScanDots();
+      setScanHeaderMeta('');
+      if (scanAnimTimer) {
+        clearInterval(scanAnimTimer);
+        scanAnimTimer = null;
+      }
+      const bar = document.getElementById("scan-bar");
+      if (bar) {
+        bar.style.width = "0%";
+      }
+    }
+
+    function expandScanPanelOnError(message) {
+      try {
+        const panel = document.getElementById('import-scan');
+        const content = document.getElementById('scan-content');
+        const btn = document.getElementById('scan-toggle-btn');
+        const meta = document.getElementById('scan-meta');
+        if (panel && content && btn) {
+          content.style.display = 'block';
+          btn.textContent = 'Hide';
+          panel.dataset.collapsed = '0';
+        }
+        setScanHeaderMeta('Error');
+        if (meta && message) meta.textContent = message;
+      } catch {}
+    }
+
+    function renderScanResults(data) {
+      const wrap = document.getElementById("scan-list");
+      if (!wrap) return;
+      const meta = document.getElementById("scan-meta");
+      const files = Array.isArray(data.files) ? data.files : [];
+      const pt = data.path_time_regex
+        ? `, regex "${data.path_time_regex}"`
+        : "";
+      meta.textContent = `${data.total || 0} file(s) from ${
+        data.source_dir || ""
+      } using pattern "${data.camera_pattern || ""}"${pt}`;
+      if (!files.length) {
+        wrap.innerHTML =
+          '<div class="muted" style="padding:8px">No files found.</div>';
+        return;
+      }
+      const rows = files
+        .map((f) => {
+          const camStr =
+            f.camera != null ? `cam${String(f.camera).padStart(2, "0")}` : "—";
+          const mg =
+            typeof f.match_pattern === "boolean" ? f.match_pattern : true;
+          const mr = !!f.match_regex;
+          const globBadge = `<span style=\"margin-left:8px; padding:2px 6px; border-radius:10px; font-size:11px; ${
+            mg
+              ? "background:var(--accent);color:#fff"
+              : "background:#eee;color:#666"
+          }\">pattern${mg ? "✓" : "×"}</span>`;
+          const regexBadge = `<span style=\"margin-left:6px; padding:2px 6px; border-radius:10px; font-size:11px; ${
+            mr
+              ? "background:var(--accent);color:#fff"
+              : "background:#eee;color:#666"
+          }\">regex${mr ? "✓" : "×"}</span>`;
+          return `<div style=\"padding:6px 8px; border-bottom:1px solid var(--border); white-space:nowrap; overflow:hidden; text-overflow:ellipsis\">\n        <span class=\"muted\" style=\"margin-right:8px\">${camStr}</span>${f.path}${globBadge}${regexBadge}\n      </div>`;
+        })
+        .join("");
+      wrap.innerHTML = rows;
+    }
+
+    function appendScanRow(f) {
+      const tbody = document.getElementById("scan-tbody");
+      if (!tbody) return;
+      const camStr =
+        f.camera != null ? `cam${String(f.camera).padStart(2, "0")}` : "—";
+      const dayStr =
+        f.in_range && typeof f.day === "number" && f.day > 0
+          ? `d${String(f.day).padStart(2, "0")}`
+          : "";
+      const startStr = f.start_hms || "";
+      const endStr = f.in_range ? f.end_hms || "" : "";
+      const tr = document.createElement("tr");
+      if (f.in_range) {
+        tr.style.color = "#2e7d32";
+        tr.style.fontWeight = "600";
+      }
+      tr.innerHTML = `
+      <td style="padding:6px 4px">${camStr}</td>
+      <td style="padding:6px 4px">${dayStr}</td>
+      <td style="padding:6px 4px">${startStr}</td>
+      <td style="padding:6px 4px">${endStr}</td>
+      <td style="padding:6px 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${f.path}</td>`;
+      tbody.appendChild(tr);
+    }
+
+    function renderPlan(data) {
+      const body = document.getElementById("status-body");
+      if (!body) return;
+      const bar = document.getElementById("overall-bar");
+      const txt = document.getElementById("overall-text");
+      let rows = "";
+      for (const cam of data.jobs) {
+        for (const d of cam.days) {
+          rows += `<tr>
+          <td style="padding:6px 4px">cam${String(cam.camera).padStart(
+            2,
+            "0"
+          )}</td>
+          <td style="padding:6px 4px">${String(d.day).padStart(2, "0")}</td>
+          <td style="padding:6px 4px">${d.segments || 0}</td>
+          <td style="padding:6px 4px">${d.status || ""}</td>
+        </tr>`;
+        }
+      }
+      body.innerHTML =
+        rows ||
+        '<tr><td colspan="4" class="muted" style="padding:6px">No jobs.</td></tr>';
+      if (
+        typeof data.progress === "number" &&
+        typeof data.total === "number" &&
+        data.total > 0
+      ) {
+        const pct = Math.round((100 * data.progress) / data.total);
+        bar.style.width = pct + "%";
+        txt.textContent = `Progress: ${data.progress}/${data.total}`;
+      }
+    }
+
+    async function pollStatus(jobId) {
+      const url = `/api/import/status?job=${encodeURIComponent(jobId)}`;
+      const timer = setInterval(async () => {
+        try {
+          const r = await fetch(url);
+          const s = await r.json();
+          if (!r.ok || !s || s.error) {
+            throw new Error((s && s.error) || r.statusText);
+          }
+          const merged = Object.assign({}, s.plan, {
+            progress: s.progress,
+            total: s.total,
+          });
+          renderPlan(merged);
+          if (s.status === "DONE") {
+            clearInterval(timer);
+          }
+        } catch (e) {
+          clearInterval(timer);
+        }
+      }, 2000);
+    }
+
+    // Initialize
+    populateFacilities();
+    initFromUrl();
+    validate();
+    if (runTopBtn) runTopBtn.addEventListener('click', () => {
+      const rb = document.getElementById('run-btn');
+      if (rb && rb.dataset && rb.dataset.running === '1') {
+        onStopEncode();
+      } else {
+        onRunEncode();
+      }
+    });
+
+    // Modal open/close
+    const openImport = document.getElementById('open-import');
+    const modal = document.getElementById('import-modal');
+    const modalBody = document.getElementById('import-modal-body');
+    const modalClose = document.getElementById('import-close');
+    function openImportDialog() {
+      try {
+        ensureScanPanel();
+        ensureDaysPanel();
+        const scanPanel = document.getElementById('import-scan');
+        const daysPanel = document.getElementById('days-status');
+        if (scanPanel && modalBody && scanPanel.parentElement !== modalBody) {
+          modalBody.appendChild(scanPanel);
+        }
+        if (daysPanel && modalBody && daysPanel.parentElement !== modalBody) {
+          modalBody.appendChild(daysPanel);
+        }
+        modal.style.display = 'flex';
+        // Add Escape-to-close
+        try {
+          document.addEventListener('keydown', onImportKeydown);
+        } catch {}
+        // auto-start scan if valid
+        const canScan = !importBtn.disabled;
+        if (canScan) {
+          onStartScan();
+        }
+      } catch (e) {
+        try { showError('Open import dialog error', e); } catch {}
+      }
+    }
+    function closeImportDialog() {
+      if (modal) modal.style.display = 'none';
+      try { document.removeEventListener('keydown', onImportKeydown); } catch {}
+    }
+    if (openImport) openImport.addEventListener('click', openImportDialog);
+    if (modalClose) modalClose.addEventListener('click', closeImportDialog);
+    // click outside panel closes dialog
+    if (modal) {
+      modal.addEventListener('click', (e) => {
+        try {
+          if (e.target === modal) closeImportDialog();
+        } catch {}
+      });
+    }
+
+    function onImportKeydown(e) {
+      try {
+        if (!modal || modal.style.display === 'none') return;
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          closeImportDialog();
+        }
+      } catch {}
+    }
+
+    async function refreshBatch() {
+      const exp = experimentSel.value;
+      const trt = treatmentSel.value;
+      if (!exp || !trt) {
+        batchInput.value = "1";
+        return;
+      }
+      try {
+        const r = await fetch(
+          `/api/import/next_batch?experiment=${encodeURIComponent(
+            exp
+          )}&treatment=${encodeURIComponent(trt)}`
+        );
+        const d = await r.json();
+        if (r.ok && d && d.ok) {
+          batchInput.value = d.next_batch;
+        } else {
+          batchInput.value = "1";
+        }
+      } catch {
+        batchInput.value = "1";
+      }
+      updateUrl();
+    }
+
+    let encodeJobId = null;
+    let encodeTimer = null;
+    let currentRunPlan = null;
+    async function onRunEncode() {
+      const fac = facilitySel.value;
+      const exp = experimentSel.value;
+      const trt = treatmentSel.value;
+      const batch = Math.max(0, Number(batchInput.value || 0));
+      const plan = currentRunPlan || (window.__DAYS_PLAN__ || []);
+      const runBtn = document.getElementById("run-btn");
+      if (runBtn) {
+        runBtn.disabled = true;
+        runBtn.textContent = "Running…";
+      }
+      try {
+        const progBox = document.getElementById("encode-progress");
+        const progBar = document.getElementById("encode-bar");
+        const progTxt = document.getElementById("encode-text");
+        // Hide overall progress; we'll reflect progress in-row instead
+        if (progBox) progBox.style.display = "none";
+        if (progBar) progBar.style.width = "0%";
+        if (progTxt) progTxt.textContent = "";
+        const res = await fetch("/api/import/encode_days", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            facility: fac,
+            experiment: exp,
+            treatment: trt,
+            batch,
+            plan,
+            start_date: startDate.value || '',
+            end_date: endDate.value || '',
+            start_time: startTime.value || '',
+            end_time: endTime.value || '',
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data || data.error) {
+          throw new Error((data && data.error) || res.statusText);
+        }
+        // If server returned a background job id, poll status.
+        if (data.job_id) {
+          encodeJobId = data.job_id;
+          try { window.__ENCODE_JOB_ID__ = encodeJobId; } catch {}
+          const rb = document.getElementById("run-btn");
+          if (rb) {
+            rb.disabled = false;
+            rb.textContent = 'Stop';
+            rb.style.background = '#b71c1c';
+            rb.style.color = '#fff';
+            rb.title = 'Cancel encoding';
+            rb.dataset.running = '1';
+          }
+          // Optimistically flag first runnable item as RUNNING
+          try {
+            const planArr = Array.isArray(window.__DAYS_PLAN__) ? window.__DAYS_PLAN__ : [];
+            let marked = false;
+            for (const cam of planArr) {
+              const days = Array.isArray(cam.days) ? cam.days : [];
+              for (const d of days) {
+                const st = String(d.status || '').toUpperCase();
+                const segs = typeof d.segments === 'number' ? d.segments : (st === 'MISSING' ? 0 : 1);
+                if (segs > 0 && st !== 'DONE' && st !== 'FAIL' && st !== 'FAILED') {
+                  d.status = 'RUNNING';
+                  marked = true;
+                  break;
+                }
+              }
+              if (marked) break;
+            }
+            if (marked) renderDaysPlan({ plan: planArr, status: 'RUNNING' });
+          } catch {}
+          pollEncode();
+        } else {
+          // Fallback: render immediate plan (sync encode flow)
+          if (data && data.plan) {
+            try {
+              renderDaysPlan(data);
+            } catch (e) {
+              // no-op; UI error surface elsewhere
+            }
+          }
+          if (runBtn) {
+            runBtn.disabled = false;
+            runBtn.textContent = "Run";
+          }
+        }
+      } catch (e) {
+        showError("Run error", e);
+        if (runBtn) {
+          runBtn.disabled = false;
+          runBtn.textContent = "Run";
+        }
+        if (runBtn) runBtn.title = String((e && e.message) || 'Error');
+      }
+    }
+
+    async function pollEncode() {
+      if (!encodeJobId) return;
+      const runBtn = document.getElementById("run-btn");
+      encodeTimer = setInterval(async () => {
+        try {
+          const r = await fetch(
+            `/api/import/encode_status?job=${encodeURIComponent(encodeJobId)}`
+          );
+          const s = await r.json();
+          if (!r.ok || !s || s.error) {
+            throw new Error((s && s.error) || r.statusText);
+          }
+          if (s && s.plan) {
+            renderDaysPlan(s);
+          }
+          if (s.status === "DONE" || s.status === "CANCELLED") {
+            clearInterval(encodeTimer);
+            if (runBtn) {
+              runBtn.disabled = false;
+              runBtn.textContent = "Run";
+              runBtn.style.background = '';
+              runBtn.style.color = '';
+              runBtn.dataset.running = '0';
+              runBtn.title = '';
+            }
+            currentRunPlan = null;
+            try { window.__ENCODE_JOB_ID__ = null; } catch {}
+          }
+        } catch (err) {
+          clearInterval(encodeTimer);
+          if (runBtn) {
+            runBtn.disabled = false;
+            runBtn.textContent = "Run";
+            runBtn.style.background = '';
+            runBtn.style.color = '';
+            runBtn.dataset.running = '0';
+            runBtn.title = '';
+          }
+          try { window.__ENCODE_JOB_ID__ = null; } catch {}
+        }
+      }, 2000);
+    }
+
+    async function onStopEncode() {
+      if (!encodeJobId) return;
+      const rb = document.getElementById('run-btn');
+      if (rb) {
+        rb.disabled = true;
+        rb.textContent = 'Stopping…';
+        rb.style.background = '#b71c1c';
+        rb.style.color = '#fff';
+      }
+      try {
+        const r = await fetch(`/api/import/encode_cancel?job=${encodeURIComponent(encodeJobId)}`, { method: 'POST' });
+        const s = await r.json();
+        if (!r.ok || !s || s.error) throw new Error((s && s.error) || r.statusText);
+      } catch (e) {
+        showError('Cancel error', e);
+        if (rb) {
+          rb.disabled = false;
+          rb.textContent = 'Stop';
+          rb.style.background = '#b71c1c';
+          rb.style.color = '#fff';
+          rb.title = 'Cancel encoding';
+        }
+      }
+    }
+
+    function buildRetryPlan() {
+      const base = Array.isArray(window.__DAYS_PLAN__) ? window.__DAYS_PLAN__ : [];
+      const out = [];
+      for (const cam of base) {
+        const days = Array.isArray(cam.days) ? cam.days : [];
+        const retryDays = [];
+        for (const d of days) {
+          const st = String(d.status || '').toUpperCase();
+          if (st === 'FAILED') {
+            const lp = d.list_path || d.list_path;
+            const segs = typeof d.segments === 'number' ? d.segments : 0;
+            retryDays.push({ day: d.day, status: 'PENDING', segments: segs, list_path: lp });
+          }
+        }
+        if (retryDays.length) out.push({ camera: cam.camera, days: retryDays });
+      }
+      return out;
+    }
+
+    async function onRetryFailed() {
+      try {
+        const sub = buildRetryPlan();
+        if (!sub.length) return;
+        currentRunPlan = sub;
+        await onRunEncode();
+      } catch {}
+    }
+
+    //
+  });
+
+  // Renders the Day Preparation plan into the table and updates controls
+  function renderDaysPlan(data) {
+    try {
+      // Ensure the panel exists
+      (function ensure() {
+        if (!document.getElementById("days-status")) {
+          if (typeof ensureDaysPanel === "function") ensureDaysPanel();
+        }
+      })();
+      const body = document.getElementById("days-body");
+      const runBtn = document.getElementById("run-btn");
+      if (!body) return;
+      const plan = Array.isArray(data && data.plan) ? data.plan : [];
+      window.__DAYS_PLAN__ = plan;
+
+      let rows = "";
+      let anyWait = false;
+      for (const cam of plan) {
+        const camStr = cam && cam.camera != null ? `cam${String(cam.camera).padStart(2, "0")}` : "cam??";
+        const days = Array.isArray(cam && cam.days) ? cam.days : [];
+        for (const d of days) {
+          const dayStr = d && d.day != null ? String(d.day).padStart(2, "0") : "??";
+          const statusRaw = String((d && d.status) || "");
+          const status = statusRaw.toUpperCase();
+          const segs = typeof d.segments === "number" ? d.segments : (status === "MISSING" ? 0 : 1);
+          if (status === "WAITING" || status === "PLANNED" || status === "PENDING") anyWait = anyWait || segs > 0;
+          // Status with color badges
+          let statusHtml = status;
+          if (status === 'RUNNING') {
+            statusHtml = `<span style=\"background:#fff3cd;color:#8a6d3b;padding:2px 6px;border-radius:10px;font-weight:600\">RUNNING</span>`;
+          } else if (status === 'DONE') {
+            statusHtml = `<span style=\"background:#e6f4ea;color:#2e7d32;padding:2px 6px;border-radius:10px;font-weight:600\">DONE</span>`;
+          } else if (status === 'FAIL' || status === 'FAILED') {
+            statusHtml = `<span style=\"background:#ffebee;color:#b71c1c;padding:2px 6px;border-radius:10px;font-weight:600\">FAILED</span>`;
+          } else if (status === 'CANCELLED') {
+            statusHtml = `<span style=\"background:#eee;color:#555;padding:2px 6px;border-radius:10px;font-weight:600\">CANCELLED</span>`;
+          } else if (status === 'MISSING' || status === 'WAITING' || status === 'PLANNED' || status === 'PENDING') {
+            statusHtml = `<span style=\"background:#eee;color:#666;padding:2px 6px;border-radius:10px;font-weight:600\">${status}</span>`;
+          }
+          // Duration cell
+          let durTxt = "";
+          const toHMS = (secs) => {
+            if (typeof secs !== 'number' || !isFinite(secs) || secs <= 0) return '';
+            const s = Math.floor(secs);
+            const h = Math.floor(s / 3600);
+            const m = Math.floor((s % 3600) / 60);
+            const sec = s % 60;
+            const pad = (n) => String(n).padStart(2, '0');
+            return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
+          };
+          if (d && d.duration != null) {
+            durTxt = toHMS(Number(d.duration));
+          } else if (d && d.health && typeof d.health.actual === 'number') {
+            durTxt = toHMS(Number(d.health.actual));
+          }
+
+          let healthTxt = "";
+          if (d && d.health && typeof d.health === "object") {
+            const ok = !!d.health.ok;
+            healthTxt = ok
+              ? `<span style=\"background:#e6f4ea;color:#2e7d32;padding:2px 6px;border-radius:10px;font-weight:600\">GOOD</span>`
+              : `<span style=\"background:#ffebee;color:#b71c1c;padding:2px 6px;border-radius:10px;font-weight:600\">POOR</span>`;
+          }
+          const path = (d && (d.output || d.list_path)) || "";
+          rows += `<tr>
+            <td style="padding:6px 4px">${camStr}</td>
+            <td style="padding:6px 4px">${dayStr}</td>
+            <td style="padding:6px 4px">${segs}</td>
+            <td style="padding:6px 4px">${statusHtml}</td>
+            <td style="padding:6px 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${path}</td>
+            <td style="padding:6px 4px">${durTxt}</td>
+            <td style="padding:6px 4px">${healthTxt}</td>
+          </tr>`;
+        }
+      }
+      body.innerHTML = rows || '<tr><td colspan="6" class="muted" style="padding:6px">No days.</td></tr>';
+
+      // No separate overall progress UI; status is reflected per row
+
+      // Enable/disable Run + Retry buttons
+      if (runBtn) {
+        const st = String(data && data.status || "").toUpperCase();
+        const jobId = (typeof window !== 'undefined' && window.__ENCODE_JOB_ID__) ? window.__ENCODE_JOB_ID__ : null;
+        if (st === "RUNNING" || st === "QUEUED") {
+          // If a job is active, allow stopping via the Run button
+          if (jobId) {
+            runBtn.disabled = false;
+            runBtn.textContent = 'Stop';
+            runBtn.style.background = '#b71c1c';
+            runBtn.style.color = '#fff';
+            runBtn.dataset.running = '1';
+            runBtn.classList.remove('primary');
+            runBtn.title = 'Cancel encoding';
+          } else {
+            runBtn.disabled = true;
+            runBtn.textContent = st === 'RUNNING' ? 'Running…' : 'Queued…';
+            runBtn.classList.remove('primary');
+            runBtn.title = 'Encoding in progress';
+          }
+        } else {
+          runBtn.disabled = !anyWait;
+          runBtn.textContent = 'Run';
+          runBtn.style.background = '';
+          runBtn.style.color = '';
+          runBtn.dataset.running = '0';
+          if (!anyWait) {
+            runBtn.classList.remove('primary');
+            runBtn.title = 'No runnable days (pending segments)';
+          } else {
+            runBtn.classList.add('primary');
+            runBtn.title = '';
+          }
+        }
+      }
+      const retryBtn = document.getElementById('retry-failed');
+      if (retryBtn) {
+        let hasFailed = false;
+        for (const cam of plan) {
+          const days = Array.isArray(cam.days) ? cam.days : [];
+          for (const d of days) {
+            const st = String(d.status || '').toUpperCase();
+            if (st === 'FAILED') { hasFailed = true; break; }
+          }
+          if (hasFailed) break;
+        }
+        retryBtn.disabled = !hasFailed;
+      }
+    } catch (err) {
+      try { showError("Render plan error", err); } catch {}
     }
   }
 
-  async function pollStatus(jobId){
-    const url = `/api/import/status?job=${encodeURIComponent(jobId)}`;
-    const timer = setInterval(async () => {
-      try{
-        const r = await fetch(url); const s = await r.json();
-        if (!r.ok || !s || s.error){ throw new Error(s && s.error || r.statusText); }
-        const merged = Object.assign({}, s.plan, { progress: s.progress, total: s.total });
-        renderPlan(merged);
-        if (s.status === 'DONE'){ clearInterval(timer); }
-      } catch(e){ clearInterval(timer); }
-    }, 2000);
+  function appendDirRow(d) {
+    const wrap = document.getElementById("scan-list");
+    if (!wrap) return;
+    const camStr =
+      d.camera != null ? `cam${String(d.camera).padStart(2, "0")}` : "—";
+    const row = document.createElement("div");
+    row.style.cssText =
+      "padding:6px 8px; border-bottom:1px dashed var(--border); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color: var(--muted-fg)";
+    const missing =
+      d.exists === false ? ' <span style="color:#c00">(missing)</span>' : "";
+    row.innerHTML = `<span class="muted" style="margin-right:8px">${camStr}</span>${
+      d.path || d.root || ""
+    }${missing}`;
+    wrap.appendChild(row);
   }
-
-  // Initialize
-  populateFacilities();
-  validate();
-
-  async function refreshBatch(){
-    const exp = experimentSel.value; const trt = treatmentSel.value;
-    if (!exp || !trt){ batchInput.value = '1'; return; }
-    try{
-      const r = await fetch(`/api/import/next_batch?experiment=${encodeURIComponent(exp)}&treatment=${encodeURIComponent(trt)}`);
-      const d = await r.json();
-      if (r.ok && d && d.ok){ batchInput.value = d.next_batch; }
-      else { batchInput.value = '1'; }
-    } catch { batchInput.value = '1'; }
-  }
-
-  //
-});
 </script>
 {% endblock %}

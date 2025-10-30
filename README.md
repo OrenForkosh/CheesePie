@@ -120,3 +120,30 @@ Common issues:
 - Preproc saves sidecars next to the video: `.preproc.json`, `.arena.json`, `.background.png`.
 - Regions defaults (including cells) and Preproc defaults (grid, cm, background params) are stored in `config.json` under your Facility → Setup entries.
 - The Preproc “Save…” drawer lets you persist the current settings back into `config.json` as a Setup.
+
+## Modular App Structure
+
+The app is split into small, focused modules and blueprints to keep files manageable:
+
+- App factory: `cheesepie.create_app()` wires everything together and registers template filters.
+- Blueprints (URLs unchanged):
+  - `cheesepie/pages.py` → `/`, `/browser`, `/preproc`, `/annotator`, `/importer`, `/settings`
+  - `cheesepie/browser.py` → `/api/list`, `/api/fileinfo`
+  - `cheesepie/media.py` → `/api/media_meta`, `/media`
+  - `cheesepie/preproc.py` → `/api/preproc/*`
+  - `cheesepie/matlab.py` → `/api/matlab/*`
+  - `cheesepie/importer.py` → `/api/import/*`
+  - `cheesepie/annotations.py` → `/api/annotations`
+- Config and helpers: `cheesepie/config.py` (loads `config.json`, exposes `cfg_*` helpers, and injects a safe `public_config` into templates).
+- Template filters: `cheesepie/filters.py` (`filesize`, `fmt_time`).
+- Entry point: `app.py` is a tiny runner that calls `create_app()`.
+
+Adding a new endpoint
+
+- Create a `cheesepie/<area>.py` with a `Blueprint` and route(s), then register it in `cheesepie/__init__.py` (or reuse an existing blueprint when appropriate). Prefer grouping by feature (e.g., new importer utilities under `importer.py`).
+- Keep route handlers small and pure; push validation and filesystem logic into local helper functions for reuse and testability.
+
+Notes
+
+- You can override runtime config via `CHEESEPIE_CONFIG=/path/to/config.json`.
+- Keep `matlab.whitelist` and `matlab.paths` tightly scoped; avoid broadening without review.
