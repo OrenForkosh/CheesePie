@@ -7,7 +7,7 @@
     <script>
       (function(){
         try {
-          var t = localStorage.getItem('cheesepie.theme') || 'mouse';
+          var t = localStorage.getItem('cheesepie.theme') || 'dark';
           document.documentElement.setAttribute('data-theme', t);
         } catch (e) { /* ignore */ }
       })();
@@ -23,38 +23,20 @@
         <div class="logo">🧀</div>
         <div class="title">CheesePie</div>
       </div>
-      <div class="header-right">
-        <nav class="tabs">
-          <a class="tab tab-browser {{ 'active' if active_tab == 'browser' else '' }}" href="/browser">Browser</a>
-          <a class="tab tab-preproc {{ 'active' if active_tab == 'preproc' else '' }}" href="/preproc">Preproc</a>
-          <a class="tab tab-annotator {{ 'active' if active_tab == 'annotator' else '' }}" href="/annotator">Annotator</a>
-          <a class="tab tab-importer {{ 'active' if active_tab == 'importer' else '' }}" href="/importer">Importer</a>
-          <a class="tab tab-settings {{ 'active' if active_tab == 'settings' else '' }}" href="/settings">Settings</a>
-        </nav>
-      </div>
+      <nav class="tabs">
+        <a class="tab tab-browser {{ 'active' if active_tab == 'browser' else '' }}" href="/browser">Browser</a>
+        <a class="tab tab-preproc {{ 'active' if active_tab == 'preproc' else '' }}" href="/preproc">Preproc</a>
+        <a class="tab tab-annotator {{ 'active' if active_tab == 'annotator' else '' }}" href="/annotator">Annotator</a>
+        <a class="tab tab-importer {{ 'active' if active_tab == 'importer' else '' }}" href="/importer">Importer</a>
+        <a class="tab tab-settings {{ 'active' if active_tab == 'settings' else '' }}" href="/settings">Settings</a>
+      </nav>
     </header>
 
     <main class="container">
       {% block content %}{% endblock %}
     </main>
 
-<<<<<<< Updated upstream
-    
-
-    <div class="bottom-banner" role="status" aria-live="polite">
-      <div class="bb-content">
-        <div class="bb-left">
-          <span class="muted">Status</span>
-        </div>
-        <div class="bb-right" title="MATLAB status">
-          <span class="bb-label muted">MATLAB</span>
-          <span id="ml-dot" class="ml-dot ml-unknown" aria-label="MATLAB: Unknown" title="MATLAB: Unknown"></span>
-        </div>
-      </div>
-    </div>
-=======
     <footer class="footer muted"></footer>
->>>>>>> Stashed changes
 
     <script>
       window.CHEESEPIE = {{ public_config|tojson }};
