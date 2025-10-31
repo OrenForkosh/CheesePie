@@ -449,15 +449,27 @@
     }
   }
 
-  loadBtn?.addEventListener('click', () => {
-    const dir = (dirInput?.value || '').trim();
-    if (!dir){
+  function setDirAndLoad(dir){
+    const d = (dir || '').trim();
+    if (!d){
       listEl.innerHTML = '<div class="placeholder muted">Please enter a valid folder path.</div>';
       return;
     }
-    currentDir = dir;
+    currentDir = d;
     try { localStorage.setItem(LS_KEY, currentDir); } catch {}
     loadList();
+  }
+
+  loadBtn?.addEventListener('click', () => {
+    setDirAndLoad(dirInput?.value || '');
+  });
+
+  // Pressing Enter in the Folder path field triggers Load
+  dirInput?.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter'){
+      ev.preventDefault();
+      setDirAndLoad(dirInput.value || '');
+    }
   });
 
   searchInput?.addEventListener('input', debounce(loadList, 150));
@@ -579,4 +591,45 @@
       setTimeout(scheduleMatlabPoll,  mlDot && (mlDot.classList.contains('ml-starting') || mlDot.classList.contains('ml-unknown')) ? 3000 : 15000);
     });
   })();
+})();
+
+// Bootstrap Preproc video controls defensively in case template script fails
+(function(){
+  try{
+    const v = document.getElementById('pp-video');
+    const playBtn = document.getElementById('pp-play');
+    const seek = document.getElementById('pp-seek');
+    const timeLbl = document.getElementById('pp-time');
+    if (!v || !playBtn || !seek || !timeLbl) return;
+    const fmt = (sec) => {
+      if (!isFinite(sec)) return '00:00';
+      const h = Math.floor(sec/3600);
+      const m = Math.floor((sec%3600)/60);
+      const s = Math.floor(sec%60);
+      const pad2 = (n)=>String(n).padStart(2,'0');
+      return h ? `${h}:${pad2(m)}:${pad2(s)}` : `${pad2(m)}:${pad2(s)}`;
+    };
+    const updateTime = () => {
+      const cur = Number(v.currentTime||0);
+      const dur = Number(v.duration||0);
+      timeLbl.textContent = `${fmt(cur)} / ${fmt(dur)}`;
+      if (!seek.dragging) seek.value = String(cur);
+    };
+    const updateMax = () => { try{ seek.max = String(Math.max(0, Number(v.duration||0))); updateTime(); } catch{} };
+    const updatePlayUI = () => {
+      const paused = !!v.paused;
+      playBtn.textContent = paused ? '▶' : '⏸';
+      playBtn.title = paused ? 'Play' : 'Pause';
+      playBtn.setAttribute('aria-label', paused ? 'Play' : 'Pause');
+    };
+    v.addEventListener('loadedmetadata', updateMax);
+    v.addEventListener('durationchange', updateMax);
+    v.addEventListener('timeupdate', updateTime);
+    v.addEventListener('play', updatePlayUI);
+    v.addEventListener('pause', updatePlayUI);
+    playBtn.addEventListener('click', () => { try{ v.paused ? v.play() : v.pause(); } catch{} });
+    seek.addEventListener('input', () => { seek.dragging = true; try{ v.currentTime = Number(seek.value||0); } catch{} });
+    seek.addEventListener('change', () => { seek.dragging = false; });
+    if (v.readyState >= 1) { updateMax(); updatePlayUI(); }
+  } catch{}
 })();

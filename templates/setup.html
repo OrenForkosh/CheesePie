@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CheesePie – Set Password</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <main class="container" style="max-width:520px; margin-top:64px;">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h1>Set Password</h1>
+            <p class="muted">Create a password for this app.</p>
+          </div>
+        </div>
+        <div class="panel-body">
+          {% if error %}
+          <div class="alert error" role="alert">{{ error }}</div>
+          {% endif %}
+          <form method="post" class="form">
+            <div class="control-group">
+              <label for="password">New password</label>
+              <input id="password" name="password" type="password" required autofocus>
+            </div>
+            <div class="control-group">
+              <label for="confirm">Confirm password</label>
+              <input id="confirm" name="confirm" type="password" required>
+            </div>
+            <div class="control-group" style="margin-top:6px;">
+              <button class="btn primary" type="submit">Save</button>
+            </div>
+          </form>
+        </div>
+      </section>
+    </main>
+  </body>
+  </html>
+

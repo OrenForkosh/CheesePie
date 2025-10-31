@@ -185,6 +185,7 @@ body{
 :root[data-theme="light"] .panel{ background:var(--panel); }
 .panel.center{display:flex; align-items:center; justify-content:center; min-height:50vh}
 .panel-header{display:flex; align-items:flex-end; justify-content:space-between; padding:18px 18px 0}
+.panel-body{ padding:18px }
 
 /* MATLAB header indicator */
 .ml-ind{display:flex; align-items:center}
@@ -208,6 +209,11 @@ body{
 .bb-label{ font-size:12px }
 .panel h1{margin:0; font-size:18px}
 .muted{color:var(--muted)}
+
+/* Simple forms and alerts */
+.form .control-group{ margin-bottom:12px }
+.alert{ padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:#141a2b; }
+.alert.error{ border-color:#5d2630; background:#2a131a; color:#ffb3bd }
 
 .controls{display:grid; grid-template-columns:1fr 1fr; gap:18px; padding:18px}
 .control-group label{display:block; margin:0 0 6px; color:var(--muted); font-size:12px; letter-spacing:0.3px}

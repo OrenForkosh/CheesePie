@@ -180,3 +180,5 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 *.mp4
+# Local auth file (password hash)
+.cheesepie_auth.json

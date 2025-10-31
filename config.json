@@ -1,120 +1,352 @@
 {
   "annotator": {
-    "default_animals": ["R", "G", "B", "Y"],
-    "default_fps": 30,
     "autosave": false,
+    "default_animals": [
+      "R",
+      "G",
+      "B",
+      "Y"
+    ],
+    "default_fps": 30,
     "default_types": [
-      {"name": "Grooming", "key": "g", "mode": "single", "color": "#4f8cff"},
-      {"name": "Chasing", "key": "c", "mode": "agonistic", "color": "#ff6b6b"},
-      {"name": "Sniffing", "key": "s", "mode": "single", "color": "#ffd166"}
+      {
+        "color": "#4f8cff",
+        "key": "g",
+        "mode": "single",
+        "name": "Grooming"
+      },
+      {
+        "color": "#ff6b6b",
+        "key": "c",
+        "mode": "agonistic",
+        "name": "Chasing"
+      },
+      {
+        "color": "#ffd166",
+        "key": "s",
+        "mode": "single",
+        "name": "Sniffing"
+      }
     ],
     "keyboard": {
-      "frame_step_keys": {"prev": "[", "next": "]"},
-      "jump_seconds": {"left": 300, "right": 300, "shift": 60, "alt": 10}
+      "frame_step_keys": {
+        "next": "]",
+        "prev": "["
+      },
+      "jump_seconds": {
+        "alt": 10,
+        "left": 300,
+        "right": 300,
+        "shift": 60
+      }
     }
   },
   "browser": {
     "preview_thumbnails": 8,
-    "visible_extensions": [".mp4", ".avi"]
-  },
-  "importer": {
-    "working_dir": "./working",
-    "source_extensions": [".mp4", ".mkv", ".avi"],
-    "ignore_dir_regex": "^@"
+    "visible_extensions": [
+      ".mp4",
+      ".avi"
+    ]
   },
   "facilities": {
-    "mouse": {
-      "source_dir": "/Volumes/surveillance/", 
-      "camera_list": [1,2,3,4,5,6,7,8],
-      "camera_pattern": "CHEESE{cam:02d}",
-        "output_dir": "/tmp/cheesepie-out",
-        "ignore_dir_regex": "^@",
-        "max_file_duration": "4:00",
-        "path_time_regex": "(?P<year>\\d{4})(?P<month>\\d{2})(?P<day>\\d{2}).*?-(?P<hour>\\d{2})(?P<minute>\\d{2})(?P<second>\\d{2})",
-        "roi_sets": [
-          {
-            "name": "Default",
-            "preproc": {
-              "arena_width_cm": 40,
-              "arena_height_cm": 30,
-              "grid_cols": 6,
-              "grid_rows": 4,
-              "bg_frames": 25,
-              "bg_quantile": 50
-            },
-            "items": [
-              {"name": "Feeder1",   "enabled": true,  "sheltered": false, "cells": [[3,0]]},
-              {"name": "Feeder2",   "enabled": true,  "sheltered": false, "cells": [[3,5]]},
-              {"name": "Water1",    "enabled": true,  "sheltered": false, "cells": [[2,0]]},
-              {"name": "Water2",    "enabled": true,  "sheltered": false, "cells": [[2,5]]},
-              {"name": "SmallNest", "enabled": true,  "sheltered": true,  "cells": [[0,0],[0,1]]},
-              {"name": "Labyrinth", "enabled": true,  "sheltered": false, "cells": [[1,2]]},
-              {"name": "BigNest",   "enabled": true,  "sheltered": true,  "cells": [[0,4],[0,5]]},
-              {"name": "(BigNest)", "enabled": false, "sheltered": true,  "cells": []},
-              {"name": "Block",     "enabled": true,  "sheltered": false, "cells": [[2,2]]},
-              {"name": "Ramp1",     "enabled": true,  "sheltered": false, "cells": [[1,0]]},
-              {"name": "Ramp2",     "enabled": true,  "sheltered": false, "cells": [[1,5]]}
-            ]
-          }
-        ],
-        "experiments": {
-          "THREE_CHAMBERS": [
-            {"name": "wt", "start_time": "20:00", "end_time": "08:00"},
-            {"name": "pilot", "start_time": "09:00", "end_time": "17:00"},
-            {"name": "overnight", "start_time": "20:00", "end_time": "08:00"}
-          ],
-          "FEMALES_IDS": [
-            {"name": "wt", "start_time": "20:00", "end_time": "08:00"},
-            "overnight"
-          ],
-          "SHELTER_SEEKING": [
-            "pilot",
-            {"name": "wt", "start_time": "10:00", "end_time": "14:00"}
-          ]
-        }
-      },
     "chick": {
-      "source_dir": "/mnt/nas/chick",
-      "camera_list": [21,22,23,24,25],
+      "camera_list": [
+        21,
+        22,
+        23,
+        24,
+        25
+      ],
       "camera_pattern": "cam{cam:02d}",
-        "output_dir": "/tmp/cheesepie-out",
-        "ignore_dir_regex": "^@",
-        "max_file_duration": "4:00",
-        "path_time_regex": "(?P<year>\\d{4})(?P<month>\\d{2})(?P<day>\\d{2})[_-](?P<hour>\\d{2})(?P<minute>\\d{2})(?:(?P<second>\\d{2}))?",
-        "roi_sets": [
+      "experiments": {
+        "OPEN_FIELD": [
+          "wt"
+        ],
+        "PECKING_ORDER": [
           {
-            "name": "Default",
-            "preproc": {
-              "arena_width_cm": 40,
-              "arena_height_cm": 40,
-              "grid_cols": 5,
-              "grid_rows": 5,
-              "bg_frames": 20,
-              "bg_quantile": 50
+            "end_time": "12:00",
+            "name": "pilot",
+            "start_time": "08:00"
+          },
+          "wt"
+        ]
+      },
+      "ignore_dir_regex": "^@",
+      "max_file_duration": "4:00",
+      "output_dir": "/tmp/cheesepie-out",
+      "path_time_regex": "(?P<year>\\d{4})(?P<month>\\d{2})(?P<day>\\d{2})[_-](?P<hour>\\d{2})(?P<minute>\\d{2})(?:(?P<second>\\d{2}))?",
+      "roi_sets": [
+        {
+          "items": [
+            {
+              "cells": [
+                [
+                  4,
+                  0
+                ]
+              ],
+              "enabled": true,
+              "name": "Feeder1",
+              "sheltered": false
             },
-            "items": [
-              {"name": "Feeder1", "enabled": true, "sheltered": false, "cells": [[4,0]]},
-              {"name": "Feeder2", "enabled": true, "sheltered": false, "cells": [[4,4]]},
-              {"name": "Water1",  "enabled": true, "sheltered": false, "cells": [[3,0]]},
-              {"name": "Water2",  "enabled": true, "sheltered": false, "cells": [[3,4]]}
-            ]
+            {
+              "cells": [
+                [
+                  4,
+                  4
+                ]
+              ],
+              "enabled": true,
+              "name": "Feeder2",
+              "sheltered": false
+            },
+            {
+              "cells": [
+                [
+                  3,
+                  0
+                ]
+              ],
+              "enabled": true,
+              "name": "Water1",
+              "sheltered": false
+            },
+            {
+              "cells": [
+                [
+                  3,
+                  4
+                ]
+              ],
+              "enabled": true,
+              "name": "Water2",
+              "sheltered": false
+            }
+          ],
+          "name": "Default",
+          "preproc": {
+            "arena_height_cm": 40,
+            "arena_width_cm": 40,
+            "bg_frames": 20,
+            "bg_quantile": 50,
+            "grid_cols": 5,
+            "grid_rows": 5
+          }
+        }
+      ],
+      "source_dir": "/mnt/nas/chick"
+    },
+    "mouse": {
+      "camera_list": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "camera_pattern": "CHEESE{cam:02d}",
+      "experiments": {
+        "FEMALES_IDS": [
+          {
+            "end_time": "08:00",
+            "name": "wt",
+            "start_time": "20:00"
+          },
+          "overnight"
+        ],
+        "SHELTER_SEEKING": [
+          "pilot",
+          {
+            "end_time": "14:00",
+            "name": "wt",
+            "start_time": "10:00"
           }
         ],
-        "experiments": {
-          "PECKING_ORDER": [
-            {"name": "pilot", "start_time": "08:00", "end_time": "12:00"},
-            "wt"
+        "THREE_CHAMBERS": [
+          {
+            "end_time": "08:00",
+            "name": "wt",
+            "start_time": "20:00"
+          },
+          {
+            "end_time": "17:00",
+            "name": "pilot",
+            "start_time": "09:00"
+          },
+          {
+            "end_time": "08:00",
+            "name": "overnight",
+            "start_time": "20:00"
+          }
+        ]
+      },
+      "ignore_dir_regex": "^@",
+      "max_file_duration": "4:00",
+      "output_dir": "/tmp/cheesepie-out",
+      "path_time_regex": "(?P<year>\\d{4})(?P<month>\\d{2})(?P<day>\\d{2}).*?-(?P<hour>\\d{2})(?P<minute>\\d{2})(?P<second>\\d{2})",
+      "roi_sets": [
+        {
+          "items": [
+            {
+              "cells": [
+                [
+                  3,
+                  0
+                ]
+              ],
+              "enabled": true,
+              "name": "Feeder1",
+              "sheltered": false
+            },
+            {
+              "cells": [
+                [
+                  3,
+                  5
+                ]
+              ],
+              "enabled": true,
+              "name": "Feeder2",
+              "sheltered": false
+            },
+            {
+              "cells": [
+                [
+                  2,
+                  0
+                ]
+              ],
+              "enabled": true,
+              "name": "Water1",
+              "sheltered": false
+            },
+            {
+              "cells": [
+                [
+                  2,
+                  5
+                ]
+              ],
+              "enabled": true,
+              "name": "Water2",
+              "sheltered": false
+            },
+            {
+              "cells": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  1
+                ]
+              ],
+              "enabled": true,
+              "name": "SmallNest",
+              "sheltered": true
+            },
+            {
+              "cells": [
+                [
+                  1,
+                  2
+                ]
+              ],
+              "enabled": true,
+              "name": "Labyrinth",
+              "sheltered": false
+            },
+            {
+              "cells": [
+                [
+                  0,
+                  4
+                ],
+                [
+                  0,
+                  5
+                ]
+              ],
+              "enabled": true,
+              "name": "BigNest",
+              "sheltered": true
+            },
+            {
+              "cells": [],
+              "enabled": false,
+              "name": "(BigNest)",
+              "sheltered": true
+            },
+            {
+              "cells": [
+                [
+                  2,
+                  2
+                ]
+              ],
+              "enabled": true,
+              "name": "Block",
+              "sheltered": false
+            },
+            {
+              "cells": [
+                [
+                  1,
+                  0
+                ]
+              ],
+              "enabled": true,
+              "name": "Ramp1",
+              "sheltered": false
+            },
+            {
+              "cells": [
+                [
+                  1,
+                  5
+                ]
+              ],
+              "enabled": true,
+              "name": "Ramp2",
+              "sheltered": false
+            }
           ],
-          "OPEN_FIELD": ["wt"]
+          "name": "Default",
+          "preproc": {
+            "arena_height_cm": 30,
+            "arena_width_cm": 40,
+            "bg_frames": 25,
+            "bg_quantile": 50,
+            "grid_cols": 6,
+            "grid_rows": 4
+          }
         }
-      }
+      ],
+      "source_dir": "/Volumes/surveillance/"
     }
-  ,
+  },
+  "importer": {
+    "ignore_dir_regex": "^@",
+    "source_extensions": [
+      ".mp4",
+      ".mkv",
+      ".avi"
+    ],
+    "working_dir": "./working"
+  },
   "matlab": {
+    "binary": "/Applications/MATLAB_R2025a.app/bin/matlab",
     "enabled": true,
     "mode": "engine",
-    "binary": "/Applications/MATLAB_R2025a.app/bin/matlab",
-    "paths": ["./matlab"],
-    "whitelist": ["segment_frame"]
+    "paths": [
+      "./matlab"
+    ],
+    "whitelist": [
+      "segment_frame"
+    ]
   }
 }
