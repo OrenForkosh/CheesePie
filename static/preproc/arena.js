@@ -59,6 +59,32 @@
       const w = (br.x - State.tl.x) * scaleX;
       const h = (br.y - State.tl.y) * scaleY;
       g.strokeStyle = '#4f8cff'; g.lineWidth = 2; g.strokeRect(x, y, w, h);
+
+      // Draw grid when not in marking mode
+      if (!State.marking){
+        try{
+          var colsEl = document.getElementById('grid-cols');
+          var rowsEl = document.getElementById('grid-rows');
+          var cols = parseInt((colsEl&&colsEl.value)||'')||6;
+          var rows = parseInt((rowsEl&&rowsEl.value)||'')||4;
+          cols = Math.max(1, Math.min(200, cols));
+          rows = Math.max(1, Math.min(200, rows));
+          g.save();
+          g.strokeStyle = 'rgba(79,140,255,0.35)';
+          g.lineWidth = 1;
+          // Vertical lines
+          for (var c=1;c<cols;c++){
+            var gx = x + (w * c / cols);
+            g.beginPath(); g.moveTo(gx, y); g.lineTo(gx, y+h); g.stroke();
+          }
+          // Horizontal lines
+          for (var r=1;r<rows;r++){
+            var gy = y + (h * r / rows);
+            g.beginPath(); g.moveTo(x, gy); g.lineTo(x+w, gy); g.stroke();
+          }
+          g.restore();
+        } catch(e){}
+      }
     } catch(e) {}
   }
 
@@ -173,6 +199,14 @@
       ctx.hBR = document.getElementById('pp-handle-br');
       attachHandleDrag(ctx, ctx.hTL, 'tl');
       attachHandleDrag(ctx, ctx.hBR, 'br');
+
+      // Redraw grid when grid inputs change
+      try{
+        var colsEl = document.getElementById('grid-cols');
+        var rowsEl = document.getElementById('grid-rows');
+        if (colsEl) colsEl.addEventListener('change', function(){ drawOverlay(ctx); });
+        if (rowsEl) rowsEl.addEventListener('change', function(){ drawOverlay(ctx); });
+      } catch(e){}
 
       // Keyboard nudging
       window.addEventListener('keydown', function(ev){
