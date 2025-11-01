@@ -10,7 +10,8 @@
   </div>
 
   <div class="controls" style="grid-template-columns: 2fr 1fr">
-    <div class="control-group" style="grid-column: 1 / -1">
+    <div class="subpanel">
+    <div class="control-group">
       <label>Video</label>
       <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
         <input
@@ -24,7 +25,7 @@
       </div>
     </div>
 
-    <div class="control-group" style="grid-column: 1 / 2">
+    <div class="control-group">
       <div class="video-wrap">
         <div class="video-preview">
           
@@ -122,13 +123,10 @@
             class="controls-row"
             style="margin-top: 6px; align-items: center"
           >
-            <label for="video-filter" class="muted">Filter</label>
-            <div class="fill">
-              <select id="video-filter" style="width: 100%">
-                <option value="none" selected>None</option>
-                <option value="invert">Invert colors</option>
-                <option value="histeq">Histogram equalization</option>
-              </select>
+            <span class="muted">Filter</span>
+            <div id="pp-filter-chips" class="fill" style="display:flex; gap:6px; align-items:center">
+              <button class="chip" data-filter="invert">Invert</button>
+              <button class="chip" data-filter="histeq">Hist Eq</button>
             </div>
             <span class="muted" style="min-width: 1px"></span>
           </div>
@@ -138,14 +136,17 @@
         Tip: Click to set top-left, then bottom-right of the arena.
       </div>
     </div>
+    </div> <!-- end left subpanel -->
 
-    <div class="control-group" style="grid-column: 2 / 3">
+    <div class="subpanel">
+    <div class="control-group">
       <div class="kv" style="margin-bottom:8px">
         <div class="k">Facility</div>
         <select id="pp-facility"></select>
         <div class="k">Setup</div>
         <div style="display:flex; gap:6px; align-items:center">
           <select id="pp-setup" style="flex:1"></select>
+          <button class="btn mini" id="pp-apply-setup" title="Apply selected setup values to the tabs">Apply</button>
           <button class="btn mini" id="pp-save-setup" title="Save current settings as a setup (overwrite or add new)">Save...</button>
         </div>
         <div class="k"></div>
@@ -162,6 +163,7 @@
         <button class="btn mini" id="tab-colors">Colors</button>
         <button class="btn mini" id="tab-save">Save…</button>
       </div>
+      <div id="pp-panes" style="position:relative">
       <div id="pane-arena">
         <div class="kv">
           <div class="k">Grid cols</div>
@@ -283,7 +285,9 @@
         </div>
         <div class="muted" id="pp-mday-status" style="margin-top:6px"></div>
       </div>
+      </div> <!-- end #pp-panes -->
     </div>
+    </div> <!-- end right subpanel -->
   </div>
  </section>
 
@@ -294,6 +298,7 @@
 <script src="/static/preproc/shared.js"></script>
 <script src="/static/preproc/arena.js"></script>
 <script src="/static/preproc/background.js"></script>
+<script src="/static/preproc/filters.js"></script>
 <script src="/static/preproc/regions.js"></script>
 <script src="/static/preproc/colors.js"></script>
 <script src="/static/preproc/main.js"></script>

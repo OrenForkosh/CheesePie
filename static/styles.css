@@ -216,6 +216,12 @@ body{
 .alert.error{ border-color:#5d2630; background:#2a131a; color:#ffb3bd }
 
 .controls{display:grid; grid-template-columns:1fr 1fr; gap:18px; padding:18px}
+.subpanel{ background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:12px }
+.disabled-veil{
+  position:absolute; inset:0; background:rgba(0,0,0,0.08);
+  border-radius:12px; pointer-events:auto; display:none;
+}
+.disabled-veil.visible{ display:block }
 .control-group label{display:block; margin:0 0 6px; color:var(--muted); font-size:12px; letter-spacing:0.3px}
 .control-group .inline{display:flex; gap:10px}
 /* search clear */
@@ -381,7 +387,7 @@ input[type="range"]::-moz-range-track{height:6px; border-radius:999px; backgroun
 .rate-wrap{position:relative; display:flex; align-items:center}
 .rate-bubble{position:absolute; top:-28px; transform:translateX(-50%); background:#1b2136; color:#e6ecff; border:1px solid var(--border); border-radius:6px; padding:2px 6px; font-size:12px; box-shadow:0 6px 18px var(--shadow)}
 .rate-presets{display:flex; gap:6px; margin-left:6px}
-.chip{cursor:pointer; padding:6px 8px; border-radius:999px; border:1px solid var(--border); background:#171b2a; color:var(--text); font-size:12px}
+.chip{cursor:pointer; padding:6px 8px; border-radius:999px; border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:12px}
 .chip.active{background:linear-gradient(180deg, var(--primary), var(--primary-600)); border-color:transparent}
 .cam-toolbar{display:flex; align-items:center; gap:8px}
 .cam-row{display:flex; gap:6px; overflow-x:auto; white-space:nowrap; padding-bottom:4px; flex:1}
@@ -408,6 +414,20 @@ input[type="range"]::-moz-range-track{height:6px; border-radius:999px; backgroun
 .type-item .fill{flex:1}
 .type-item .swatch{width:14px; height:14px; border-radius:3px; border:1px solid var(--border)}
 .btn.mini{padding:6px 8px; font-size:12px}
+
+/* Preproc: Arena mark button fixed width to avoid layout shift */
+#arena-mark{ min-width: 100px }
+
+/* Preproc: Arena handles highlight */
+#pp-handle-tl, #pp-handle-br{
+  transition: box-shadow 0.12s ease, background 0.12s ease;
+  cursor: grab;
+}
+#pp-handle-tl.active, #pp-handle-br.active{
+  background: var(--primary);
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--primary);
+}
+#pp-handle-tl.dragging, #pp-handle-br.dragging{ cursor: grabbing; }
 
 .table-wrap{padding:12px}
 #events-table{width:100%; border-collapse:collapse; font-size:13px}

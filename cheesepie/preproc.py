@@ -312,8 +312,10 @@ def api_preproc_setup_save():
     payload = request.json or {}
     facility = str(payload.get('facility', '')).strip()
     setup_name = str(payload.get('setup_name', '')).strip()
+    setup_in = payload.get('setup') or {}
     preproc = payload.get('preproc') or {}
-    items = payload.get('items') or []
+    # ROI configuration per setup (list of region definitions or mapping)
+    roi_sets = payload.get('items') or payload.get('roi_sets') or []
     if not facility or not setup_name:
         return jsonify({'error': 'Missing facility or setup_name'}), 400
     facilities = CONFIG.get('facilities')
@@ -326,51 +328,93 @@ def api_preproc_setup_save():
             return int(x)
         except Exception:
             return default
-    setup_obj: Dict[str, Any] = {
-        'name': setup_name,
-        'preproc': {
+    # Target structure: setups is a dict: { setup_name: { arena_width_cm, ..., arena:{x,y,width,height}, roi:{ name: {...} } } }
+    setup_obj: Dict[str, Any]
+    if isinstance(setup_in, dict) and setup_in:
+        # Trust provided shape (sanitize ints where appropriate)
+        su = dict(setup_in)
+        # Normalize integers where possible
+        def _norm_int(k):
+            if k in su and su[k] is not None:
+                try:
+                    su[k] = int(su[k])
+                except Exception:
+                    pass
+        for k in ('arena_width_cm','arena_height_cm','grid_cols','grid_rows','bg_frames','bg_quantile'):
+            _norm_int(k)
+        setup_obj = su
+    else:
+        # Build from legacy 'preproc' + 'roi_sets/items'
+        arena_rect = None
+        try:
+            tl = preproc.get('arena_tl'); br = preproc.get('arena_br')
+            if isinstance(tl, dict) and isinstance(br, dict):
+                ax = int(tl.get('x', 0)); ay = int(tl.get('y', 0))
+                bx = int(br.get('x', ax)); by = int(br.get('y', ay))
+                arena_rect = {'x': ax, 'y': ay, 'width': max(0, bx-ax), 'height': max(0, by-ay)}
+        except Exception:
+            arena_rect = None
+        roi_map: Dict[str, Any] = {}
+        if isinstance(roi_sets, dict):
+            # Already mapping
+            for rname, rcfg in roi_sets.items():
+                try:
+                    cells = rcfg.get('cells', []) if isinstance(rcfg, dict) else []
+                    roi_map[str(rname)] = {
+                        'cells': [[int(x[0]), int(x[1])] for x in cells if isinstance(x, (list, tuple)) and len(x) >= 2],
+                        'sheltered': bool(rcfg.get('sheltered', False)) if isinstance(rcfg, dict) else False,
+                    }
+                except Exception:
+                    continue
+        else:
+            # From list of dicts
+            for it in roi_sets:
+                if not isinstance(it, dict):
+                    continue
+                name = str(it.get('name', '')).strip()
+                if not name:
+                    continue
+                cells_raw = it.get('cells') or []
+                cells_out: List[List[int]] = []
+                if isinstance(cells_raw, list):
+                    for c in cells_raw:
+                        try:
+                            if isinstance(c, (list, tuple)) and len(c) >= 2:
+                                r = int(c[0]); c2 = int(c[1])
+                            elif isinstance(c, dict) and 'r' in c and 'c' in c:
+                                r = int(c.get('r')); c2 = int(c.get('c'))
+                            else:
+                                continue
+                            cells_out.append([r, c2])
+                        except Exception:
+                            continue
+                roi_map[name] = {'cells': cells_out, 'sheltered': bool(it.get('sheltered', False))}
+        setup_obj = {
             'arena_width_cm': _to_int(preproc.get('arena_width_cm')),
             'arena_height_cm': _to_int(preproc.get('arena_height_cm')),
             'grid_cols': _to_int(preproc.get('grid_cols')),
             'grid_rows': _to_int(preproc.get('grid_rows')),
             'bg_frames': _to_int(preproc.get('bg_frames')),
             'bg_quantile': _to_int(preproc.get('bg_quantile')),
-        },
-        'items': [],
-    }
-    for it in items:
-        if not isinstance(it, dict):
-            continue
-        name = str(it.get('name', '')).strip()
-        if not name:
-            continue
-        enabled = bool(it.get('enabled', False))
-        sheltered = bool(it.get('sheltered', False))
-        cells_raw = it.get('cells') or []
-        cells_out: List[List[int]] = []
-        if isinstance(cells_raw, list):
-            for c in cells_raw:
-                try:
-                    if isinstance(c, (list, tuple)) and len(c) >= 2:
-                        r = int(c[0]); c2 = int(c[1])
-                    elif isinstance(c, dict) and 'r' in c and 'c' in c:
-                        r = int(c.get('r')); c2 = int(c.get('c'))
-                    else:
-                        continue
-                    cells_out.append([r, c2])
-                except Exception:
-                    continue
-        setup_obj['items'].append({'name': name, 'enabled': enabled, 'sheltered': sheltered, 'cells': cells_out})
-
-    roi_sets = facilities[facility].setdefault('roi_sets', [])
-    replaced = False
-    for i, s in enumerate(roi_sets):
-        if isinstance(s, dict) and str(s.get('name', '')).strip() == setup_name:
-            roi_sets[i] = setup_obj
-            replaced = True
-            break
-    if not replaced:
-        roi_sets.append(setup_obj)
+            'arena': arena_rect,
+            'roi': roi_map,
+        }
+    # Ensure 'setups' exists; migrate legacy roi_sets into default setup if needed
+    fac = facilities[facility]
+    # Use dict for setups as requested
+    setups = fac.setdefault('setups', {})
+    if not isinstance(setups, dict):
+        # migrate list to dict
+        try:
+            newset: Dict[str, Any] = {}
+            for s in setups:
+                if isinstance(s, dict):
+                    n = str(s.get('name','') or 'default')
+                    newset[n] = s
+            fac['setups'] = setups = newset
+        except Exception:
+            fac['setups'] = setups = {}
+    setups[setup_name or 'default'] = setup_obj
 
     try:
         path = _config_path()
@@ -381,4 +425,3 @@ def api_preproc_setup_save():
 
 
 __all__ = ['bp']
-

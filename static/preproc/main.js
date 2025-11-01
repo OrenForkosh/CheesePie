@@ -27,16 +27,19 @@
     };
 
     function switchTab(name){
+      // Guard against disabled tabs
+      var btn = tabs[name];
+      if (btn && btn.disabled) return;
       U.showPane(name, panes);
       U.setActiveTab(name, tabs);
       overlay.style.pointerEvents = (name === 'arena' && S.marking) ? 'auto' : 'none';
     }
 
-    if (tabs.arena) tabs.arena.addEventListener('click', function(){ switchTab('arena'); });
-    if (tabs.background) tabs.background.addEventListener('click', function(){ switchTab('background'); });
-    if (tabs.regions) tabs.regions.addEventListener('click', function(){ switchTab('regions'); });
-    if (tabs.colors) tabs.colors.addEventListener('click', function(){ switchTab('colors'); });
-    if (tabs.save) tabs.save.addEventListener('click', function(){ switchTab('save'); });
+    if (tabs.arena) tabs.arena.addEventListener('click', function(){ if (tabs.arena.disabled) return; switchTab('arena'); });
+    if (tabs.background) tabs.background.addEventListener('click', function(){ if (tabs.background.disabled) return; switchTab('background'); });
+    if (tabs.regions) tabs.regions.addEventListener('click', function(){ if (tabs.regions.disabled) return; switchTab('regions'); });
+    if (tabs.colors) tabs.colors.addEventListener('click', function(){ if (tabs.colors.disabled) return; switchTab('colors'); });
+    if (tabs.save) tabs.save.addEventListener('click', function(){ if (tabs.save.disabled) return; switchTab('save'); });
 
     // No file placeholder
     if (!S.videoPath){
@@ -49,16 +52,271 @@
       try { v.src = '/media?path=' + encodeURIComponent(S.videoPath); v.load(); } catch(e) {}
     }
 
+    // Facility select handling
+    var facilitySel = U.$('#pp-facility');
+    function getFacilities(){
+      try{
+        var cfg = window.CHEESEPIE || {};
+        var facs = (cfg.importer && cfg.importer.facilities) || {};
+        return facs;
+      } catch(e){ return {}; }
+    }
+    // Pane interactivity + veil (no layout shift)
+    var paneWrap = document.getElementById('pp-panes');
+    var veil = null;
+    function ensureVeil(){
+      if (!paneWrap) return null;
+      if (veil) return veil;
+      veil = document.createElement('div');
+      veil.className = 'disabled-veil';
+      paneWrap.style.position = paneWrap.style.position || 'relative';
+      paneWrap.appendChild(veil);
+      return veil;
+    }
+    function setTreeDisabled(el, disabled){
+      try{
+        if (!el) return;
+        if (disabled) el.setAttribute('inert',''); else el.removeAttribute('inert');
+        var controls = el.querySelectorAll('input,button,select,textarea');
+        for (var i=0;i<controls.length;i++){ controls[i].disabled = !!disabled; }
+      } catch(e){}
+    }
+    function arenaIsValid(){
+      try{
+        var tl = S.tl, br = S.br;
+        if (!tl || !br) return false;
+        var minW = 10, minH = 10;
+        return (br.x - tl.x) >= minW && (br.y - tl.y) >= minH;
+      } catch(e){ return false; }
+    }
+
+    function setTabsEnabled(enabled){
+      try{
+        // Tabs button state
+        Object.keys(tabs).forEach(function(k){ if (tabs[k]) { tabs[k].disabled = !enabled; tabs[k].title = enabled? '' : 'Select a facility to continue'; } });
+        // Panes visibility and interactivity
+        var v = ensureVeil();
+        if (!enabled){
+          // Disable only; keep layout stable
+          if (v) v.classList.add('visible');
+          Object.keys(panes).forEach(function(k){ if (panes[k]) { setTreeDisabled(panes[k], true); } });
+        } else {
+          if (v) v.classList.remove('visible');
+          Object.keys(panes).forEach(function(k){ if (panes[k]) { setTreeDisabled(panes[k], false); } });
+          switchTab('arena');
+          // Additional gating: Regions/Save require a valid arena
+          var okArena = arenaIsValid();
+          if (tabs.regions){ tabs.regions.disabled = !okArena; tabs.regions.title = okArena? '' : 'Mark the arena first'; }
+          if (tabs.save){ tabs.save.disabled = !okArena; tabs.save.title = okArena? '' : 'Mark the arena first'; }
+        }
+      } catch(e){}
+    }
+    function currentFacilityFromUrl(){
+      try{
+        var usp = new URLSearchParams(location.search);
+        return usp.get('facility') || '';
+      } catch(e){ return ''; }
+    }
+    function updateUrlWithFacility(fac){
+      try{
+        var url = new URL(window.location.href);
+        if (fac) url.searchParams.set('facility', fac); else url.searchParams.delete('facility');
+        history.replaceState(null, '', url.toString());
+      } catch(e){}
+    }
+    function populateFacility(){
+      if (!facilitySel) return;
+      var facs = getFacilities();
+      var keys = Object.keys(facs);
+      facilitySel.innerHTML = '';
+      // placeholder option
+      var opt0 = document.createElement('option'); opt0.value=''; opt0.textContent='Select facility'; facilitySel.appendChild(opt0);
+      keys.forEach(function(k){ var o = document.createElement('option'); o.value=k; o.textContent=k; facilitySel.appendChild(o); });
+      // pick from URL or storage
+      var fromUrl = currentFacilityFromUrl();
+      var fromStore = '';
+      try{ fromStore = localStorage.getItem('cheesepie.preproc.facility') || ''; } catch(e){}
+      var chosen = fromUrl || fromStore;
+      if (chosen && keys.indexOf(chosen) !== -1){ facilitySel.value = chosen; setTabsEnabled(true); }
+      else { facilitySel.value = ''; setTabsEnabled(false); }
+    }
+    populateFacility();
+    if (facilitySel){
+      facilitySel.addEventListener('change', function(){
+        var fac = facilitySel.value || '';
+        try{ localStorage.setItem('cheesepie.preproc.facility', fac); } catch(e){}
+        updateUrlWithFacility(fac);
+        setTabsEnabled(!!fac);
+        if (fac){ populateSetupsForFacility(fac); }
+      });
+    }
+
+    // Setup dropdown and Save handling
+    var setupSel = U.$('#pp-setup');
+    var applySetupBtn = U.$('#pp-apply-setup');
+    var saveSetupBtn = U.$('#pp-save-setup');
+    var currentSetups = null;
+    function normalizeSetups(raw){
+      // Accept dict in target shape, or list in legacy shape, or null
+      if (!raw) return null;
+      if (!Array.isArray(raw) && typeof raw === 'object') return raw; // already dict
+      if (Array.isArray(raw)){
+        var out = {};
+        raw.forEach(function(su){
+          if (!su || typeof su !== 'object') return;
+          var name = String(su.name||'default');
+          var pp = su.preproc || {};
+          // convert arena tl/br to rect if present
+          var rect = null;
+          if (pp.arena_tl && pp.arena_br){
+            try{
+              var ax = parseInt(pp.arena_tl.x)||0, ay = parseInt(pp.arena_tl.y)||0;
+              var bx = parseInt(pp.arena_br.x)||ax, by = parseInt(pp.arena_br.y)||ay;
+              rect = { x: ax, y: ay, width: Math.max(0,bx-ax), height: Math.max(0,by-ay) };
+            } catch(e){}
+          }
+          // convert roi_sets list to roi map
+          var roi = {};
+          var rlist = su.roi_sets || [];
+          if (Array.isArray(rlist)){
+            rlist.forEach(function(r){
+              if (!r || !r.name) return;
+              roi[r.name] = { cells: (r.cells||[]), sheltered: !!r.sheltered };
+            });
+          }
+          out[name] = {
+            arena_width_cm: pp.arena_width_cm,
+            arena_height_cm: pp.arena_height_cm,
+            grid_cols: pp.grid_cols,
+            grid_rows: pp.grid_rows,
+            bg_frames: pp.bg_frames,
+            bg_quantile: pp.bg_quantile,
+            arena: rect,
+            roi: roi
+          };
+        });
+        return out;
+      }
+      return null;
+    }
+
+    function populateSetupsForFacility(fac){
+      if (!setupSel) return;
+      var facs = getFacilities();
+      var setups = normalizeSetups(((facs[fac]||{}).setups) || null);
+      // Back-compat: build setups from legacy roi_sets if needed
+      if (!setups){
+        var legacy = ((facs[fac]||{}).roi_sets) || [];
+        if (legacy && legacy.length){
+          setups = { 'default': { roi: legacy.reduce(function(m,it){ try{ m[it.name||'roi']={ cells:it.cells||[], sheltered:!!it.sheltered }; }catch(e){} return m; }, {} ) } };
+        }
+      }
+      currentSetups = setups;
+      setupSel.innerHTML = '';
+      if (!setups || (typeof setups!=='object')){ return; }
+      var names = Object.keys(setups);
+      names.sort(function(a,b){ if (a==='default') return -1; if (b==='default') return 1; return a.localeCompare(b); });
+      names.forEach(function(n){ var o=document.createElement('option'); o.value=n; o.textContent=n; setupSel.appendChild(o); });
+      var chosen = names[0] || 'default';
+      setupSel.value = chosen;
+      applySetupDefaults(fac, setupSel.value, setups);
+    }
+    function applySetupDefaults(fac, name, setups){
+      try{
+        var s = setups && setups[name];
+        if (!s) return;
+        var pp = s || {};
+        var cols = U.$('#grid-cols'), rows=U.$('#grid-rows'), wcm=U.$('#arena-wcm'), hcm=U.$('#arena-hcm');
+        var bgf = U.$('#bg-frames'), bgq = U.$('#bg-quant');
+        if (cols && pp.grid_cols!=null) cols.value = String(pp.grid_cols);
+        if (rows && pp.grid_rows!=null) rows.value = String(pp.grid_rows);
+        if (wcm && pp.arena_width_cm!=null) wcm.value = String(pp.arena_width_cm);
+        if (hcm && pp.arena_height_cm!=null) hcm.value = String(pp.arena_height_cm);
+        if (bgf && pp.bg_frames!=null) bgf.value = String(pp.bg_frames);
+        if (bgq && pp.bg_quantile!=null) bgq.value = String(pp.bg_quantile);
+        if (pp.arena && typeof pp.arena.x==='number' && typeof pp.arena.y==='number' && typeof pp.arena.width==='number' && typeof pp.arena.height==='number'){
+          S.tl = { x: pp.arena.x|0, y: pp.arena.y|0 };
+          S.br = { x: (pp.arena.x + pp.arena.width)|0, y: (pp.arena.y + pp.arena.height)|0 };
+        }
+        if (arena && arena.drawOverlay) arena.drawOverlay();
+      } catch(e){}
+    }
+    if (setupSel){ setupSel.addEventListener('change', function(){ var fac = facilitySel?facilitySel.value:''; if (!currentSetups){ populateSetupsForFacility(fac); } applySetupDefaults(fac, setupSel.value, currentSetups); }); }
+    if (applySetupBtn){ applySetupBtn.addEventListener('click', function(){ var fac = facilitySel?facilitySel.value:''; if (!fac){ alert('Select a facility first.'); return; } if (!currentSetups){ populateSetupsForFacility(fac); } applySetupDefaults(fac, setupSel && setupSel.value, currentSetups); }); }
+    if (saveSetupBtn){
+      saveSetupBtn.addEventListener('click', function(){
+        var fac = facilitySel ? facilitySel.value : '';
+        if (!fac){ alert('Select a facility first.'); return; }
+        var name = (setupSel && setupSel.value) || 'default';
+        if (!window.confirm('Are you sure you want to save this setup?')) return;
+        var cols = parseInt((U.$('#grid-cols')||{}).value||'')||null;
+        var rows = parseInt((U.$('#grid-rows')||{}).value||'')||null;
+        var wcm = parseInt((U.$('#arena-wcm')||{}).value||'')||null;
+        var hcm = parseInt((U.$('#arena-hcm')||{}).value||'')||null;
+        var bgf = parseInt((U.$('#bg-frames')||{}).value||'')||null;
+        var bgq = parseInt((U.$('#bg-quant')||{}).value||'')||null;
+        var payload = {
+          facility: fac,
+          setup_name: name,
+          setup: {
+            arena_width_cm: wcm,
+            arena_height_cm: hcm,
+            grid_cols: cols,
+            grid_rows: rows,
+            bg_frames: bgf,
+            bg_quantile: bgq,
+            arena: (S.tl && S.br ? { x:S.tl.x, y:S.tl.y, width: Math.max(0,S.br.x-S.tl.x), height: Math.max(0,S.br.y-S.tl.y) } : null),
+            roi: {}
+          }
+        };
+        fetch('/api/preproc/setup/save', {
+          method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+        }).then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d, status:r.statusText}; }); })
+          .then(function(res){ if (!res.ok || res.d.error){ alert('Save failed: ' + (res.d && res.d.error || res.status)); return; }
+                 populateSetupsForFacility(fac); alert('Saved.'); })
+          .catch(function(e){ alert('Save failed: ' + e); });
+      });
+    }
+
     // Initialize modules
     var arena = Preproc.Arena && Preproc.Arena.init({ video: v, overlay: overlay, markBtn: markBtn, status: status });
     if (Preproc.Background) Preproc.Background.init({});
+    if (Preproc.Filters) Preproc.Filters.init({ video: v });
     if (Preproc.Regions) Preproc.Regions.init({});
     if (Preproc.Colors) Preproc.Colors.init({});
 
-    switchTab('arena');
+    // Only allow switching once a facility is set; otherwise show placeholder
+    if (facilitySel && !facilitySel.value){
+      setTabsEnabled(false);
+    } else {
+      setTabsEnabled(true);
+      if (facilitySel && facilitySel.value){ populateSetupsForFacility(facilitySel.value); }
+    }
+
+    // Load saved preproc state (arena, background, etc.) for this video
+    (function loadState(){
+      if (!S.videoPath) return;
+      try{
+        fetch('/api/preproc/state?video=' + encodeURIComponent(S.videoPath))
+          .then(function(r){ return r.json(); })
+          .then(function(d){
+            if (!d || d.error) return;
+            if (d.arena && d.arena.tl && d.arena.br){
+              S.tl = { x: (d.arena.tl.x|0), y: (d.arena.tl.y|0) };
+              S.br = { x: (d.arena.br.x|0), y: (d.arena.br.y|0) };
+              if (arena && arena.drawOverlay) arena.drawOverlay();
+              // Update gating for Regions/Save
+              setTabsEnabled(!!(facilitySel && facilitySel.value));
+            }
+          })
+          .catch(function(e){});
+      } catch(e){}
+    })();
+
+    // React to arena changes to update gating
+    document.addEventListener('preproc:arena-changed', function(){ setTabsEnabled(!!(facilitySel && facilitySel.value)); });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 })();
-

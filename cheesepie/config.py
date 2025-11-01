@@ -213,6 +213,35 @@ def cfg_importer_facilities() -> Dict[str, Any]:
                     cam_pat = str(fcfg.get('camera_pattern') or fcfg.get('camera_glob') or '').strip()
                 except Exception:
                     cam_pat = ''
+                # Build setups for public config; support both dict (new) and list (legacy) without forcing a single shape
+                setups_out: Any = None
+                try:
+                    raw_setups = fcfg.get('setups') if isinstance(fcfg, dict) else None
+                    if isinstance(raw_setups, dict):
+                        # New shape: pass through as-is
+                        setups_out = raw_setups
+                    elif isinstance(raw_setups, list):
+                        # Legacy list of named setups with preproc/roi_sets
+                        setups_list: List[Dict[str, Any]] = []
+                        for su in raw_setups:
+                            if not isinstance(su, dict):
+                                continue
+                            sname = str(su.get('name', '')).strip() or 'default'
+                            spreproc = su.get('preproc') if isinstance(su.get('preproc'), dict) else {}
+                            srois = su.get('roi_sets') if isinstance(su.get('roi_sets'), list) else []
+                            setups_list.append({'name': sname, 'preproc': spreproc, 'roi_sets': srois})
+                        # keep list (frontend will normalize)
+                        setups_out = setups_list
+                except Exception:
+                    setups_out = None
+                # Fallback: if no setups defined but legacy roi_sets exist at facility level
+                legacy_roi_sets = fcfg.get('roi_sets', []) if isinstance(fcfg, dict) else []
+                if setups_out is None:
+                    setups_out = [{
+                        'name': 'default',
+                        'preproc': {},
+                        'roi_sets': legacy_roi_sets if isinstance(legacy_roi_sets, list) else []
+                    }]
                 out[str(fname).strip().lower()] = {
                     'source_dir': source_dir,
                     'cameras': cams,
@@ -221,7 +250,10 @@ def cfg_importer_facilities() -> Dict[str, Any]:
                     'path_time_regex': str(fcfg.get('path_time_regex', '')).strip() if isinstance(fcfg, dict) else '',
                     'camera_pattern': cam_pat,
                     'camera_list': cam_list,
-                    'roi_sets': fcfg.get('roi_sets', []) if isinstance(fcfg, dict) else [],
+                    # Keep legacy roi_sets for backward compatibility
+                    'roi_sets': legacy_roi_sets if isinstance(legacy_roi_sets, list) else [],
+                    # New structure (supports dict or list; frontend normalizes):
+                    'setups': setups_out,
                     'ignore_dir_regex': str(fcfg.get('ignore_dir_regex', '')).strip() if isinstance(fcfg, dict) else '',
                     'output_dir': str(fcfg.get('output_dir', '')).strip() if isinstance(fcfg, dict) else '',
                 }
