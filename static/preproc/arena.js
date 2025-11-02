@@ -96,7 +96,11 @@
     const px = Util.clamp(Math.round((ev.clientX - r.left) / r.width * (v.videoWidth||1)), 0, (v.videoWidth||1)-1);
     const py = Util.clamp(Math.round((ev.clientY - r.top) / r.height * (v.videoHeight||1)), 0, (v.videoHeight||1)-1);
     if (!State.tl){ State.tl = {x:px, y:py}; State.br = null; ctx._hoverBR = null; }
-    else if (!State.br){ State.br = {x: Math.max(px, State.tl.x+MIN_W), y: Math.max(py, State.tl.y+MIN_H)}; }
+    else if (!State.br){
+      State.br = {x: Math.max(px, State.tl.x+MIN_W), y: Math.max(py, State.tl.y+MIN_H)};
+      // Save immediately after completing BR placement
+      scheduleSave(ctx);
+    }
     drawOverlay(ctx); notifyChanged();
   }
 
@@ -171,7 +175,21 @@
       var videoPath = (window.Preproc && window.Preproc.State && window.Preproc.State.videoPath) || '';
       if (!videoPath) return;
       if (ctx.status) ctx.status.textContent = 'Saving…';
+      // Read grid/size controls to persist alongside bbox
+      var colsEl = document.getElementById('grid-cols');
+      var rowsEl = document.getElementById('grid-rows');
+      var wcmEl = document.getElementById('arena-wcm');
+      var hcmEl = document.getElementById('arena-hcm');
+      var cols = parseInt((colsEl && colsEl.value) || '', 10);
+      var rows = parseInt((rowsEl && rowsEl.value) || '', 10);
+      var wcm = parseInt((wcmEl && wcmEl.value) || '', 10);
+      var hcm = parseInt((hcmEl && hcmEl.value) || '', 10);
       var payload = { video: videoPath, arena: { tl: {x:State.tl.x, y:State.tl.y}, br: {x:State.br.x, y:State.br.y} } };
+      // Attach only if valid numbers
+      if (!isNaN(cols) && cols > 0) payload.arena.grid_cols = cols;
+      if (!isNaN(rows) && rows > 0) payload.arena.grid_rows = rows;
+      if (!isNaN(wcm) && wcm > 0) payload.arena.width_in_cm = wcm;
+      if (!isNaN(hcm) && hcm > 0) payload.arena.height_in_cm = hcm;
       fetch('/api/preproc/arena', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
         .then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d, status:r.statusText}; }); })
         .then(function(res){ if (ctx.status) ctx.status.textContent = res.ok ? 'Saved' : ('Error: ' + (res.d && res.d.error || res.status)); })

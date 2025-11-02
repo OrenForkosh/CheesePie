@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+import tempfile
 from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, jsonify, request
@@ -125,16 +126,29 @@ def api_preproc_apply_settings():
     return jsonify({'ok': True, 'results': results})
 
 
+def _tmp_base(video_path: Path) -> Path:
+    """Return base temp path for this video (without specific suffix)."""
+    # Prefer /tmp explicitly if present (per request), else fall back to system temp
+    tmp_root = Path('/tmp')
+    if not tmp_root.exists() or not tmp_root.is_dir():
+        tmp_root = Path(tempfile.gettempdir())
+    tmpdir = tmp_root
+    base = video_path.stem  # drop last extension
+    return tmpdir / base
+
+
 def _arena_path_for(video_path: Path) -> Path:
-    return video_path.with_suffix('.arena.json')
+    # Legacy compatibility file in tmp
+    return _tmp_base(video_path).with_suffix('.arena.json')
 
 
 def _background_path_for(video_path: Path) -> Path:
-    return video_path.with_suffix('.background.png')
+    return _tmp_base(video_path).with_suffix('.background.png')
 
 
 def _preproc_state_path_for(video_path: Path) -> Path:
-    return video_path.with_suffix('.preproc.json')
+    # Persist all per-video preproc state under system temp dir
+    return _tmp_base(video_path).with_suffix('.preproc.json')
 
 
 @bp.route('/state')
@@ -154,7 +168,7 @@ def api_preproc_state():
             st = json.loads(s_path.read_text(encoding='utf-8'))
             arena = st.get('arena')
             bg = st.get('background')
-            regions = st.get('regions')
+            regions = st.get('roi') or st.get('regions')
             colors = st.get('colors')
         except Exception:
             arena = None; bg = None; regions = None
@@ -169,7 +183,7 @@ def api_preproc_state():
         b_path = _background_path_for(vpath)
         if b_path.exists():
             bg = str(b_path)
-    return jsonify({'ok': True, 'arena': arena, 'background': bg, 'regions': regions if 'regions' in locals() else None, 'colors': colors})
+    return jsonify({'ok': True, 'arena': arena, 'background': bg, 'roi': regions if 'regions' in locals() else None, 'colors': colors})
 
 
 @bp.route('/save_multi', methods=['POST'])
@@ -216,13 +230,89 @@ def api_preproc_save_multi():
                 st = json.loads(s_path.read_text(encoding='utf-8')) if s_path.exists() else {}
             except Exception:
                 st = {}
-            st['arena'] = arena
-            st['regions'] = regions
-            st['colors'] = colors
+            # Arena with bbox (+ optional grid/size)
+            try:
+                tl = arena.get('tl') if isinstance(arena, dict) else None
+                br = arena.get('br') if isinstance(arena, dict) else None
+                arena_out: Dict[str, Any] = {}
+                if isinstance(tl, dict) and isinstance(br, dict):
+                    ax = int(tl.get('x', 0)); ay = int(tl.get('y', 0))
+                    bx = int(br.get('x', ax)); by = int(br.get('y', ay))
+                    arena_out['bbox'] = {'x': ax, 'y': ay, 'width': max(0, bx-ax), 'height': max(0, by-ay)}
+                # Optional numeric fields if present in input
+                def _set_int(k):
+                    try:
+                        if isinstance(arena, dict) and k in arena and arena.get(k) is not None:
+                            arena_out[k] = int(arena.get(k))
+                    except Exception:
+                        pass
+                for k in ('grid_cols','grid_rows','width_in_cm','height_in_cm'):
+                    _set_int(k)
+            except Exception:
+                arena_out = arena if isinstance(arena, dict) else {}
+            st['arena'] = arena_out
+            # Normalize regions to roi mapping
+            roi_map: Dict[str, Any] = {}
+            if isinstance(regions, dict):
+                for rname, rcfg in regions.items():
+                    try:
+                        if not isinstance(rcfg, dict):
+                            continue
+                        cells = rcfg.get('cells', []) if isinstance(rcfg.get('cells', []), list) else []
+                        roi_map[str(rname)] = {
+                            'cells': [[int(c[0]), int(c[1])] for c in cells if isinstance(c, (list, tuple)) and len(c) >= 2],
+                            'sheltered': bool(rcfg.get('sheltered', False)),
+                            'enabled': bool(rcfg.get('enabled', True)),
+                        }
+                    except Exception:
+                        continue
+            elif isinstance(regions, list):
+                for it2 in regions:
+                    try:
+                        if not isinstance(it2, dict):
+                            continue
+                        name = str(it2.get('name', '')).strip()
+                        if not name:
+                            continue
+                        cells_raw = it2.get('cells') or []
+                        cells_out: List[List[int]] = []
+                        if isinstance(cells_raw, list):
+                            for c in cells_raw:
+                                if isinstance(c, (list, tuple)) and len(c) >= 2:
+                                    cells_out.append([int(c[0]), int(c[1])])
+                        roi_map[name] = {
+                            'cells': cells_out,
+                            'sheltered': bool(it2.get('sheltered', False)),
+                            'enabled': bool(it2.get('enabled', True)),
+                        }
+                    except Exception:
+                        continue
+            st['roi'] = roi_map
+            # Colors: keep marks with label,pos,time,color and histograms; drop mouse (use label as mouse id)
+            if isinstance(colors, dict):
+                cols_out = dict(colors)
+                try:
+                    marks_in = colors.get('marks', [])
+                    if isinstance(marks_in, list):
+                        marks_out = []
+                        for mk in marks_in:
+                            if not isinstance(mk, dict):
+                                continue
+                            mko = dict(mk)
+                            # If 'mouse' present, set/keep label then drop mouse
+                            try:
+                                if 'mouse' in mko and 'label' not in mko:
+                                    mko['label'] = int(mko.get('mouse'))
+                            except Exception:
+                                pass
+                            mko.pop('mouse', None)
+                            marks_out.append(mko)
+                        cols_out['marks'] = marks_out
+                except Exception:
+                    pass
+                st['colors'] = cols_out
             s_path.parent.mkdir(parents=True, exist_ok=True)
             s_path.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding='utf-8')
-            if arena is not None:
-                tpath.with_suffix('.arena.json').write_text(json.dumps(arena, ensure_ascii=False, indent=2), encoding='utf-8')
             results.append({'path': str(tpath), 'ok': True})
         except Exception as e:
             results.append({'path': str(t), 'ok': False, 'error': str(e)})
@@ -244,11 +334,32 @@ def api_preproc_arena():
         st = json.loads(s_path.read_text(encoding='utf-8')) if s_path.exists() else {}
     except Exception:
         st = {}
-    st['arena'] = arena
+    # Compute bbox and store under arena; also persist optional grid/size metadata
+    try:
+        tl = arena.get('tl') if isinstance(arena, dict) else None
+        br = arena.get('br') if isinstance(arena, dict) else None
+        arena_out: Dict[str, Any] = {}
+        if isinstance(tl, dict) and isinstance(br, dict):
+            ax = int(tl.get('x', 0)); ay = int(tl.get('y', 0))
+            bx = int(br.get('x', ax)); by = int(br.get('y', ay))
+            arena_out['bbox'] = {'x': ax, 'y': ay, 'width': max(0, bx-ax), 'height': max(0, by-ay)}
+        # Optional numeric fields from client
+        def _set_int(key_in: str, key_out: str):
+            try:
+                if key_in in arena and arena.get(key_in) is not None:
+                    arena_out[key_out] = int(arena.get(key_in))
+            except Exception:
+                pass
+        _set_int('grid_cols', 'grid_cols')
+        _set_int('grid_rows', 'grid_rows')
+        _set_int('width_in_cm', 'width_in_cm')
+        _set_int('height_in_cm', 'height_in_cm')
+    except Exception:
+        arena_out = arena if isinstance(arena, dict) else {}
+    st['arena'] = arena_out
     try:
         s_path.parent.mkdir(parents=True, exist_ok=True)
         s_path.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding='utf-8')
-        vpath.with_suffix('.arena.json').write_text(json.dumps(arena, ensure_ascii=False, indent=2), encoding='utf-8')
         return jsonify({'ok': True, 'state': str(s_path)})
     except Exception as e:
         return jsonify({'error': f'Failed to save arena: {e}'}), 500
@@ -265,20 +376,27 @@ def api_preproc_background():
     if not vpath.exists() or not vpath.is_file():
         return jsonify({'error': 'Video file not found'}), 404
     try:
-        import base64
-        idx = image.find('base64,') if isinstance(image, str) else -1
-        b64 = image[idx+7:] if idx >= 0 else image
-        raw = base64.b64decode(b64)
-        bpath = _background_path_for(vpath)
-        bpath.write_bytes(raw)
+        # Store background image as Base64 in preproc JSON
         s_path = _preproc_state_path_for(vpath)
         try:
             st = json.loads(s_path.read_text(encoding='utf-8')) if s_path.exists() else {}
         except Exception:
             st = {}
-        st['background'] = str(bpath)
+        # Optional params if provided
+        bg = {
+            'image_b64': image,
+        }
+        try:
+            if 'nframes' in payload: bg['nframes'] = int(payload.get('nframes'))
+        except Exception:
+            pass
+        try:
+            if 'quantile' in payload: bg['quantile'] = int(payload.get('quantile'))
+        except Exception:
+            pass
+        st['background'] = bg
         s_path.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding='utf-8')
-        return jsonify({'ok': True, 'background': str(bpath)})
+        return jsonify({'ok': True, 'background': bg})
     except Exception as e:
         return jsonify({'error': f'Failed to save background: {e}'}), 500
 
@@ -298,7 +416,43 @@ def api_preproc_regions():
         st = json.loads(s_path.read_text(encoding='utf-8')) if s_path.exists() else {}
     except Exception:
         st = {}
-    st['regions'] = regions
+    # Normalize to mapping: name -> {cells, sheltered, enabled}
+    roi_map: Dict[str, Any] = {}
+    if isinstance(regions, dict):
+        for rname, rcfg in regions.items():
+            try:
+                if not isinstance(rcfg, dict):
+                    continue
+                cells = rcfg.get('cells', []) if isinstance(rcfg.get('cells', []), list) else []
+                roi_map[str(rname)] = {
+                    'cells': [[int(c[0]), int(c[1])] for c in cells if isinstance(c, (list, tuple)) and len(c) >= 2],
+                    'sheltered': bool(rcfg.get('sheltered', False)),
+                    'enabled': bool(rcfg.get('enabled', True)),
+                }
+            except Exception:
+                continue
+    elif isinstance(regions, list):
+        for it in regions:
+            try:
+                if not isinstance(it, dict):
+                    continue
+                name = str(it.get('name', '')).strip()
+                if not name:
+                    continue
+                cells_raw = it.get('cells') or []
+                cells_out: List[List[int]] = []
+                if isinstance(cells_raw, list):
+                    for c in cells_raw:
+                        if isinstance(c, (list, tuple)) and len(c) >= 2:
+                            cells_out.append([int(c[0]), int(c[1])])
+                roi_map[name] = {
+                    'cells': cells_out,
+                    'sheltered': bool(it.get('sheltered', False)),
+                    'enabled': bool(it.get('enabled', True)),
+                }
+            except Exception:
+                continue
+    st['roi'] = roi_map
     try:
         s_path.parent.mkdir(parents=True, exist_ok=True)
         s_path.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding='utf-8')
@@ -306,6 +460,123 @@ def api_preproc_regions():
     except Exception as e:
         return jsonify({'error': f'Failed to save regions: {e}'}), 500
 
+
+@bp.route('/colors', methods=['POST'])
+def api_preproc_colors():
+    payload = request.json or {}
+    video = str(payload.get('video', '')).strip()
+    colors = payload.get('colors')
+    if not video or not isinstance(colors, dict):
+        return jsonify({'error': 'Missing video or colors'}), 400
+    vpath = Path(video).expanduser()
+    if not vpath.exists() or not vpath.is_file():
+        return jsonify({'error': 'Video file not found'}), 404
+    s_path = _preproc_state_path_for(vpath)
+    try:
+        st = json.loads(s_path.read_text(encoding='utf-8')) if s_path.exists() else {}
+    except Exception:
+        st = {}
+    # Transform marks: use label as mouse id and drop 'mouse'
+    cols_out: Dict[str, Any] = dict(colors)
+    try:
+        marks_in = colors.get('marks', [])
+        if isinstance(marks_in, list):
+            marks_out: List[Dict[str, Any]] = []
+            for mk in marks_in:
+                if not isinstance(mk, dict):
+                    continue
+                mko = dict(mk)
+                try:
+                    if 'mouse' in mko and 'label' not in mko:
+                        mko['label'] = int(mko.get('mouse'))
+                except Exception:
+                    pass
+                mko.pop('mouse', None)
+                marks_out.append(mko)
+            cols_out['marks'] = marks_out
+    except Exception:
+        pass
+    st['colors'] = cols_out
+    try:
+        s_path.parent.mkdir(parents=True, exist_ok=True)
+        s_path.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding='utf-8')
+        return jsonify({'ok': True, 'state': str(s_path)})
+    except Exception as e:
+        return jsonify({'error': f'Failed to save colors: {e}'}), 500
+
+
+@bp.route('/save_final', methods=['POST'])
+def api_preproc_save_final():
+    payload = request.json or {}
+    video = str(payload.get('video', '')).strip()
+    if not video:
+        return jsonify({'error': 'Missing video'}), 400
+    vpath = Path(video).expanduser()
+    if not vpath.exists() or not vpath.is_file():
+        return jsonify({'error': 'Video file not found'}), 404
+    # Load temp state
+    s_path = _preproc_state_path_for(vpath)
+    try:
+        st = json.loads(s_path.read_text(encoding='utf-8')) if s_path.exists() else {}
+    except Exception:
+        st = {}
+    # Ensure schema alignment: arena only bbox, roi mapping exists, colors marks w/o mouse
+    try:
+        ar = st.get('arena') or {}
+        if isinstance(ar, dict):
+            if 'tl' in ar and 'br' in ar:
+                try:
+                    ax = int(ar['tl'].get('x', 0)); ay = int(ar['tl'].get('y', 0))
+                    bx = int(ar['br'].get('x', ax)); by = int(ar['br'].get('y', ay))
+                    st['arena'] = {'bbox': {'x': ax, 'y': ay, 'width': max(0,bx-ax), 'height': max(0,by-ay)}}
+                except Exception:
+                    pass
+        # Normalize regions->roi
+        if 'regions' in st and 'roi' not in st:
+            regs = st.get('regions')
+            roi_map: Dict[str, Any] = {}
+            if isinstance(regs, dict):
+                for rname, rcfg in regs.items():
+                    try:
+                        if not isinstance(rcfg, dict):
+                            continue
+                        cells = rcfg.get('cells', []) if isinstance(rcfg.get('cells', []), list) else []
+                        roi_map[str(rname)] = {
+                            'cells': [[int(c[0]), int(c[1])] for c in cells if isinstance(c,(list,tuple)) and len(c)>=2],
+                            'sheltered': bool(rcfg.get('sheltered', False)),
+                            'enabled': bool(rcfg.get('enabled', True)),
+                        }
+                    except Exception:
+                        continue
+            st['roi'] = roi_map
+            st.pop('regions', None)
+        # Colors marks drop mouse
+        cols = st.get('colors')
+        if isinstance(cols, dict):
+            marks = cols.get('marks', [])
+            if isinstance(marks, list):
+                out = []
+                for mk in marks:
+                    if not isinstance(mk, dict):
+                        continue
+                    mko = dict(mk)
+                    try:
+                        if 'mouse' in mko and 'label' not in mko:
+                            mko['label'] = int(mko.get('mouse'))
+                    except Exception:
+                        pass
+                    mko.pop('mouse', None)
+                    out.append(mko)
+                st['colors']['marks'] = out
+    except Exception:
+        pass
+    # Final file next to video
+    final_path = vpath.with_suffix('.preproc.json')
+    try:
+        final_path.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding='utf-8')
+        return jsonify({'ok': True, 'path': str(final_path)})
+    except Exception as e:
+        return jsonify({'error': f'Failed to write final preproc: {e}'}), 500
 
 @bp.route('/setup/save', methods=['POST'])
 def api_preproc_setup_save():

@@ -155,6 +155,7 @@
     var setupSel = U.$('#pp-setup');
     var applySetupBtn = U.$('#pp-apply-setup');
     var saveSetupBtn = U.$('#pp-save-setup');
+    var saveFinalBtn = U.$('#pp-save-final');
     var currentSetups = null;
     function normalizeSetups(raw){
       // Accept dict in target shape, or list in legacy shape, or null
@@ -278,6 +279,21 @@
       });
     }
 
+    // Save final preproc for current video next to the video file
+    if (saveFinalBtn){
+      saveFinalBtn.addEventListener('click', function(){
+        var videoPath = (window.Preproc && window.Preproc.State && window.Preproc.State.videoPath) || '';
+        if (!videoPath){ alert('Select a video first.'); return; }
+        var statusEl = document.getElementById('pp-mday-status');
+        if (statusEl) statusEl.textContent = 'Saving final preproc…';
+        fetch('/api/preproc/save_final', {
+          method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ video: videoPath })
+        }).then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d, status:r.statusText}; }); })
+          .then(function(res){ if (statusEl) statusEl.textContent = res.ok? ('Saved to ' + (res.d && res.d.path || '')) : ('Error: ' + (res.d && res.d.error || res.status)); })
+          .catch(function(e){ if (statusEl) statusEl.textContent = 'Error: ' + e; });
+      });
+    }
+
     // Initialize modules
     var arena = Preproc.Arena && Preproc.Arena.init({ video: v, overlay: overlay, markBtn: markBtn, status: status });
     if (Preproc.Background) Preproc.Background.init({});
@@ -301,12 +317,46 @@
           .then(function(r){ return r.json(); })
           .then(function(d){
             if (!d || d.error) return;
-            if (d.arena && d.arena.tl && d.arena.br){
-              S.tl = { x: (d.arena.tl.x|0), y: (d.arena.tl.y|0) };
-              S.br = { x: (d.arena.br.x|0), y: (d.arena.br.y|0) };
+            if (d.arena){
+              // Prefill grid/size inputs if present
+              try{
+                var colsEl = U.$('#grid-cols'), rowsEl = U.$('#grid-rows'), wcmEl = U.$('#arena-wcm'), hcmEl = U.$('#arena-hcm');
+                if (colsEl && d.arena.grid_cols!=null) colsEl.value = String(d.arena.grid_cols);
+                if (rowsEl && d.arena.grid_rows!=null) rowsEl.value = String(d.arena.grid_rows);
+                if (wcmEl && d.arena.width_in_cm!=null) wcmEl.value = String(d.arena.width_in_cm);
+                if (hcmEl && d.arena.height_in_cm!=null) hcmEl.value = String(d.arena.height_in_cm);
+              } catch(e){}
+              if (d.arena.tl && d.arena.br){
+                S.tl = { x: (d.arena.tl.x|0), y: (d.arena.tl.y|0) };
+                S.br = { x: (d.arena.br.x|0), y: (d.arena.br.y|0) };
+              } else if (d.arena.bbox){
+                var bb = d.arena.bbox; var ax = (bb.x|0), ay=(bb.y|0), w=(bb.width|0), h=(bb.height|0);
+                S.tl = { x: ax, y: ay };
+                S.br = { x: ax + Math.max(0,w), y: ay + Math.max(0,h) };
+              }
               if (arena && arena.drawOverlay) arena.drawOverlay();
               // Update gating for Regions/Save
               setTabsEnabled(!!(facilitySel && facilitySel.value));
+            }
+            if (d.background){
+              try{
+                var bgCanvas = document.getElementById('bg-canvas');
+                if (bgCanvas){
+                  var img = new Image();
+                  img.onload = function(){
+                    try{
+                      bgCanvas.width = img.width; bgCanvas.height = img.height;
+                      var c = bgCanvas.getContext('2d'); c.drawImage(img, 0, 0);
+                    } catch(e){}
+                  };
+                  if (typeof d.background === 'string'){
+                    // Back-compat path-based
+                    img.src = '/media?path=' + encodeURIComponent(d.background);
+                  } else if (d.background.image_b64){
+                    img.src = d.background.image_b64;
+                  }
+                }
+              } catch(e){}
             }
           })
           .catch(function(e){});

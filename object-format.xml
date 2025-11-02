@@ -1,0 +1,168 @@
+<root type="CheeseCube">
+  <nsubjects type="numeric">4</nsubjects>
+  <arena type="cheesecube.Arena">
+    <zones type="struct">
+      <name type="char">Open</name>
+      <type type="cheesecube.ROITypes" />
+      <image type="logical">[480x640]</image>
+      <enabled type="logical">true</enabled>
+      <sheltered type="logical">false</sheltered>
+      <vertices type="numeric">[4x2]</vertices>
+      <regionName type="char">Open</regionName>
+      <centroid type="empty"></centroid>
+    </zones>
+    <widthInCM type="numeric">60</widthInCM>
+    <heightInCM type="numeric">60</heightInCM>
+    <gridRows type="numeric">6</gridRows>
+    <gridCols type="numeric">6</gridCols>
+    <bbox type="numeric">[1x4]</bbox>
+    <colormap type="numeric">[12x3]</colormap>
+    <image type="numeric">[480x640]</image>
+    <pixelToCM type="numeric">6.7005</pixelToCM>
+    <types type="struct">
+      <open type="numeric">1</open>
+      <food type="numeric">2</food>
+      <water type="numeric">4</water>
+      <nest type="numeric">7</nest>
+      <ramp type="numeric">10</ramp>
+      <wall type="numeric">6</wall>
+      <enrichment type="numeric">5</enrichment>
+      <other type="numeric">0</other>
+    </types>
+  </arena>
+  <background type="cheesecube.Background">
+    <nframes type="numeric">30</nframes>
+    <quantile type="numeric">50</quantile>
+    <image type="numeric">[480x640x3]</image>
+  </background>
+  <behavior type="cheesecube.Behavior">
+    <pairwise type="struct">
+      <beg type="numeric">[2x1]</beg>
+      <end type="numeric">[2x1]</end>
+      <valid type="logical">true</valid>
+      <data type="cell">[1x2]</data>
+      <subjects type="numeric">[2x1]</subjects>
+      <states type="logical">[2x6]</states>
+      <type type="cheesecube.BehaviorTypes" />
+      <day type="numeric">1</day>
+      <predPrey type="empty"></predPrey>
+    </pairwise>
+    <group type="empty"></group>
+    <profile type="table">
+      <Properties type="matlab.tabular.TableProperties">
+        <Description type="empty"></Description>
+        <UserData type="empty"></UserData>
+        <DimensionNames type="cell">[1x2]</DimensionNames>
+        <VariableNames type="empty"></VariableNames>
+        <VariableTypes type="string" />
+        <VariableDescriptions type="empty"></VariableDescriptions>
+        <VariableUnits type="empty"></VariableUnits>
+        <VariableContinuity type="empty"></VariableContinuity>
+        <RowNames type="empty"></RowNames>
+        <CustomProperties type="matlab.tabular.CustomProperties" />
+      </Properties>
+      <Row type="empty"></Row>
+      <Variables type="empty"></Variables>
+    </profile>
+  </behavior>
+  <colors type="cheesecube.Colors">
+    <mice type="char">RGBY</mice>
+    <bins type="numeric">[1x20]</bins>
+    <histograms type="struct">
+      <R type="numeric">[4x20]</R>
+      <G type="numeric">[4x20]</G>
+      <B type="numeric">[4x20]</B>
+      <H type="numeric">[4x20]</H>
+      <S type="numeric">[4x20]</S>
+      <V type="numeric">[4x20]</V>
+      <count type="numeric">[4x1]</count>
+    </histograms>
+    <marks type="struct">
+      <pos type="numeric">[1x2]</pos>
+      <label type="numeric">1</label>
+      <time type="duration">
+        <Format type="char">s</Format>
+      </time>
+      <color type="numeric">[1x3]</color>
+      <size type="numeric">624</size>
+      <hist_r type="numeric">[20x1]</hist_r>
+      <hist_g type="numeric">[20x1]</hist_g>
+      <hist_b type="numeric">[20x1]</hist_b>
+      <hist_h type="numeric">[20x1]</hist_h>
+      <hist_s type="numeric">[20x1]</hist_s>
+      <hist_v type="numeric">[20x1]</hist_v>
+    </marks>
+    <centers type="numeric">[4x3]</centers>
+    <colormap type="numeric">[4x3]</colormap>
+    <background type="struct">
+      <histograms type="struct">
+        <R type="numeric">[1x20]</R>
+        <G type="numeric">[1x20]</G>
+        <B type="numeric">[1x20]</B>
+        <H type="numeric">[1x20]</H>
+        <S type="numeric">[1x20]</S>
+        <V type="numeric">[1x20]</V>
+        <count type="numeric">1</count>
+      </histograms>
+    </background>
+  </colors>
+  <meta type="cheesecube.Meta">
+    <remarks type="string" />
+    <created type="datetime">
+      <Format type="char">dd-MMM-uuuu HH:mm:ss</Format>
+      <TimeZone type="empty"></TimeZone>
+      <Year type="numeric">2024</Year>
+      <Month type="numeric">1</Month>
+      <Day type="numeric">29</Day>
+      <Hour type="numeric">5</Hour>
+      <Minute type="numeric">54</Minute>
+      <Second type="numeric">51.376</Second>
+    </created>
+    <darkThresh type="numeric">0.15686</darkThresh>
+    <startTime type="duration">
+      <Format type="char">hh:mm:ss</Format>
+    </startTime>
+    <endTime type="duration">
+      <Format type="char">hh:mm:ss</Format>
+    </endTime>
+    <parsedPrefix type="struct">
+      <groupType type="char">THREE_CHAMBER-exp</groupType>
+      <groupID type="numeric">13</groupID>
+      <dayID type="numeric">1</dayID>
+      <cameraID type="numeric">3</cameraID>
+      <experiment type="string" />
+      <treatment type="string" />
+    </parsedPrefix>
+    <groupType type="char">THREE_CHAMBER-exp</groupType>
+    <groupID type="numeric">13</groupID>
+    <dayID type="numeric">1</dayID>
+    <cameraID type="numeric">3</cameraID>
+    <experiment type="empty"></experiment>
+    <treatment type="empty"></treatment>
+  </meta>
+  <tracking type="cheesecube.Tracking">
+    <x type="numeric">[4x1295613]</x>
+    <y type="numeric">[4x1295613]</y>
+    <zones type="numeric">[4x1295613]</zones>
+    <hidden type="logical">[4x1295613]</hidden>
+    <probs type="empty"></probs>
+    <posture type="empty"></posture>
+    <aux type="empty"></aux>
+    <sheltered type="logical">[4x1295613]</sheltered>
+    <valid type="logical">[1x1295613]</valid>
+  </tracking>
+  <video type="cheesecube.Video">
+    <duration type="numeric">43199.641</duration>
+    <frameRate type="numeric">29.9913</frameRate>
+    <format type="string" />
+    <numFrames type="numeric">1295613</numFrames>
+    <height type="numeric">480</height>
+    <width type="numeric">640</width>
+    <name type="string" />
+    <path type="string" />
+    <filename type="string" />
+    <reader type="empty"></reader>
+  </video>
+  <aux type="empty"></aux>
+</root>
+
