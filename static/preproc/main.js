@@ -33,6 +33,8 @@
       U.showPane(name, panes);
       U.setActiveTab(name, tabs);
       overlay.style.pointerEvents = (name === 'arena' && S.marking) ? 'auto' : 'none';
+      try{ document.dispatchEvent(new CustomEvent('preproc:tab-changed', { detail: { name: name } })); }catch(e){}
+      try{ if (arena && arena.drawOverlay) arena.drawOverlay(); }catch(e){}
     }
 
     if (tabs.arena) tabs.arena.addEventListener('click', function(){ if (tabs.arena.disabled) return; switchTab('arena'); });
@@ -296,6 +298,10 @@
 
     // Initialize modules
     var arena = Preproc.Arena && Preproc.Arena.init({ video: v, overlay: overlay, markBtn: markBtn, status: status });
+    // Allow other modules to request a fresh overlay redraw (base layer)
+    document.addEventListener('preproc:request-overlay-redraw', function(){
+      try{ if (arena && arena.drawOverlay) arena.drawOverlay(); }catch(e){}
+    });
     if (Preproc.Background) Preproc.Background.init({});
     if (Preproc.Filters) Preproc.Filters.init({ video: v });
     if (Preproc.Regions) Preproc.Regions.init({});

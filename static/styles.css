@@ -183,6 +183,13 @@ body{
   overflow:hidden;
 }
 :root[data-theme="light"] .panel{ background:var(--panel); }
+.panel.panel--nochrome{ background:transparent; border:none; border-radius:0; box-shadow:none; overflow:visible }
+:root[data-theme="light"] .panel.panel--nochrome,
+:root[data-theme="mouse"] .panel.panel--nochrome,
+:root[data-theme="ocean"] .panel.panel--nochrome,
+:root[data-theme="forest"] .panel.panel--nochrome,
+:root[data-theme="plum"] .panel.panel--nochrome,
+:root[data-theme="contrast"] .panel.panel--nochrome{ background:transparent; border:none; box-shadow:none }
 .panel.center{display:flex; align-items:center; justify-content:center; min-height:50vh}
 .panel-header{display:flex; align-items:flex-end; justify-content:space-between; padding:18px 18px 0}
 .panel-body{ padding:18px }
@@ -216,7 +223,7 @@ body{
 .alert.error{ border-color:#5d2630; background:#2a131a; color:#ffb3bd }
 
 .controls{display:grid; grid-template-columns:1fr 1fr; gap:18px; padding:18px}
-.subpanel{ background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:12px }
+.subpanel{ background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:24px }
 .disabled-veil{
   position:absolute; inset:0; background:rgba(0,0,0,0.08);
   border-radius:12px; pointer-events:auto; display:none;
@@ -429,11 +436,20 @@ input[type="range"]::-moz-range-track{height:6px; border-radius:999px; backgroun
 }
 #pp-handle-tl.dragging, #pp-handle-br.dragging{ cursor: grabbing; }
 
+.controls{ display:grid; gap:12px; align-items:start; background:var(--bg); padding:8px; border-radius:12px }
+.subpanel{ background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:24px }
+
 .table-wrap{padding:12px}
 #events-table{width:100%; border-collapse:collapse; font-size:13px}
 #events-table th,#events-table td{border-bottom:1px solid #20263a; padding:8px}
 #events-table tbody tr.selected{background:#1a2032}
 #events-table td[contenteditable="true"]{background:#141a2b; border-radius:6px}
+
+/* Preproc: Regions table hover affordances */
+#roi-table .roi-name{ user-select:none }
+#roi-table tbody tr:hover .roi-name{ text-decoration: underline; color: var(--primary) }
+#roi-table .roi-edit-hint{ opacity:0; margin-left:6px; font-size:11px; color: var(--muted); transition: opacity 0.12s ease }
+#roi-table tbody tr:hover .roi-edit-hint{ opacity:1 }
 
 /* simple progress bar */
 .progress{height:8px; background:#1a2136; border:1px solid var(--border); border-radius:999px; overflow:hidden}

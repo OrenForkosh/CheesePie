@@ -85,6 +85,8 @@
           g.restore();
         } catch(e){}
       }
+      // Notify others overlay was redrawn so they can paint on top
+      try{ document.dispatchEvent(new CustomEvent('preproc:overlay-redraw')); }catch(e){}
     } catch(e) {}
   }
 

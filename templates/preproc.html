@@ -1,16 +1,11 @@
 {% extends "base.html" %} {% block content %}
-<section class="panel">
-  <div class="panel-header">
-    <div>
-      <h1>Preprocessing</h1>
-      <p class="muted">
-        Prepare a video for tracking: define arena and background.
-      </p>
-    </div>
-  </div>
-
-  <div class="controls" style="grid-template-columns: 2fr 1fr">
+<section class="panel panel--nochrome">
+  <div class="controls" style="grid-template-columns: 3fr 2fr">
     <div class="subpanel">
+    <div class="control-group" style="margin-bottom:8px">
+      <h1 style="margin:0 0 4px 0">Preprocessing</h1>
+      <p class="muted" style="margin:0">Prepare a video for tracking: define arena and background.</p>
+    </div>
     <div class="control-group">
       <label>Video</label>
       <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
@@ -236,10 +231,14 @@
             <tbody></tbody>
           </table>
         </div>
+        <div style="display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-top:8px">
+          <span class="muted" id="roi-status" style="margin-right:auto"></span>
+          <button class="btn" id="roi-add">Add</button>
+        </div>
         
         <div class="muted" style="margin-top: 6px">
           Tip: Click "Edit" for a region, then click grid cells in the
-          overlay to toggle. Click again to finish.
+          overlay to toggle. Press Esc or click Edit again to finish.
         </div>
       </div>
       <div id="pane-colors" style="display: none">
