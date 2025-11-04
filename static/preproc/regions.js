@@ -105,7 +105,10 @@
           for (let i=0;i<rc.length;i++){
             const rr = rc[i][0]|0, cc = rc[i][1]|0;
             const cx = x + cc * cw; const cy = y + rr * ch;
-            g.fillRect(Math.round(cx)+0.5, Math.round(cy)+0.5, Math.ceil(cw)-1, Math.ceil(ch)-1);
+            // Only draw if cell has some intersection with the visible canvas
+            if (cx + cw >= 0 && cy + ch >= 0 && cx <= m.overlay.width && cy <= m.overlay.height){
+              g.fillRect(Math.round(cx)+0.5, Math.round(cy)+0.5, Math.ceil(cw)-1, Math.ceil(ch)-1);
+            }
           }
           g.restore();
         });
@@ -120,14 +123,18 @@
           for (let i=0;i<rc.length;i++){
             const rr = rc[i][0]|0, cc = rc[i][1]|0;
             const cx = x + cc * cw; const cy = y + rr * ch;
-            g.fillRect(Math.round(cx)+0.5, Math.round(cy)+0.5, Math.ceil(cw)-1, Math.ceil(ch)-1);
+            if (cx + cw >= 0 && cy + ch >= 0 && cx <= m.overlay.width && cy <= m.overlay.height){
+              g.fillRect(Math.round(cx)+0.5, Math.round(cy)+0.5, Math.ceil(cw)-1, Math.ceil(ch)-1);
+            }
           }
           g.restore();
           g.save(); g.strokeStyle = col; g.lineWidth = 2.5;
           for (let i=0;i<rc.length;i++){
             const rr = rc[i][0]|0, cc = rc[i][1]|0;
             const cx = x + cc * cw; const cy = y + rr * ch;
-            g.strokeRect(Math.round(cx)+0.5, Math.round(cy)+0.5, Math.ceil(cw)-1, Math.ceil(ch)-1);
+            if (cx + cw >= 0 && cy + ch >= 0 && cx <= m.overlay.width && cy <= m.overlay.height){
+              g.strokeRect(Math.round(cx)+0.5, Math.round(cy)+0.5, Math.ceil(cw)-1, Math.ceil(ch)-1);
+            }
           }
           g.restore();
         }
@@ -141,14 +148,18 @@
         for (let i=0;i<cells.length;i++){
           const rr = cells[i][0]|0, cc = cells[i][1]|0;
           const cx = x + cc * cw; const cy = y + rr * ch;
-          g.fillRect(Math.round(cx)+0.5, Math.round(cy)+0.5, Math.ceil(cw)-1, Math.ceil(ch)-1);
+          if (cx + cw >= 0 && cy + ch >= 0 && cx <= m.overlay.width && cy <= m.overlay.height){
+            g.fillRect(Math.round(cx)+0.5, Math.round(cy)+0.5, Math.ceil(cw)-1, Math.ceil(ch)-1);
+          }
         }
         g.restore();
         g.save(); g.strokeStyle = col; g.lineWidth = 2;
         for (let i=0;i<cells.length;i++){
           const rr = cells[i][0]|0, cc = cells[i][1]|0;
           const cx = x + cc * cw; const cy = y + rr * ch;
-          g.strokeRect(Math.round(cx)+0.5, Math.round(cy)+0.5, Math.ceil(cw)-1, Math.ceil(ch)-1);
+          if (cx + cw >= 0 && cy + ch >= 0 && cx <= m.overlay.width && cy <= m.overlay.height){
+            g.strokeRect(Math.round(cx)+0.5, Math.round(cy)+0.5, Math.ceil(cw)-1, Math.ceil(ch)-1);
+          }
         }
         g.restore();
       }
@@ -164,11 +175,10 @@
       if (!bbox || !grid.cols || !grid.rows) return;
       const px = U.clamp(Math.round((ev.clientX - m.rect.left) / m.rect.width * (m.vw||1)), 0, (m.vw||1)-1);
       const py = U.clamp(Math.round((ev.clientY - m.rect.top) / m.rect.height * (m.vh||1)), 0, (m.vh||1)-1);
-      // Position within bbox
+      // Position relative to bbox; allow outside-of-bbox cells by extending grid virtually
       const dx = px - bbox.x, dy = py - bbox.y;
-      if (dx < 0 || dy < 0 || dx >= bbox.width || dy >= bbox.height) return;
-      const col = Math.max(0, Math.min(grid.cols-1, Math.floor(dx * grid.cols / Math.max(1,bbox.width))));
-      const row = Math.max(0, Math.min(grid.rows-1, Math.floor(dy * grid.rows / Math.max(1,bbox.height))));
+      const col = Math.floor(dx * grid.cols / Math.max(1,bbox.width));
+      const row = Math.floor(dy * grid.rows / Math.max(1,bbox.height));
       const r = ctx.regions[ctx.editing] || (ctx.regions[ctx.editing] = { enabled:true, sheltered:false, cells:[] });
       const key = row+','+col;
       const idx = r.cells.findIndex((c)=> (c[0]+','+c[1]) === key);
@@ -292,6 +302,7 @@
 
   function enterEdit(ctx, name){
     ctx.editing = name;
+    try{ document.dispatchEvent(new CustomEvent('preproc:regions-editing', { detail: { editing: true } })); }catch(e){}
     const overlay = U.$('#pp-overlay');
     if (overlay) overlay.style.pointerEvents = 'auto';
     // Add listeners
@@ -310,6 +321,7 @@
     if (overlay && ctx._overlayClick){ overlay.removeEventListener('click', ctx._overlayClick); }
     if (ctx._escKey){ window.removeEventListener('keydown', ctx._escKey); }
     ctx.editing = null;
+    try{ document.dispatchEvent(new CustomEvent('preproc:regions-editing', { detail: { editing: false } })); }catch(e){}
     // Redraw overlay to clear edit visuals: trigger arena redraw if available, else clear our overlay painting is ephemeral
     try{
       // Attempt to trigger an overlay redraw via resize to clear our strokes if needed
@@ -321,12 +333,11 @@
   }
 
   function dropOutOfRangeCells(ctx){
-    const grid = getGrid();
-    const maxR = Math.max(0, grid.rows-1), maxC = Math.max(0, grid.cols-1);
+    // Preserve cells even if they fall outside the current bbox-aligned grid
     Object.keys(ctx.regions).forEach((name)=>{
       const r = ctx.regions[name];
       if (!Array.isArray(r.cells)) r.cells = [];
-      r.cells = r.cells.filter((c)=> c && c.length>=2 && c[0]>=0 && c[1]>=0 && c[0] <= maxR && c[1] <= maxC);
+      r.cells = r.cells.filter((c)=> c && c.length>=2 && Number.isFinite(c[0]) && Number.isFinite(c[1]));
     });
   }
 

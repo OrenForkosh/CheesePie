@@ -163,6 +163,7 @@ def api_preproc_state():
     arena = None
     bg = None
     colors = None
+    meta = None
     if s_path.exists():
         try:
             st = json.loads(s_path.read_text(encoding='utf-8'))
@@ -170,6 +171,7 @@ def api_preproc_state():
             bg = st.get('background')
             regions = st.get('roi') or st.get('regions')
             colors = st.get('colors')
+            meta = st.get('meta')
         except Exception:
             arena = None; bg = None; regions = None
     if arena is None:
@@ -183,7 +185,7 @@ def api_preproc_state():
         b_path = _background_path_for(vpath)
         if b_path.exists():
             bg = str(b_path)
-    return jsonify({'ok': True, 'arena': arena, 'background': bg, 'roi': regions if 'regions' in locals() else None, 'colors': colors})
+    return jsonify({'ok': True, 'arena': arena, 'background': bg, 'roi': regions if 'regions' in locals() else None, 'colors': colors, 'meta': meta})
 
 
 @bp.route('/save_multi', methods=['POST'])
@@ -476,34 +478,67 @@ def api_preproc_colors():
         st = json.loads(s_path.read_text(encoding='utf-8')) if s_path.exists() else {}
     except Exception:
         st = {}
-    # Transform marks: use label as mouse id and drop 'mouse'
-    cols_out: Dict[str, Any] = dict(colors)
+    # Merge frames and marks as provided; do not alter 'mouse' field
+    st_colors: Dict[str, Any] = st.get('colors') if isinstance(st.get('colors'), dict) else {}
+    # Frames: merge by time key; store marks per frame to avoid duplication
+    frames_in = colors.get('frames') if isinstance(colors.get('frames'), dict) else {}
+    frames_out = st_colors.get('frames') if isinstance(st_colors.get('frames'), dict) else {}
     try:
-        marks_in = colors.get('marks', [])
-        if isinstance(marks_in, list):
-            marks_out: List[Dict[str, Any]] = []
-            for mk in marks_in:
-                if not isinstance(mk, dict):
-                    continue
-                mko = dict(mk)
-                try:
-                    if 'mouse' in mko and 'label' not in mko:
-                        mko['label'] = int(mko.get('mouse'))
-                except Exception:
-                    pass
-                mko.pop('mouse', None)
-                marks_out.append(mko)
-            cols_out['marks'] = marks_out
+        for k, v in frames_in.items():
+            if not isinstance(v, dict):
+                continue
+            tk = str(k)
+            cur = frames_out.get(tk) if isinstance(frames_out.get(tk), dict) else {}
+            # Merge image_b64 and labels; overwrite with latest
+            if 'image_b64' in v:
+                cur['image_b64'] = v.get('image_b64')
+            if 'labels' in v:
+                cur['labels'] = v.get('labels')
+            # Marks provided under this frame: replace existing marks for this time key
+            if isinstance(v.get('marks'), list):
+                cur['marks'] = v.get('marks')
+            frames_out[tk] = cur
     except Exception:
         pass
-    st['colors'] = cols_out
+    st_colors['frames'] = frames_out
+    # Drop top-level marks append behavior; keep marks inside frames only
+    st['colors'] = st_colors
     try:
         s_path.parent.mkdir(parents=True, exist_ok=True)
         s_path.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding='utf-8')
-        return jsonify({'ok': True, 'state': str(s_path)})
+        return jsonify({'ok': True, 'state': str(s_path), 'colors': st_colors})
     except Exception as e:
         return jsonify({'error': f'Failed to save colors: {e}'}), 500
 
+
+@bp.route('/timing', methods=['POST'])
+def api_preproc_timing():
+    payload = request.json or {}
+    video = str(payload.get('video', '')).strip()
+    start_time = str(payload.get('start_time', '')).strip()
+    end_time = str(payload.get('end_time', '')).strip()
+    if not video:
+        return jsonify({'error': 'Missing video'}), 400
+    vpath = Path(video).expanduser()
+    if not vpath.exists() or not vpath.is_file():
+        return jsonify({'error': 'Video file not found'}), 404
+    s_path = _preproc_state_path_for(vpath)
+    try:
+        st = json.loads(s_path.read_text(encoding='utf-8')) if s_path.exists() else {}
+    except Exception:
+        st = {}
+    meta = st.get('meta') if isinstance(st.get('meta'), dict) else {}
+    if start_time:
+        meta['start_time'] = start_time
+    if end_time:
+        meta['end_time'] = end_time
+    st['meta'] = meta
+    try:
+        s_path.parent.mkdir(parents=True, exist_ok=True)
+        s_path.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding='utf-8')
+        return jsonify({'ok': True, 'state': str(s_path), 'meta': meta})
+    except Exception as e:
+        return jsonify({'error': f'Failed to save timing: {e}'}), 500
 
 @bp.route('/save_final', methods=['POST'])
 def api_preproc_save_final():
@@ -696,3 +731,137 @@ def api_preproc_setup_save():
 
 
 __all__ = ['bp']
+
+
+@bp.route('/segment_simple', methods=['POST'])
+def api_preproc_segment_simple():
+    """Segment a frame with background using cheesepie.segment.simple.
+
+    Accepts JSON with either data URLs or file paths:
+      - image: data URL for current frame or 'path'
+      - background: data URL for background or 'background_path'
+
+    Returns
+      { ok: True, index: [[uint8...], ...] }
+    """
+    payload = request.json or {}
+    image_data = payload.get('image')
+    image_path = payload.get('path')
+    bg_data = payload.get('background')
+    bg_path = payload.get('background_path')
+    params = payload.get('params') or {}
+    if not (image_data or image_path):
+        return jsonify({'error': 'Provide image (data URL) or path'}), 400
+    try:
+        from PIL import Image
+        import base64
+        import io
+        import numpy as np  # type: ignore
+    except Exception as e:
+        return jsonify({'error': f'Missing dependency: {e}'}), 500
+
+    def _from_dataurl(url: str) -> Image.Image:
+        try:
+            idx = url.find('base64,')
+            b64 = url[idx+7:] if idx >= 0 else url
+            raw = base64.b64decode(b64)
+            return Image.open(io.BytesIO(raw)).convert('RGB')
+        except Exception as e:
+            raise ValueError(f'Failed to decode image: {e}')
+
+    try:
+        if image_data and not image_path:
+            img = _from_dataurl(str(image_data))
+        else:
+            from pathlib import Path
+            img = Image.open(str(Path(str(image_path)).expanduser())).convert('RGB')
+        bkg = None
+        try:
+            if bg_data and not bg_path:
+                bkg = _from_dataurl(str(bg_data))
+            elif bg_path:
+                from pathlib import Path
+                bkg = Image.open(str(Path(str(bg_path)).expanduser())).convert('RGB')
+        except Exception:
+            bkg = None
+
+        # Ensure both inputs are same size if background is provided
+        if bkg is not None and bkg.size != img.size:
+            bkg = bkg.resize(img.size, Image.BILINEAR)
+
+        # Import cheesepie.segment lazily to avoid app startup failures if optional deps are missing
+        try:
+            from . import segment as _seg
+        except Exception as e:
+            return jsonify({'error': f'Failed to import segmenter: {e}. Install optional dependencies (e.g., scikit-image).'}), 500
+        # Resolve function name: prefer 'simple', fallback to 'simple_segment'
+        seg_fn = getattr(_seg, 'simple', None)
+        if seg_fn is None:
+            seg_fn = getattr(_seg, 'simple_segment', None)
+        if seg_fn is None:
+            return jsonify({'error': "Segmenter function not found (expected 'simple' or 'simple_segment')"}), 500
+        # segment.simple now returns (labels_img, overlay_img) with same size as inputs.
+        # If Options dataclass exists, allow tuning via params
+        opt = None
+        try:
+            OptCls = getattr(_seg, 'Options', None)
+            if OptCls is not None:
+                opt = OptCls(
+                    height=int(img.height),
+                    width=int(img.width),
+                    noiseThresh=int(params.get('noiseThresh', 10)),
+                    maxNumObjects=int(params.get('maxNumObjects', 20)),
+                    minNumPixels=int(params.get('minNumPixels', 25)),
+                )
+        except Exception:
+            opt = None
+        # Call signatures supported:
+        # - simple(frame) -> (labels, overlay)
+        # - simple(frame, bkg) -> (labels, overlay)
+        # - simple(frame, bkg, opt)
+        if bkg is None:
+            # Try calling with just frame; fallback to passing frame as background
+            try:
+                result = seg_fn(img, opt=opt) if opt is not None else seg_fn(img)
+            except TypeError:
+                try:
+                    result = seg_fn(img, img, opt=opt) if opt is not None else seg_fn(img, img)
+                except TypeError:
+                    # Last resort: assume signature (frame, bkg) without opt
+                    result = seg_fn(img, img)
+        else:
+            try:
+                result = seg_fn(img, bkg, opt=opt) if opt is not None else seg_fn(img, bkg)
+            except TypeError:
+                result = seg_fn(img, bkg)
+        overlay_b64 = None
+        labels_img: Image.Image
+        if isinstance(result, (list, tuple)) and len(result) >= 2:
+            labels_img = result[0]
+            overlay_img = result[1]
+            try:
+                buf = io.BytesIO()
+                overlay_img.save(buf, format='PNG')
+                overlay_b64 = 'data:image/png;base64,' + base64.b64encode(buf.getvalue()).decode('ascii')
+            except Exception:
+                overlay_b64 = None
+        else:
+            labels_img = result  # backward compatibility
+        arr = np.array(labels_img, dtype=np.uint8)
+        index = arr.tolist()
+        # Basic stats for debugging
+        try:
+            import numpy as _np
+            uniq = _np.unique(arr)
+            nonzero = int((_np.count_nonzero(arr)))
+            stats = {'shape': [int(arr.shape[0]), int(arr.shape[1])], 'unique': [int(x) for x in uniq.tolist()[:64]], 'nonzero': nonzero}
+        except Exception:
+            stats = None
+        payload_out = {'ok': True, 'index': index}
+        if stats is not None:
+            payload_out['stats'] = stats
+        if overlay_b64 is not None:
+            payload_out['overlay_b64'] = overlay_b64
+        return jsonify(payload_out)
+    except Exception as e:
+        return jsonify({'error': f'segment.simple failed: {e}'}), 500

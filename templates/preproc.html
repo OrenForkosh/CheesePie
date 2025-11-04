@@ -123,6 +123,15 @@
               <button class="chip" data-filter="invert">Invert</button>
               <button class="chip" data-filter="histeq">Hist Eq</button>
             </div>
+            <button
+              class="icon-btn"
+              id="pp-export-frame"
+              title="Export current frame as PNG"
+              aria-label="Export frame as PNG"
+              style="margin-left:6px"
+            >
+              ⤓
+            </button>
             <span class="muted" style="min-width: 1px"></span>
           </div>
         </div>
@@ -147,12 +156,12 @@
         <div class="k"></div>
         <div class="v"><span id="pp-setup-status" class="muted"></span></div>
       </div>
-      <div class="muted" id="pp-matlab-status" style="margin: 2px 0 8px 0">MATLAB: Checking…</div>
       <div
         class="tabs small"
         style="display: flex; gap: 8px; margin-bottom: 8px"
       >
         <button class="btn mini" id="tab-arena">Arena</button>
+        <button class="btn mini" id="tab-timing">Timing</button>
         <button class="btn mini" id="tab-background">Background</button>
         <button class="btn mini" id="tab-regions">Regions</button>
         <button class="btn mini" id="tab-colors">Colors</button>
@@ -175,11 +184,10 @@
           define: top-left then bottom-right. Drag handles to refine while
           marking. Arrow keys nudge (Shift = 10px).
         </div>
-        <div
-          style="display: flex; gap: 8px; align-items: center; margin-top: 8px"
-        >
+        <div class="controls-row pane-next">
           <button class="btn" id="arena-mark">Mark</button>
-          <span class="muted" id="arena-status"></span>
+          <span class="muted" id="arena-status" style="margin-left:auto"></span>
+          <button class="btn success" id="arena-next" title="Save and go to Timing">Next</button>
         </div>
       </div>
       <div id="pane-background" style="display: none">
@@ -196,11 +204,10 @@
             value="50"
           />
         </div>
-        <div
-          style="display: flex; gap: 8px; align-items: center; margin: 8px 0"
-        >
+        <div class="controls-row pane-next" style="margin: 8px 0">
           <button class="btn" id="bg-run">Run</button>
           <button class="btn" id="bg-save">Save</button>
+          <button class="btn success" id="bg-next" title="Save and go to Regions">Next</button>
           <span class="muted" id="bg-status"></span>
         </div>
         <canvas
@@ -231,9 +238,10 @@
             <tbody></tbody>
           </table>
         </div>
-        <div style="display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-top:8px">
+        <div class="pane-next" style="margin-top:8px">
           <span class="muted" id="roi-status" style="margin-right:auto"></span>
           <button class="btn" id="roi-add">Add</button>
+          <button class="btn success" id="roi-next" title="Save and go to Colors">Next</button>
         </div>
         
         <div class="muted" style="margin-top: 6px">
@@ -243,31 +251,45 @@
       </div>
       <div id="pane-colors" style="display: none">
         <div class="controls-row" style="align-items:center; gap:12px; margin: 8px 0; flex-wrap: wrap">
-          <label style="display:flex; align-items:center; gap:6px">
-            <input type="checkbox" id="pp-colors-segments" /> Show segments
-          </label>
-          <label style="display:flex; align-items:center; gap:8px">
-            <span class="muted">Bounds thickness</span>
-            <input type="range" id="pp-colors-thickness" min="0" max="8" step="1" value="2" />
-            <span class="muted" id="pp-colors-thickness-val">2</span>
-          </label>
-          <button class="btn mini" id="pp-colors-remove" title="Remove mark for selected mouse in current frame">Remove mark</button>
-          <button class="btn mini" id="pp-colors-clear" title="Clear all marks">Clear marks</button>
-          <button class="btn mini" id="pp-colors-random" title="Jump to a random frame">Random frame</button>
+          <div class="muted">Mouse</div>
+          <div id="pp-mouse-chips" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap">
+            <button class="chip" data-mouse="R" title="R (1)">R</button>
+            <button class="chip" data-mouse="G" title="G (2)">G</button>
+            <button class="chip" data-mouse="B" title="B (3)">B</button>
+            <button class="chip" data-mouse="Y" title="Y (4)">Y</button>
+            <button class="chip" data-mouse="BG" title="Background (0)">BG</button>
+          </div>
+          <span class="muted" style="min-width:1px"></span>
+          <button class="btn" id="pp-colors-run" title="Segment current frame">Segment</button>
+          <button class="btn" id="pp-colors-show-only" title="Show segments only">Segments</button>
+          <button class="btn success" id="pp-colors-save" title="Save marks for this frame">Save marks</button>
+          <button class="btn mini" id="pp-colors-clear" title="Clear marks for this frame">Clear</button>
+          <button class="btn mini" id="pp-colors-list" title="Show marks for this frame">Marks</button>
+          <span class="muted" id="pp-colors-indicator"></span>
           <span class="muted" id="pp-colors-status" style="min-width:200px"></span>
         </div>
-        <div class="controls-row" style="align-items:center; gap:12px; margin: 8px 0; flex-wrap: wrap">
-          <div id="pp-colors-selected" class="muted">Mouse: 1</div>
-          <div id="pp-colors-legend" class="muted"></div>
-        </div>
-        <div class="controls-row" style="align-items:flex-start; gap:12px; margin: 8px 0; flex-wrap: wrap">
-          <div>
-            <div class="muted" style="margin-bottom:4px">Marked counts</div>
-            <div id="pp-colors-hist" class="muted"></div>
+        <div id="pp-colors-marks" class="muted" style="display:none; margin: 6px 0"></div>
+        <div class="muted" style="margin-top: 6px">Pick a mouse (or BG), then click a segment on the video to mark it. Use keys 1–4 for R/G/B/Y and 0 for BG.</div>
+      </div>
+      <div id="pane-timing" style="display:none">
+        <div class="kv">
+          <div class="k">Current</div>
+          <div class="v"><span id="exp-current">00:00:00.000</span></div>
+          <div class="k">Start</div>
+          <div class="v" style="display:flex; gap:8px; align-items:center">
+            <input type="text" id="exp-start" placeholder="HH:MM:SS.mmm" />
+            <button class="btn mini" id="exp-set-start">Set from current</button>
+          </div>
+          <div class="k">End</div>
+          <div class="v" style="display:flex; gap:8px; align-items:center">
+            <input type="text" id="exp-end" placeholder="HH:MM:SS.mmm" />
+            <button class="btn mini" id="exp-set-end">Set from current</button>
           </div>
         </div>
-        <div class="muted" style="margin-top: 6px">
-          When open, frames are segmented by color in MATLAB (RGBY). White outlines always show cluster boundaries; enable “Show segments” to overlay colored fills.
+        <div class="controls-row pane-next" style="margin-top:8px; align-items:center; gap:8px">
+          <button class="btn" id="exp-reset">Reset to full video</button>
+          <span class="muted" style="flex:1" id="exp-status"></span>
+          <button class="btn success" id="exp-next">Next</button>
         </div>
       </div>
       <div id="pane-save" style="display:none">
@@ -301,5 +323,6 @@
 <script src="/static/preproc/filters.js"></script>
 <script src="/static/preproc/regions.js"></script>
 <script src="/static/preproc/colors.js"></script>
+<script src="/static/preproc/timing.js"></script>
 <script src="/static/preproc/main.js"></script>
 {% endblock %}

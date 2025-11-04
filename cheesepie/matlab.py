@@ -336,3 +336,100 @@ def api_matlab_status():
 
 
 __all__ = ['bp', 'init_app', 'cfg_matlab', 'warmup_matlab_async']
+
+
+# ----- Native simpleSegment wrapper endpoint -----
+@bp.route('/simple_segment', methods=['POST'])
+def api_simple_segment_native():
+    """Run color segmentation via compiled simpleSegment (no MATLAB Engine).
+
+    Expects JSON with either data URLs or paths:
+      - image: data URL for current frame (preferred) or 'path'
+      - background: data URL for background (preferred) or 'background_path'
+
+    Returns
+      { ok: True, index: [[uint8 ...], ...] }
+    """
+    payload = request.json or {}
+    image_data = payload.get('image')
+    image_path = payload.get('path')
+    bg_data = payload.get('background')
+    bg_path = payload.get('background_path')
+    if not (image_data or image_path):
+        return jsonify({'error': 'Provide image (data URL) or path'}), 400
+    if not (bg_data or bg_path):
+        return jsonify({'error': 'Provide background (data URL) or background_path'}), 400
+
+    # Lazy imports to avoid requiring deps if unused
+    try:
+        import numpy as np  # type: ignore
+        from PIL import Image  # type: ignore
+        import io
+        import importlib.util
+        from pathlib import Path as _Path
+    except Exception as e:
+        return jsonify({'error': f'Missing dependency: {e}'}), 500
+
+    # Load matlab/simpleSegment.py as a module without colliding with matlab.engine
+    try:
+        mod = getattr(api_simple_segment_native, '_ss_mod', None)
+        if mod is None:
+            ss_path = _Path(__file__).parent.parent / 'matlab' / 'simpleSegment.py'
+            spec = importlib.util.spec_from_file_location('simpleSegment_native', str(ss_path))
+            if spec is None or spec.loader is None:
+                return jsonify({'error': 'Failed to locate simpleSegment.py'}), 500
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)  # type: ignore
+            setattr(api_simple_segment_native, '_ss_mod', mod)
+    except Exception as e:
+        return jsonify({'error': f'Failed to load simpleSegment: {e}'}), 500
+
+    def _img_from_dataurl(data_url: str) -> Image.Image:
+        try:
+            idx = data_url.find('base64,')
+            b64 = data_url[idx+7:] if idx >= 0 else data_url
+            raw = base64.b64decode(b64)
+        except Exception:
+            # If not base64, try treat as raw bytes
+            try:
+                raw = data_url.encode('utf-8')
+            except Exception as e:
+                raise ValueError(f'Bad image data: {e}')
+        try:
+            return Image.open(io.BytesIO(raw)).convert('RGB')
+        except Exception as e:
+            raise ValueError(f'Failed to decode image: {e}')
+
+    import base64  # stdlib
+
+    try:
+        if image_data and not image_path:
+            img = _img_from_dataurl(str(image_data))
+        else:
+            img = Image.open(str(image_path)).convert('RGB')
+        if bg_data and not bg_path:
+            bkg = _img_from_dataurl(str(bg_data))
+        else:
+            bkg = Image.open(str(bg_path)).convert('RGB')
+
+        # Ensure same size
+        if bkg.size != img.size:
+            bkg = bkg.resize(img.size, Image.BILINEAR)
+
+        frame_np = np.array(img, dtype=np.uint8)
+        bkg_np   = np.array(bkg, dtype=np.uint8)
+        # Expect HWC
+        if frame_np.ndim == 2:
+            frame_np = np.stack([frame_np]*3, axis=-1)
+        if bkg_np.ndim == 2:
+            bkg_np = np.stack([bkg_np]*3, axis=-1)
+
+        labels = mod.run_simple_segment(frame_np, bkg_np)
+        try:
+            # Convert compactly: list of rows
+            out = labels.astype('uint8').tolist()
+        except Exception:
+            out = [[int(x) for x in row] for row in labels]
+        return jsonify({'ok': True, 'index': out})
+    except Exception as e:
+        return jsonify({'error': f'simpleSegment failed: {e}'}), 500

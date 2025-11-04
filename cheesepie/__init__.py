@@ -25,7 +25,6 @@ def create_app() -> Flask:
 
     # Deferred imports to avoid circulars
     from .config import inject_public_config
-    from .matlab import bp as matlab_bp, init_app as matlab_init
     from .preproc import bp as preproc_bp
     from .browser import bp as browser_bp
     from .media import bp as media_bp
@@ -39,7 +38,6 @@ def create_app() -> Flask:
     register_filters(app)
 
     # Blueprints
-    app.register_blueprint(matlab_bp, url_prefix='/api/matlab')
     app.register_blueprint(preproc_bp, url_prefix='/api/preproc')
     app.register_blueprint(browser_bp, url_prefix='/api')
     app.register_blueprint(media_bp)
@@ -47,8 +45,7 @@ def create_app() -> Flask:
     app.register_blueprint(pages_bp)
     app.register_blueprint(auth_bp)
 
-    # Module-specific initialization
-    matlab_init(app)
+    # Module-specific initialization (MATLAB removed)
 
     # Auth gate: require valid token for all non-auth, non-static endpoints
     @app.before_request

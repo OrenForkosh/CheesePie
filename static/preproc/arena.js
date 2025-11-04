@@ -44,6 +44,15 @@
       const v = ctx.video;
       const g = overlay.getContext('2d');
       g.clearRect(0,0,overlay.width, overlay.height);
+      // Respect active tab: only draw bbox/grid on Arena or Regions
+      const tab = ctx._activeTab || '';
+      const allow = (tab === 'arena' || tab === 'regions' || tab === '');
+      if (!allow){
+        // Hide handles when not allowed
+        if (ctx.hTL) ctx.hTL.style.display = 'none';
+        if (ctx.hBR) ctx.hBR.style.display = 'none';
+        return;
+      }
       const rect = v.getBoundingClientRect();
       overlay.width = rect.width; overlay.height = rect.height;
       // Always update handles visibility/position even if no rectangle yet
@@ -88,6 +97,16 @@
       // Notify others overlay was redrawn so they can paint on top
       try{ document.dispatchEvent(new CustomEvent('preproc:overlay-redraw')); }catch(e){}
     } catch(e) {}
+  }
+
+  function clearOverlayOnly(ctx){
+    try{
+      const overlay = ctx.overlay;
+      const g = overlay.getContext('2d');
+      g.clearRect(0,0,overlay.width||1, overlay.height||1);
+      if (ctx.hTL) ctx.hTL.style.display='none';
+      if (ctx.hBR) ctx.hBR.style.display='none';
+    } catch(e){}
   }
 
   function handleClick(ctx, ev){
@@ -278,6 +297,15 @@
         } catch(e){}
       });
       drawOverlay(ctx);
+      // Hide/show overlay based on active tab
+      document.addEventListener('preproc:tab-changed', function(ev){
+        try{
+          const name = ev && ev.detail && ev.detail.name || '';
+          ctx._activeTab = name;
+          if (name === 'arena' || name === 'regions') drawOverlay(ctx);
+          else clearOverlayOnly(ctx);
+        } catch(e){}
+      });
     } catch(e) {}
     return { drawOverlay: () => drawOverlay(ctx) };
   }

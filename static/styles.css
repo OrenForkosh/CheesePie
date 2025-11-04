@@ -222,13 +222,21 @@ body{
 .alert{ padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:#141a2b; }
 .alert.error{ border-color:#5d2630; background:#2a131a; color:#ffb3bd }
 
-.controls{display:grid; grid-template-columns:1fr 1fr; gap:18px; padding:18px}
-.subpanel{ background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:24px }
+.controls{display:grid; grid-template-columns:1fr 1fr; gap:18px; padding:18px; align-items:stretch}
+.subpanel{ background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:24px; display:flex; flex-direction:column; height:100%; position:relative; overflow:hidden }
+.subpanel #pp-panes{ flex:1; min-height:0; display:flex; flex-direction:column; background:transparent; overflow:auto }
+.subpanel #pp-panes > div{ flex:1; display:flex; flex-direction:column; min-height:100%; background:transparent }
+.subpanel .pane-next{ margin-top:auto; display:flex; align-items:center; gap:8px; justify-content:flex-end; position:sticky; bottom:0; background:var(--panel); padding-top:8px; border-top:1px solid var(--border) }
+.subpanel .pane-next .btn{ margin-left:8px }
+
+/* Ensure any tab content inherits panel background (remove grey tint) */
+#pane-arena, #pane-background, #pane-regions, #pane-colors, #pane-timing, #pane-save{ background:transparent }
+.disabled-veil{ background:rgba(0,0,0,0.08) }
 .disabled-veil{
   position:absolute; inset:0; background:rgba(0,0,0,0.08);
-  border-radius:12px; pointer-events:auto; display:none;
+  border-radius:12px; pointer-events:none; display:none;
 }
-.disabled-veil.visible{ display:block }
+.disabled-veil.visible{ display:block; pointer-events:auto }
 .control-group label{display:block; margin:0 0 6px; color:var(--muted); font-size:12px; letter-spacing:0.3px}
 .control-group .inline{display:flex; gap:10px}
 /* search clear */

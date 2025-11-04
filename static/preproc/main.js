@@ -16,6 +16,7 @@
       background: U.$('#pane-background'),
       regions: U.$('#pane-regions'),
       colors: U.$('#pane-colors'),
+      timing: U.$('#pane-timing'),
       save: U.$('#pane-save')
     };
     var tabs = {
@@ -23,24 +24,36 @@
       background: U.$('#tab-background'),
       regions: U.$('#tab-regions'),
       colors: U.$('#tab-colors'),
+      timing: U.$('#tab-timing'),
       save: U.$('#tab-save')
     };
 
+    var isRegionsEditing = false;
+    var order = ['arena','timing','background','regions','colors','save'];
+    function nextOf(name){ var i = order.indexOf(name); return (i>=0 && i < order.length-1) ? order[i+1] : null; }
     function switchTab(name){
       // Guard against disabled tabs
       var btn = tabs[name];
       if (btn && btn.disabled) return;
+      // Prevent switching away while region editing is active
+      if (isRegionsEditing && name !== 'arena' && name !== 'regions'){
+        alert('Finish editing the region first.');
+        return;
+      }
       U.showPane(name, panes);
       U.setActiveTab(name, tabs);
-      overlay.style.pointerEvents = (name === 'arena' && S.marking) ? 'auto' : 'none';
+      // Allow overlay interactions in Arena (for marking) and in Colors (for segment marking)
+      overlay.style.pointerEvents = ((name === 'arena' && S.marking) || name === 'colors') ? 'auto' : 'none';
       try{ document.dispatchEvent(new CustomEvent('preproc:tab-changed', { detail: { name: name } })); }catch(e){}
       try{ if (arena && arena.drawOverlay) arena.drawOverlay(); }catch(e){}
     }
 
     if (tabs.arena) tabs.arena.addEventListener('click', function(){ if (tabs.arena.disabled) return; switchTab('arena'); });
+    if (tabs.timing) tabs.timing.addEventListener('click', function(){ if (tabs.timing.disabled) return; switchTab('timing'); });
     if (tabs.background) tabs.background.addEventListener('click', function(){ if (tabs.background.disabled) return; switchTab('background'); });
     if (tabs.regions) tabs.regions.addEventListener('click', function(){ if (tabs.regions.disabled) return; switchTab('regions'); });
     if (tabs.colors) tabs.colors.addEventListener('click', function(){ if (tabs.colors.disabled) return; switchTab('colors'); });
+    if (tabs.timing) tabs.timing.addEventListener('click', function(){ if (tabs.timing.disabled) return; switchTab('timing'); });
     if (tabs.save) tabs.save.addEventListener('click', function(){ if (tabs.save.disabled) return; switchTab('save'); });
 
     // No file placeholder
@@ -53,6 +66,28 @@
       // Load video source
       try { v.src = '/media?path=' + encodeURIComponent(S.videoPath); v.load(); } catch(e) {}
     }
+
+    // Export current frame as PNG
+    (function wireExport(){
+      var btn = U.$('#pp-export-frame'); if (!btn || !v) return;
+      function tsString(sec){ try{ var s=Math.max(0,sec|0); var h=(s/3600)|0; var m=((s%3600)/60)|0; var ss=(s%60)|0; var pad=(n)=>String(n).padStart(2,'0'); return (h? h+"-":"") + pad(m) + '-' + pad(ss); }catch(e){ return 'time'; } }
+      btn.addEventListener('click', function(){
+        try{
+          if (!v.videoWidth){ alert('Video not ready'); return; }
+          var cw = v.videoWidth, ch = v.videoHeight;
+          var c = document.createElement('canvas'); c.width=cw; c.height=ch;
+          var ctx = c.getContext('2d');
+          ctx.drawImage(v, 0, 0, cw, ch);
+          var dataUrl = c.toDataURL('image/png');
+          var a = document.createElement('a');
+          var base = (S.videoPath ? (S.videoPath.split('/').pop()||'video') : 'frame');
+          var at = tsString(v.currentTime||0);
+          a.download = base.replace(/\.[^.]+$/, '') + '.frame.' + at + '.png';
+          a.href = dataUrl;
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        } catch(e){ console.error('Export failed', e); }
+      });
+    })();
 
     // Facility select handling
     var facilitySel = U.$('#pp-facility');
@@ -78,7 +113,7 @@
     function setTreeDisabled(el, disabled){
       try{
         if (!el) return;
-        if (disabled) el.setAttribute('inert',''); else el.removeAttribute('inert');
+        // Avoid inert to prevent browser-level pointer blocking quirks
         var controls = el.querySelectorAll('input,button,select,textarea');
         for (var i=0;i<controls.length;i++){ controls[i].disabled = !!disabled; }
       } catch(e){}
@@ -108,8 +143,20 @@
           switchTab('arena');
           // Additional gating: Regions/Save require a valid arena
           var okArena = arenaIsValid();
+          if (tabs.timing){ tabs.timing.disabled = !okArena; tabs.timing.title = okArena? '' : 'Mark the arena first'; }
           if (tabs.regions){ tabs.regions.disabled = !okArena; tabs.regions.title = okArena? '' : 'Mark the arena first'; }
           if (tabs.save){ tabs.save.disabled = !okArena; tabs.save.title = okArena? '' : 'Mark the arena first'; }
+        }
+      } catch(e){}
+    }
+    function applyRegionsEditingGating(){
+      try{
+        if (isRegionsEditing){
+          // Disable navigation except Regions and Arena
+          Object.keys(tabs).forEach(function(k){ if (!tabs[k]) return; if (k !== 'regions' && k !== 'arena'){ tabs[k].disabled = true; tabs[k].title = 'Finish editing the region first'; } });
+        } else {
+          // Recompute default gating based on current facility/arena state
+          setTabsEnabled(!!(facilitySel && facilitySel.value));
         }
       } catch(e){}
     }
@@ -304,7 +351,8 @@
     });
     if (Preproc.Background) Preproc.Background.init({});
     if (Preproc.Filters) Preproc.Filters.init({ video: v });
-    if (Preproc.Regions) Preproc.Regions.init({});
+    var regions = null; if (Preproc.Regions) regions = Preproc.Regions.init({});
+    var bg = null; if (Preproc.Background) bg = Preproc.Background.init({});
     if (Preproc.Colors) Preproc.Colors.init({});
 
     // Only allow switching once a facility is set; otherwise show placeholder
@@ -370,7 +418,44 @@
     })();
 
     // React to arena changes to update gating
-    document.addEventListener('preproc:arena-changed', function(){ setTabsEnabled(!!(facilitySel && facilitySel.value)); });
+    document.addEventListener('preproc:arena-changed', function(){ if (!isRegionsEditing) setTabsEnabled(!!(facilitySel && facilitySel.value)); });
+    document.addEventListener('preproc:regions-editing', function(ev){ isRegionsEditing = !!(ev && ev.detail && ev.detail.editing); applyRegionsEditingGating(); });
+    // Next button handlers
+    function postJSON(url, body){ return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }); }
+    function goNextFrom(name){ var n = nextOf(name); if (n) switchTab(n); }
+    // Arena Next: save arena if present and go to timing
+    var arenaNext = document.getElementById('arena-next');
+    if (arenaNext) arenaNext.addEventListener('click', function(){
+      try{
+        var tl = (S && S.tl), br=(S && S.br);
+        if (!(tl && br)){ alert('Mark the arena first.'); return; }
+        var payload = { video: S.videoPath||'', arena: { tl: {x:tl.x, y:tl.y}, br: {x:br.x, y:br.y} } };
+        var colsEl = U.$('#grid-cols'), rowsEl = U.$('#grid-rows'), wcmEl = U.$('#arena-wcm'), hcmEl = U.$('#arena-hcm');
+        var cols = parseInt((colsEl&&colsEl.value)||'',10), rows=parseInt((rowsEl&&rowsEl.value)||'',10);
+        var wcm = parseInt((wcmEl&&wcmEl.value)||'',10), hcm=parseInt((hcmEl&&hcmEl.value)||'',10);
+        if (!isNaN(cols)&&cols>0) payload.arena.grid_cols=cols; if (!isNaN(rows)&&rows>0) payload.arena.grid_rows=rows;
+        if (!isNaN(wcm)&&wcm>0) payload.arena.width_in_cm=wcm; if (!isNaN(hcm)&&hcm>0) payload.arena.height_in_cm=hcm;
+        postJSON('/api/preproc/arena', payload).finally(function(){ goNextFrom('arena'); });
+      } catch(e){ goNextFrom('arena'); }
+    });
+    // Background Next: trigger save then go to regions
+    var bgNext = document.getElementById('bg-next');
+    if (bgNext) bgNext.addEventListener('click', function(){ try{ if (bg && bg.saveBackground) bg.saveBackground(); }catch(e){} goNextFrom('background'); });
+    // Regions Next: POST current regions then go colors
+    var roiNext = document.getElementById('roi-next');
+    if (roiNext) roiNext.addEventListener('click', function(){
+      try{
+        var vp = (S && S.videoPath)||''; if (!vp){ goNextFrom('regions'); return; }
+        var data = {};
+        if (regions && regions.regions){ var reg = regions.regions; Object.keys(reg).forEach(function(k){ var r=reg[k]||{}; data[k] = { enabled: !!r.enabled, sheltered: !!r.sheltered, cells: (r.cells||[]) }; }); }
+        postJSON('/api/preproc/regions', { video: vp, regions: data }).finally(function(){ goNextFrom('regions'); });
+      } catch(e){ goNextFrom('regions'); }
+    });
+    // Colors Next: just move to Save
+    var colorsNext = document.getElementById('colors-next');
+    if (colorsNext) colorsNext.addEventListener('click', function(){ goNextFrom('colors'); });
+    // Timing Next handled inside timing.js via event
+    document.addEventListener('preproc:go-next', function(ev){ var from = (ev && ev.detail && ev.detail.from)||''; if (from) goNextFrom(from); });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
