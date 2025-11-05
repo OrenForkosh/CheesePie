@@ -253,11 +253,14 @@
         <div class="controls-row" style="align-items:center; gap:12px; margin: 8px 0; flex-wrap: wrap">
           <button class="btn" id="pp-colors-random" title="Jump to a random frame">Random</button>
           <button class="btn" id="pp-colors-show-only" title="Show segments only">Segments</button>
-          <button class="btn mini" id="pp-colors-clear" title="Clear marks for this frame">Clear</button>
           <span class="muted" id="pp-colors-status" style="min-width:200px"></span>
         </div>
         <div class="muted" style="margin-top: 6px">Drag a marker (R/G/B/Y/BG) from the top-left dock onto a segment to assign it, or click a segment to assign the current mouse (use keys 1–4 and 0).</div>
         <div id="pp-colors-hist" style="margin-top:8px"></div>
+        <div style="display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap">
+          <button class="btn mini" id="pp-colors-clear" title="Clear marks for this frame">Clear</button>
+          <button class="btn mini" id="pp-colors-clear-all" title="Clear all marks in this video">Clear all</button>
+        </div>
       </div>
       <div id="pane-timing" style="display:none">
         <div class="kv">

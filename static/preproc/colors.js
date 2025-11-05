@@ -15,6 +15,7 @@
     const showOnlyBtn = document.getElementById('pp-colors-show-only');
     const saveBtn = document.getElementById('pp-colors-save');
     const clearBtn = document.getElementById('pp-colors-clear');
+    const clearAllBtn = document.getElementById('pp-colors-clear-all');
     const listBtn = document.getElementById('pp-colors-list');
     const listEl = document.getElementById('pp-colors-marks');
     const histEl = document.getElementById('pp-colors-hist');
@@ -329,11 +330,16 @@
         if(data.stats&&typeof data.stats.nonzero==='number'){ if(data.stats.nonzero===0) setStatus('No segments detected (try a different frame or compute background)'); else setStatus(`Segments detected: ${data.stats.unique ? data.stats.unique.length-(data.stats.unique.includes(0)?1:0):''}`);} 
         if(Array.isArray(data.index)&&data.index.length){ lastIndex=data.index; lastSize={h:data.index.length|0,w:(data.index[0]||[]).length|0}; }
         cached = { time: timeKey(), image: dataUrl, labels: lastIndex };
+        // Draw either the server-provided overlay image (base) or the color map
         const overlayImg=data.overlay_b64; if(!overlayImg){ setStatus('No overlay returned'); return; }
         const vw=v&&v.clientWidth?v.clientWidth:(processed&&processed.clientWidth)||0; const vh=v&&v.clientHeight?v.clientHeight:(processed&&processed.clientHeight)||0; if(!vw||!vh){ setStatus('Video panel not ready'); return; }
-        const img=new Image(); await new Promise(res=>{ img.onload=()=>res(); img.onerror=()=>res(); img.src=overlayImg;});
-        processed.width=vw; processed.height=vh; processed.style.display='';
-        const pctx=processed.getContext('2d'); pctx.imageSmoothingEnabled=false; pctx.clearRect(0,0,vw,vh); const r=fitRect(img.naturalWidth||img.width, img.naturalHeight||img.height, vw, vh); pctx.drawImage(img,r.dx,r.dy,r.dw,r.dh);
+        if (segmentsOn){ await showSegmentsOnly(); }
+        else {
+          const img=new Image(); await new Promise(res=>{ img.onload=()=>res(); img.onerror=()=>res(); img.src=overlayImg;});
+          processed.width=vw; processed.height=vh;
+          const pctx=processed.getContext('2d'); pctx.imageSmoothingEnabled=false; pctx.clearRect(0,0,vw,vh); const r=fitRect(img.naturalWidth||img.width, img.naturalHeight||img.height, vw, vh); pctx.drawImage(img,r.dx,r.dy,r.dw,r.dh);
+          processed.style.display='';
+        }
         syncFromSaved(); drawMarks(); updateIndicator(); renderHistogram(); setStatus('');
       }catch(e){ setStatus('Error: '+e); }
     }
@@ -356,6 +362,39 @@
     function colorForLabel(l){ if(!l||l<=0) return [0,0,0,0]; const hue=(l*137.508)%360; const s=0.7,vv=0.95; const c=vv*s,x=c*(1-Math.abs(((hue/60)%2)-1)),m=vv-c; let r=0,g=0,b=0; if(0<=hue&&hue<60){r=c;g=x;b=0;} else if(60<=hue&&hue<120){r=x;g=c;b=0;} else if(120<=hue&&hue<180){r=0;g=c;b=x;} else if(180<=hue&&hue<240){r=0;g=x;b=c;} else if(240<=hue&&hue<300){r=x;g=0;b=c;} else {r=c;g=0;b=x;} return [Math.round((r+m)*255),Math.round((g+m)*255),Math.round((b+m)*255),255]; }
     async function showSegmentsOnly(){ try{ if(!lastIndex){ await run(); } if(!lastIndex){ setStatus('No labels available'); return;} const W=lastSize.w,H=lastSize.h; if(!W||!H){ setStatus('No labels available'); return;} const vw=v&&v.clientWidth?v.clientWidth:(processed&&processed.clientWidth)||0; const vh=v&&v.clientHeight?v.clientHeight:(processed&&processed.clientHeight)||0; if(!vw||!vh){ setStatus('Video panel not ready'); return;} const off=document.createElement('canvas'); off.width=W; off.height=H; const octx=off.getContext('2d'); const img=octx.createImageData(W,H); const d=img.data; for(let y=0,p=0;y<H;y++){ const row=lastIndex[y]||[]; for(let x=0;x<W;x++,p+=4){ const l=row[x]|0; const c=colorForLabel(l); d[p]=c[0]; d[p+1]=c[1]; d[p+2]=c[2]; d[p+3]=c[3]; } } octx.putImageData(img,0,0); processed.width=vw; processed.height=vh; processed.style.display=''; const pctx=processed.getContext('2d'); pctx.imageSmoothingEnabled=false; pctx.clearRect(0,0,vw,vh); const r=fitRect(W,H,vw,vh); pctx.drawImage(off,r.dx,r.dy,r.dw,r.dh); setStatus(''); }catch(e){ setStatus('Error: '+e); } }
 
+    function drawSegmentOutlines(){
+      try{
+        if(!lastIndex){ return; }
+        const W=lastSize.w,H=lastSize.h; if(!W||!H) return;
+        const vw=v&&v.clientWidth?v.clientWidth:(processed&&processed.clientWidth)||0; const vh=v&&v.clientHeight?v.clientHeight:(processed&&processed.clientHeight)||0; if(!vw||!vh) return;
+        const off=document.createElement('canvas'); off.width=W; off.height=H; const octx=off.getContext('2d');
+        const img=octx.createImageData(W,H); const d=img.data;
+        function setPx(x,y){ const p=((y*W+x)|0)*4; d[p]=255; d[p+1]=255; d[p+2]=255; d[p+3]=255; }
+        for(let y=0;y<H;y++){
+          const row=lastIndex[y]||[]; const rowD = (y+1<H)? (lastIndex[y+1]||[]) : null;
+          for(let x=0;x<W;x++){
+            const l = row[x]|0; const r = (x+1<W)? (row[x+1]|0) : l; const dwn = rowD? (rowD[x]|0) : l;
+            if (l !== r || l !== dwn){ setPx(x,y); }
+          }
+        }
+        octx.putImageData(img,0,0);
+        processed.width=vw; processed.height=vh; processed.style.display='';
+        const pctx=processed.getContext('2d'); pctx.imageSmoothingEnabled=false; pctx.clearRect(0,0,vw,vh); const r=fitRect(W,H,vw,vh); pctx.drawImage(off,r.dx,r.dy,r.dw,r.dh);
+      }catch(e){}
+    }
+
+    // Toggle state for segments overlay
+    let segmentsOn = false;
+    function setSegmentsMode(on){
+      try{
+        segmentsOn = !!on;
+        if (showOnlyBtn){ showOnlyBtn.classList.toggle('primary', segmentsOn); }
+        // Re-render current frame according to toggle; run() draws base overlay
+        if (segmentsOn){ showSegmentsOnly(); }
+        else { run(); }
+      }catch(e){}
+    }
+
     runBtn?.addEventListener('click', run);
     // Jump to a random frame when clicking Random
     randBtn?.addEventListener('click', ()=>{
@@ -366,7 +405,7 @@
         v.currentTime = t;
       }catch(e){ setStatus('Error: '+e); }
     });
-    showOnlyBtn?.addEventListener('click', showSegmentsOnly);
+    showOnlyBtn?.addEventListener('click', ()=>{ setSegmentsMode(!segmentsOn); });
     renderMouseSelection();
     tab?.addEventListener('click', async ()=>{ if(pane) pane.style.display=''; await ensureSavedFrames(); syncFromSaved(); drawMarks(); updateIndicator(); renderHistogram(); run(); });
     v?.addEventListener('seeking', ()=>{ if(pane&&pane.style.display!=='none'){ autoSaveIfNeeded(); } });
@@ -377,6 +416,23 @@
 
     // Manual save removed in favor of auto-save
     clearBtn?.addEventListener('click', ()=>{ const t=timeKey(); marks[t]=[]; drawMarks(); setIndicator(''); renderHistogram(); if(listEl) listEl.style.display='none'; setStatus('Cleared'); });
+    clearAllBtn?.addEventListener('click', async ()=>{
+      try{
+        await ensureSavedFrames();
+        // Build payload to clear marks for all known frames
+        const frames = savedFrames || {};
+        const out = {};
+        Object.keys(frames).forEach((k)=>{ out[k] = { marks: [] }; });
+        // Also clear current in-memory marks
+        for (const k in marks){ if (Object.prototype.hasOwnProperty.call(marks,k)) delete marks[k]; }
+        const body = { video: (window.Preproc&&window.Preproc.State&&window.Preproc.State.videoPath)||'', colors:{ frames: out } };
+        const resp = await fetch('/api/preproc/colors',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+        const ok = resp && resp.ok;
+        // Update local cache regardless to reflect UI immediately
+        Object.keys(frames).forEach((k)=>{ if (!frames[k]) frames[k]={}; frames[k].marks = []; });
+        drawMarks(); renderHistogram(); setStatus(ok ? 'Cleared all' : 'Cleared all (local)');
+      }catch(e){ setStatus('Error: '+e); }
+    });
     listBtn?.addEventListener('click', ()=>{ if(!listEl) return; const t=timeKey(); const list=marks[t]||[]; if(!list.length){ listEl.textContent='No marks for this frame.'; listEl.style.display=''; return;} listEl.innerHTML=list.map(m=>`<div>${m.mouse} • label ${m.segment_label} • (${Math.round(m.centroid.x)}, ${Math.round(m.centroid.y)})</div>`).join(''); listEl.style.display = listEl.style.display==='none' ? '' : 'none'; });
 
     return { run };
