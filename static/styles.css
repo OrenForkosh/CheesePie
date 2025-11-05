@@ -448,6 +448,20 @@ input[type="range"]::-moz-range-track{height:6px; border-radius:999px; backgroun
 .controls{ display:grid; gap:12px; align-items:start; background:var(--bg); padding:8px; border-radius:12px }
 .subpanel{ background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:24px }
 
+/* Pane footers: subtle top separator + muted explanatory text */
+.pane-footer{
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* Preproc: make right panel tabs fill the panel */
+#pp-right{ align-self: stretch; display:flex; flex-direction:column }
+#pp-right #pp-panes{ position:relative; flex:1; min-height: 280px; }
+#pp-right #pp-panes > div{ position:absolute; inset:0; overflow:auto; }
+
 .table-wrap{padding:12px}
 #events-table{width:100%; border-collapse:collapse; font-size:13px}
 #events-table th,#events-table td{border-bottom:1px solid #20263a; padding:8px}

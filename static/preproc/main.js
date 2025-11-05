@@ -354,8 +354,16 @@
     if (Preproc.Background) Preproc.Background.init({});
     if (Preproc.Filters) Preproc.Filters.init({ video: v });
     var regions = null; if (Preproc.Regions) regions = Preproc.Regions.init({});
+    try { Preproc.__regions = regions; } catch(e){}
     var bg = null; if (Preproc.Background) bg = Preproc.Background.init({});
     if (Preproc.Colors) Preproc.Colors.init({});
+    // Wire Save dialog button
+    try {
+      var openSaveBtn = U.$('#pp-open-save');
+      if (openSaveBtn && Preproc.SaveDialog && Preproc.SaveDialog.open){
+        openSaveBtn.addEventListener('click', function(){ Preproc.SaveDialog.open(); });
+      }
+    } catch(e){}
 
     // Only allow switching once a facility is set; otherwise show placeholder
     if (facilitySel && !facilitySel.value){

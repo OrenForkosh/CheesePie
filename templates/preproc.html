@@ -1,7 +1,7 @@
 {% extends "base.html" %} {% block content %}
 <section class="panel panel--nochrome">
   <div class="controls" style="grid-template-columns: 3fr 2fr">
-    <div class="subpanel">
+    <div class="subpanel" id="pp-right">
     <div class="control-group" style="margin-bottom:8px">
       <h1 style="margin:0 0 4px 0">Preprocessing</h1>
       <p class="muted" style="margin:0">Prepare a video for tracking: define arena and background.</p>
@@ -158,14 +158,18 @@
       </div>
       <div
         class="tabs small"
-        style="display: flex; gap: 8px; margin-bottom: 8px"
+        style="display: flex; gap: 8px; margin-bottom: 8px; align-items:center; justify-content:space-between"
       >
+        <div style="display:flex; gap:8px; align-items:center">
         <button class="btn mini" id="tab-arena">Arena</button>
         <button class="btn mini" id="tab-timing">Timing</button>
         <button class="btn mini" id="tab-background">Background</button>
         <button class="btn mini" id="tab-regions">Regions</button>
         <button class="btn mini" id="tab-colors">Colors</button>
-        <button class="btn mini" id="tab-save">Save…</button>
+        </div>
+        <div>
+          <button class="btn mini success" id="pp-open-save" title="Save preproc to multiple days">Save…</button>
+        </div>
       </div>
       <div id="pp-panes" style="position:relative">
       <div id="pane-arena">
@@ -179,15 +183,15 @@
           <div class="k">Height (cm)</div>
           <input type="number" id="arena-hcm" min="1" value="30" />
         </div>
-        <div class="muted" style="margin-top: 6px">
-          Arena is axis-aligned rectangle within the frame. Click Mark to
-          define: top-left then bottom-right. Drag handles to refine while
-          marking. Arrow keys nudge (Shift = 10px).
-        </div>
         <div class="controls-row pane-next">
           <button class="btn" id="arena-mark">Mark</button>
           <span class="muted" id="arena-status" style="margin-left:auto"></span>
           <button class="btn success" id="arena-next" title="Save and go to Timing">Next</button>
+        </div>
+        <div class="pane-footer">
+          Arena is axis-aligned rectangle within the frame. Click Mark to
+          define: top-left then bottom-right. Drag handles to refine while
+          marking. Arrow keys nudge (Shift = 10px).
         </div>
       </div>
       <div id="pane-background" style="display: none">
@@ -243,8 +247,7 @@
           <button class="btn" id="roi-add">Add</button>
           <button class="btn success" id="roi-next" title="Save and go to Colors">Next</button>
         </div>
-        
-        <div class="muted" style="margin-top: 6px">
+        <div class="pane-footer">
           Tip: Click "Edit" for a region, then click grid cells in the
           overlay to toggle. Press Esc or click Edit again to finish.
         </div>
@@ -255,11 +258,13 @@
           <button class="btn" id="pp-colors-show-only" title="Show segments only">Segments</button>
           <span class="muted" id="pp-colors-status" style="min-width:200px"></span>
         </div>
-        <div class="muted" style="margin-top: 6px">Drag a marker (R/G/B/Y/BG) from the top-left dock onto a segment to assign it, or click a segment to assign the current mouse (use keys 1–4 and 0).</div>
         <div id="pp-colors-hist" style="margin-top:8px"></div>
         <div style="display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap">
           <button class="btn mini" id="pp-colors-clear" title="Clear marks for this frame">Clear</button>
           <button class="btn mini" id="pp-colors-clear-all" title="Clear all marks in this video">Clear all</button>
+        </div>
+        <div class="pane-footer">
+          Drag a marker (R/G/B/Y/BG) from the top-left dock onto a segment to assign it, or click a segment to assign the current mouse (use keys 1–4 and 0).
         </div>
       </div>
       <div id="pane-timing" style="display:none">
@@ -283,21 +288,8 @@
           <button class="btn success" id="exp-next">Next</button>
         </div>
       </div>
-      <div id="pane-save" style="display:none">
-        <div class="muted" style="margin-bottom:6px">Save arena, regions, and colors to the selected days (backgrounds remain per day).</div>
-        <div id="pp-mday-summary" class="muted" style="margin:6px 0">Group: —</div>
-        <div id="pp-mday-list" style="max-height:160px; overflow:auto; border:1px solid var(--border); border-radius:8px; padding:6px"></div>
-        <div style="display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap">
-          <button class="btn mini" id="pp-mday-all">All</button>
-          <button class="btn mini" id="pp-mday-none">None</button>
-          <span class="muted" id="pp-mday-count"></span>
-        </div>
-        <div style="display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap">
-          <button class="btn" id="pp-mday-save">Save preproc → selected days</button>
-          <button class="btn" id="pp-save-final">Save preproc → current video</button>
-        </div>
-        <div class="muted" id="pp-mday-status" style="margin-top:6px"></div>
-      </div>
+      <!-- Save pane removed; replaced by Save dialog button above -->
+      <div id="pane-save" style="display:none"></div>
       </div> <!-- end #pp-panes -->
     </div>
     </div> <!-- end right subpanel -->
@@ -315,5 +307,6 @@
 <script src="/static/preproc/regions.js"></script>
 <script src="/static/preproc/colors.js"></script>
 <script src="/static/preproc/timing.js"></script>
+<script src="/static/preproc/save_dialog.js"></script>
 <script src="/static/preproc/main.js"></script>
 {% endblock %}

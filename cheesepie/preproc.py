@@ -621,8 +621,8 @@ def api_preproc_save_final():
                 st['colors']['marks'] = out
     except Exception:
         pass
-    # Final file next to video
-    final_path = vpath.with_suffix('.preproc.json')
+    # Final file next to video: append suffix without replacing original extension
+    final_path = vpath.parent / f"{vpath.name}.preproc.json"
     try:
         final_path.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding='utf-8')
         return jsonify({'ok': True, 'path': str(final_path)})
