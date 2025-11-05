@@ -302,6 +302,7 @@ select:focus{border-color:var(--primary); outline:none}
 .btn.primary{background:linear-gradient(180deg, var(--primary), var(--primary-600)); border-color:transparent}
 .btn:hover{filter:brightness(1.05)}
 .btn.success{background:linear-gradient(180deg, #34c759, #2eae4f); border-color:transparent; color:#fff}
+.btn.danger{background:linear-gradient(180deg, #ff4d4f, #e63946); border-color:transparent; color:#fff}
 .btn:disabled, .btn[disabled]{ opacity:0.5; cursor:not-allowed; filter:none }
 
 /* Icon-only button (transparent) */

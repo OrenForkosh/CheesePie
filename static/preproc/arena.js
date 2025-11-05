@@ -139,8 +139,18 @@
   function setMarking(ctx, on, opts){
     State.marking = !!on;
     if (ctx.markBtn){
-      if (State.marking){ ctx.markBtn.classList.add('primary'); ctx.markBtn.textContent = 'Marking…'; if (ctx.status) ctx.status.textContent = 'Click top-left then bottom-right'; }
-      else { ctx.markBtn.classList.remove('primary'); ctx.markBtn.textContent = 'Mark'; if (ctx.status) ctx.status.textContent=''; }
+      // Keep button width stable via CSS (#arena-mark { min-width:100px })
+      if (State.marking){
+        ctx.markBtn.classList.remove('primary');
+        ctx.markBtn.classList.add('danger');
+        ctx.markBtn.textContent = 'Stop';
+        if (ctx.status) ctx.status.textContent = 'Click top-left then bottom-right';
+      } else {
+        ctx.markBtn.classList.remove('danger');
+        ctx.markBtn.classList.remove('primary');
+        ctx.markBtn.textContent = 'Mark';
+        if (ctx.status) ctx.status.textContent='';
+      }
     }
     ctx.overlay.style.pointerEvents = State.marking ? 'auto' : 'none';
     if (State.marking){
@@ -302,6 +312,8 @@
         try{
           const name = ev && ev.detail && ev.detail.name || '';
           ctx._activeTab = name;
+          // If leaving Arena, stop marking mode
+          if (name !== 'arena' && State.marking){ setMarking(ctx, false); }
           if (name === 'arena' || name === 'regions') drawOverlay(ctx);
           else clearOverlayOnly(ctx);
         } catch(e){}

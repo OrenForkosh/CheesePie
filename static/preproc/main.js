@@ -140,12 +140,14 @@
         } else {
           if (v) v.classList.remove('visible');
           Object.keys(panes).forEach(function(k){ if (panes[k]) { setTreeDisabled(panes[k], false); } });
-          switchTab('arena');
           // Additional gating: Regions/Save require a valid arena
           var okArena = arenaIsValid();
           if (tabs.timing){ tabs.timing.disabled = !okArena; tabs.timing.title = okArena? '' : 'Mark the arena first'; }
           if (tabs.regions){ tabs.regions.disabled = !okArena; tabs.regions.title = okArena? '' : 'Mark the arena first'; }
           if (tabs.save){ tabs.save.disabled = !okArena; tabs.save.title = okArena? '' : 'Mark the arena first'; }
+          // Colors requires a computed or loaded background
+          var hasBg = !!S.hasBackground;
+          if (tabs.colors){ tabs.colors.disabled = (!hasBg); tabs.colors.title = hasBg? '' : 'Compute or load background first'; }
         }
       } catch(e){}
     }
@@ -401,6 +403,9 @@
                     try{
                       bgCanvas.width = img.width; bgCanvas.height = img.height;
                       var c = bgCanvas.getContext('2d'); c.drawImage(img, 0, 0);
+                      S.hasBackground = true;
+                      // Update gating now that background is available
+                      setTabsEnabled(!!(facilitySel && facilitySel.value));
                     } catch(e){}
                   };
                   if (typeof d.background === 'string'){
@@ -416,6 +421,11 @@
           .catch(function(e){});
       } catch(e){}
     })();
+
+    // React when background becomes ready during this session
+    document.addEventListener('preproc:background-ready', function(){
+      try{ S.hasBackground = true; setTabsEnabled(!!(facilitySel && facilitySel.value)); }catch(e){}
+    });
 
     // React to arena changes to update gating
     document.addEventListener('preproc:arena-changed', function(){ if (!isRegionsEditing) setTabsEnabled(!!(facilitySel && facilitySel.value)); });

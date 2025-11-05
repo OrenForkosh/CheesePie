@@ -107,7 +107,10 @@ if [[ "$SETUP_MATLAB" = "0" && "$NEED_MATLAB" = "1" ]]; then
   log "      Run ./start.sh --setup-matlab [--matlab-root \"/path/to/MATLAB_R20xx*/\"] to install."
 fi
 
-# Run the app
-PORT="${PORT:-8000}"
-log "Starting app on http://127.0.0.1:${PORT} ..."
+# Run the app with auto-reload in development
+# Export env so Flask process (and its reloader child) sees them
+export DEBUG="${DEBUG:-1}"               # set to 0 to disable auto-reload
+export PORT="${PORT:-8000}"
+export HOST="${HOST:-127.0.0.1}"
+log "Starting app on http://${HOST}:${PORT} (DEBUG=${DEBUG}) ..."
 exec python app.py

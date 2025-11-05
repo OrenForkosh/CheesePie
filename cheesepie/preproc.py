@@ -489,11 +489,27 @@ def api_preproc_colors():
                 continue
             tk = str(k)
             cur = frames_out.get(tk) if isinstance(frames_out.get(tk), dict) else {}
-            # Merge image_b64 and labels; overwrite with latest
+            # Merge image
             if 'image_b64' in v:
                 cur['image_b64'] = v.get('image_b64')
-            if 'labels' in v:
-                cur['labels'] = v.get('labels')
+            # Encode labels as grayscale PNG (uint8), store as data URL, drop raw list
+            if 'labels' in v and v.get('labels') is not None:
+                try:
+                    import numpy as _np  # type: ignore
+                    from PIL import Image  # type: ignore
+                    import io as _io, base64 as _b64
+                    arr = _np.array(v.get('labels'), dtype=_np.uint8)
+                    if arr.ndim == 3 and arr.shape[-1] in (3,4):
+                        arr = arr[...,0]
+                    img = Image.fromarray(arr, mode='L')
+                    buf = _io.BytesIO()
+                    img.save(buf, format='PNG')
+                    cur['labels_b64'] = 'data:image/png;base64,' + _b64.b64encode(buf.getvalue()).decode('ascii')
+                    # ensure we don't keep raw labels
+                    cur.pop('labels', None)
+                except Exception:
+                    # fallback: keep labels as-is if encoding fails
+                    cur['labels'] = v.get('labels')
             # Marks provided under this frame: replace existing marks for this time key
             if isinstance(v.get('marks'), list):
                 cur['marks'] = v.get('marks')

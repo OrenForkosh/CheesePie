@@ -20,6 +20,7 @@
           <div class="alert error" role="alert">{{ error }}</div>
           {% endif %}
           <form method="post" class="form">
+            <input type="hidden" name="next" value="{{ request.args.get('next', '') }}">
             <div class="control-group">
               <label for="password">New password</label>
               <input id="password" name="password" type="password" required autofocus>
@@ -37,4 +38,3 @@
     </main>
   </body>
   </html>
-

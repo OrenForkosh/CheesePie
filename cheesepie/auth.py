@@ -8,6 +8,7 @@ import os
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
+from urllib.parse import urlparse
 
 from flask import Blueprint, current_app, redirect, render_template, request, url_for, make_response
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -138,7 +139,8 @@ def login():
     error = None
     if request.method == "POST":
         if verify_password(request.form.get("password", "")):
-            resp = make_response(redirect(request.args.get("next") or url_for("pages.home")))
+            nxt = _get_next_path()
+            resp = make_response(redirect(nxt or url_for("pages.home")))
             set_auth_cookie(resp)
             return resp
         error = "Invalid password"
@@ -159,7 +161,8 @@ def setup():
             error = "Passwords do not match"
         else:
             set_password(pw)
-            resp = make_response(redirect(url_for("pages.home")))
+            nxt = _get_next_path()
+            resp = make_response(redirect(nxt or url_for("pages.home")))
             set_auth_cookie(resp)
             return resp
     return render_template("setup.html", error=error)
@@ -180,3 +183,25 @@ __all__ = [
     "set_auth_cookie",
 ]
 
+
+# Internal helpers
+def _get_next_path() -> Optional[str]:
+    """Return a safe in-app path to redirect to after auth.
+
+    Prefers `request.form['next']` then `request.args['next']` and ensures the
+    value is a relative path within this app (no external redirects).
+    """
+    raw = (request.form.get("next") or request.args.get("next") or "").strip()
+    if not raw:
+        return None
+    # Only allow same-app relative paths like "/preproc" or "/api/..."
+    parsed = urlparse(raw)
+    if parsed.scheme or parsed.netloc:
+        return None
+    # Disallow protocol-relative ("//example.com") or weird paths
+    if raw.startswith("//"):
+        return None
+    # Ensure it starts with a single '/'
+    if not raw.startswith("/"):
+        return None
+    return raw

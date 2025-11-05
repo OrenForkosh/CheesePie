@@ -57,7 +57,8 @@ def create_app() -> Flask:
         # First run: no password set → go to setup
         try:
             if not password_is_set():
-                return redirect(url_for('auth.setup'))
+                # Preserve the original path so we can return after setup
+                return redirect(url_for('auth.setup', next=request.path))
         except Exception:
             pass
         tok = request.cookies.get('cp_auth')

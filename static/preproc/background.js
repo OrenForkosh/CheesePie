@@ -84,7 +84,10 @@
               method:'POST', headers:{'Content-Type':'application/json'},
               body: JSON.stringify({ video: videoPath, image: dataUrl, nframes: (framesEl&&framesEl.value)||n, quantile: (quantEl&&quantEl.value)||Math.round(q*100) })
             }).then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d, status:r.statusText}; }); })
-              .then(function(res){ setStatus(res.ok? 'Background saved' : ('Error saving background: ' + (res.d && res.d.error || res.status))); })
+              .then(function(res){
+                setStatus(res.ok? 'Background saved' : ('Error saving background: ' + (res.d && res.d.error || res.status)));
+                try{ if (res.ok){ if (window.Preproc && window.Preproc.State) window.Preproc.State.hasBackground = true; document.dispatchEvent(new CustomEvent('preproc:background-ready')); } }catch(e){}
+              })
               .catch(function(e){ setStatus('Error saving background: ' + e); });
           } else {
             setStatus('Background ready');

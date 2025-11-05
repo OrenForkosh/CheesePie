@@ -251,25 +251,13 @@
       </div>
       <div id="pane-colors" style="display: none">
         <div class="controls-row" style="align-items:center; gap:12px; margin: 8px 0; flex-wrap: wrap">
-          <div class="muted">Mouse</div>
-          <div id="pp-mouse-chips" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap">
-            <button class="chip" data-mouse="R" title="R (1)">R</button>
-            <button class="chip" data-mouse="G" title="G (2)">G</button>
-            <button class="chip" data-mouse="B" title="B (3)">B</button>
-            <button class="chip" data-mouse="Y" title="Y (4)">Y</button>
-            <button class="chip" data-mouse="BG" title="Background (0)">BG</button>
-          </div>
-          <span class="muted" style="min-width:1px"></span>
-          <button class="btn" id="pp-colors-run" title="Segment current frame">Segment</button>
+          <button class="btn" id="pp-colors-random" title="Jump to a random frame">Random</button>
           <button class="btn" id="pp-colors-show-only" title="Show segments only">Segments</button>
-          <button class="btn success" id="pp-colors-save" title="Save marks for this frame">Save marks</button>
           <button class="btn mini" id="pp-colors-clear" title="Clear marks for this frame">Clear</button>
-          <button class="btn mini" id="pp-colors-list" title="Show marks for this frame">Marks</button>
-          <span class="muted" id="pp-colors-indicator"></span>
           <span class="muted" id="pp-colors-status" style="min-width:200px"></span>
         </div>
-        <div id="pp-colors-marks" class="muted" style="display:none; margin: 6px 0"></div>
-        <div class="muted" style="margin-top: 6px">Pick a mouse (or BG), then click a segment on the video to mark it. Use keys 1–4 for R/G/B/Y and 0 for BG.</div>
+        <div class="muted" style="margin-top: 6px">Drag a marker (R/G/B/Y/BG) from the top-left dock onto a segment to assign it, or click a segment to assign the current mouse (use keys 1–4 and 0).</div>
+        <div id="pp-colors-hist" style="margin-top:8px"></div>
       </div>
       <div id="pane-timing" style="display:none">
         <div class="kv">
