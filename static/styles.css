@@ -156,6 +156,20 @@ body{
 .tab{color:var(--muted); text-decoration:none; padding:8px 12px; border-radius:8px; border:1px solid transparent}
 .tab:hover{color:var(--text); background:rgba(255,255,255,0.04); border-color:var(--border)}
 .tab.active{color:#fff; background:linear-gradient(180deg, var(--primary), var(--primary-600)); border-color:transparent}
+/* Nav icons inherit tab text color via currentColor */
+.nav-icon{ display:inline-block; width:20px; height:20px; background: currentColor; vertical-align:middle }
+.icon-settings{ 
+  -webkit-mask-image: url('https://fonts.gstatic.com/s/i/materialiconsoutlined/settings/v17/24px.svg');
+          mask-image: url('https://fonts.gstatic.com/s/i/materialiconsoutlined/settings/v17/24px.svg');
+  -webkit-mask-repeat:no-repeat; -webkit-mask-position:center; -webkit-mask-size:contain;
+          mask-repeat:no-repeat;          mask-position:center;          mask-size:contain;
+}
+.icon-logout{
+  -webkit-mask-image: url('https://fonts.gstatic.com/s/i/materialiconsoutlined/lock/v17/24px.svg');
+          mask-image: url('https://fonts.gstatic.com/s/i/materialiconsoutlined/lock/v17/24px.svg');
+  -webkit-mask-repeat:no-repeat; -webkit-mask-position:center; -webkit-mask-size:contain;
+          mask-repeat:no-repeat;          mask-position:center;          mask-size:contain;
+}
 /* Per-tab active colors */
 .tab.tab-browser.active{ background: linear-gradient(180deg, #4f8cff, #3c6fe0); color:#fff; border-color:transparent }
 .tab.tab-preproc.active{ background: linear-gradient(180deg, #ff6bd6, #ff3fb1); color:#fff; border-color:transparent }
@@ -315,8 +329,12 @@ select:focus{border-color:var(--primary); outline:none}
 .video-preview .controls-row{ padding: 0 10px; }
 /* Icon image inside icon buttons */
 .icon-btn .mi{ display:block; width:20px; height:20px; }
-/* Invert icon for dark backgrounds (all themes except light) */
-:root:not([data-theme="light"]) .invert-on-dark{ filter: invert(1); }
+/* Invert icons only on dark-like themes (keep dark on light/mouse) */
+:root[data-theme="dark"] .invert-on-dark,
+:root[data-theme="ocean"] .invert-on-dark,
+:root[data-theme="forest"] .invert-on-dark,
+:root[data-theme="plum"] .invert-on-dark,
+:root[data-theme="contrast"] .invert-on-dark{ filter: invert(1); }
 
 /* nicer range slider */
 input[type="range"]{
