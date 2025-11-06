@@ -438,42 +438,7 @@
     // React to arena changes to update gating
     document.addEventListener('preproc:arena-changed', function(){ if (!isRegionsEditing) setTabsEnabled(!!(facilitySel && facilitySel.value)); });
     document.addEventListener('preproc:regions-editing', function(ev){ isRegionsEditing = !!(ev && ev.detail && ev.detail.editing); applyRegionsEditingGating(); });
-    // Next button handlers
-    function postJSON(url, body){ return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }); }
-    function goNextFrom(name){ var n = nextOf(name); if (n) switchTab(n); }
-    // Arena Next: save arena if present and go to timing
-    var arenaNext = document.getElementById('arena-next');
-    if (arenaNext) arenaNext.addEventListener('click', function(){
-      try{
-        var tl = (S && S.tl), br=(S && S.br);
-        if (!(tl && br)){ alert('Mark the arena first.'); return; }
-        var payload = { video: S.videoPath||'', arena: { tl: {x:tl.x, y:tl.y}, br: {x:br.x, y:br.y} } };
-        var colsEl = U.$('#grid-cols'), rowsEl = U.$('#grid-rows'), wcmEl = U.$('#arena-wcm'), hcmEl = U.$('#arena-hcm');
-        var cols = parseInt((colsEl&&colsEl.value)||'',10), rows=parseInt((rowsEl&&rowsEl.value)||'',10);
-        var wcm = parseInt((wcmEl&&wcmEl.value)||'',10), hcm=parseInt((hcmEl&&hcmEl.value)||'',10);
-        if (!isNaN(cols)&&cols>0) payload.arena.grid_cols=cols; if (!isNaN(rows)&&rows>0) payload.arena.grid_rows=rows;
-        if (!isNaN(wcm)&&wcm>0) payload.arena.width_in_cm=wcm; if (!isNaN(hcm)&&hcm>0) payload.arena.height_in_cm=hcm;
-        postJSON('/api/preproc/arena', payload).finally(function(){ goNextFrom('arena'); });
-      } catch(e){ goNextFrom('arena'); }
-    });
-    // Background Next: trigger save then go to regions
-    var bgNext = document.getElementById('bg-next');
-    if (bgNext) bgNext.addEventListener('click', function(){ try{ if (bg && bg.saveBackground) bg.saveBackground(); }catch(e){} goNextFrom('background'); });
-    // Regions Next: POST current regions then go colors
-    var roiNext = document.getElementById('roi-next');
-    if (roiNext) roiNext.addEventListener('click', function(){
-      try{
-        var vp = (S && S.videoPath)||''; if (!vp){ goNextFrom('regions'); return; }
-        var data = {};
-        if (regions && regions.regions){ var reg = regions.regions; Object.keys(reg).forEach(function(k){ var r=reg[k]||{}; data[k] = { enabled: !!r.enabled, sheltered: !!r.sheltered, cells: (r.cells||[]) }; }); }
-        postJSON('/api/preproc/regions', { video: vp, regions: data }).finally(function(){ goNextFrom('regions'); });
-      } catch(e){ goNextFrom('regions'); }
-    });
-    // Colors Next: just move to Save
-    var colorsNext = document.getElementById('colors-next');
-    if (colorsNext) colorsNext.addEventListener('click', function(){ goNextFrom('colors'); });
-    // Timing Next handled inside timing.js via event
-    document.addEventListener('preproc:go-next', function(ev){ var from = (ev && ev.detail && ev.detail.from)||''; if (from) goNextFrom(from); });
+    // Removed legacy Next button handlers; saving happens via explicit buttons or dialogs.
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

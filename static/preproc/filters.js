@@ -94,10 +94,9 @@
     // Wire chips
     if (chipsWrap){
       chipsWrap.addEventListener('click', function(ev){
-        var t = ev.target;
-        if (!t || !t.getAttribute) return;
+        var t = ev.target && ev.target.closest ? ev.target.closest('[data-filter]') : null;
+        if (!t) return;
         var mode = t.getAttribute('data-filter');
-        if (!mode) return;
         ev.preventDefault();
         if (mode === 'invert'){
           state.invert = !state.invert;

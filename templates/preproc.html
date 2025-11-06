@@ -16,11 +16,12 @@
           readonly
           style="flex:1"
         />
+        <button class="btn success" id="pp-open-save" title="Save preproc to multiple days">Save…</button>
         <div id="pp-day-strip" class="muted" style="display:flex; gap:6px; flex-wrap:wrap"></div>
       </div>
     </div>
 
-    <div class="control-group">
+    <div class="control-group" style="margin-top:12px">
       <div class="video-wrap">
         <div class="video-preview">
           
@@ -118,10 +119,13 @@
             class="controls-row"
             style="margin-top: 6px; align-items: center"
           >
-            <span class="muted">Filter</span>
             <div id="pp-filter-chips" class="fill" style="display:flex; gap:6px; align-items:center">
-              <button class="chip" data-filter="invert">Invert</button>
-              <button class="chip" data-filter="histeq">Hist Eq</button>
+              <button class="chip" data-filter="invert" title="Invert colors">
+                <img class="mi invert-on-dark" src="https://fonts.gstatic.com/s/i/materialiconsoutlined/invert_colors/v12/24px.svg" alt="Invert" width="20" height="20" />
+              </button>
+              <button class="chip" data-filter="histeq" title="Histogram equalization">
+                <img class="mi invert-on-dark" src="https://fonts.gstatic.com/s/i/materialiconsoutlined/bar_chart/v13/24px.svg" alt="Hist Eq" width="20" height="20" />
+              </button>
             </div>
             <button
               class="icon-btn"
@@ -130,15 +134,13 @@
               aria-label="Export frame as PNG"
               style="margin-left:6px"
             >
-              ⤓
+              <img class="mi invert-on-dark" src="https://fonts.gstatic.com/s/i/materialiconsoutlined/photo_camera/v15/24px.svg" alt="Camera" width="20" height="20" />
             </button>
             <span class="muted" style="min-width: 1px"></span>
           </div>
         </div>
       </div>
-      <div class="muted" style="margin-top: 6px">
-        Tip: Click to set top-left, then bottom-right of the arena.
-      </div>
+      
     </div>
     </div> <!-- end left subpanel -->
 
@@ -158,7 +160,7 @@
       </div>
       <div
         class="tabs small"
-        style="display: flex; gap: 8px; margin-bottom: 8px; align-items:center; justify-content:space-between"
+        style="display: flex; gap: 8px; margin-bottom: 8px; align-items:center; justify-content:flex-start"
       >
         <div style="display:flex; gap:8px; align-items:center">
         <button class="btn mini" id="tab-arena">Arena</button>
@@ -166,9 +168,6 @@
         <button class="btn mini" id="tab-background">Background</button>
         <button class="btn mini" id="tab-regions">Regions</button>
         <button class="btn mini" id="tab-colors">Colors</button>
-        </div>
-        <div>
-          <button class="btn mini success" id="pp-open-save" title="Save preproc to multiple days">Save…</button>
         </div>
       </div>
       <div id="pp-panes" style="position:relative">
@@ -186,12 +185,19 @@
         <div class="controls-row pane-next">
           <button class="btn" id="arena-mark">Mark</button>
           <span class="muted" id="arena-status" style="margin-left:auto"></span>
-          <button class="btn success" id="arena-next" title="Save and go to Timing">Next</button>
         </div>
         <div class="pane-footer">
-          Arena is axis-aligned rectangle within the frame. Click Mark to
-          define: top-left then bottom-right. Drag handles to refine while
-          marking. Arrow keys nudge (Shift = 10px).
+          <div class="muted">
+            Arena is axis-aligned rectangle within the frame. Click Mark to
+            define: top-left then bottom-right. Drag handles to refine while marking.
+          </div>
+          <div class="muted" style="font-weight:600; margin-top:6px">Keyboard Shortcuts</div>
+          <div class="shortcut-list" style="margin-top:6px">
+            <div class="shortcut-item"><span class="kbd">Esc</span><span>Stop marking</span></div>
+            <div class="shortcut-item"><span class="kbd">Enter</span> / <span class="kbd">Space</span><span>Finish marking</span></div>
+            <div class="shortcut-item"><span class="kbd">↑</span><span class="kbd">↓</span><span class="kbd">←</span><span class="kbd">→</span><span>Nudge active handle by 1px</span></div>
+            <div class="shortcut-item"><span class="kbd">Shift</span> + <span class="kbd">↑</span><span class="kbd">↓</span><span class="kbd">←</span><span class="kbd">→</span><span>Nudge by 10px</span></div>
+          </div>
         </div>
       </div>
       <div id="pane-background" style="display: none">
@@ -211,8 +217,7 @@
         <div class="controls-row pane-next" style="margin: 8px 0">
           <button class="btn" id="bg-run">Run</button>
           <button class="btn" id="bg-save">Save</button>
-          <button class="btn success" id="bg-next" title="Save and go to Regions">Next</button>
-          <span class="muted" id="bg-status"></span>
+          <span class="muted" id="bg-status" style="margin-left:auto"></span>
         </div>
         <canvas
           id="bg-canvas"
@@ -245,7 +250,6 @@
         <div class="pane-next" style="margin-top:8px">
           <span class="muted" id="roi-status" style="margin-right:auto"></span>
           <button class="btn" id="roi-add">Add</button>
-          <button class="btn success" id="roi-next" title="Save and go to Colors">Next</button>
         </div>
         <div class="pane-footer">
           Tip: Click "Edit" for a region, then click grid cells in the
@@ -285,7 +289,15 @@
         <div class="controls-row pane-next" style="margin-top:8px; align-items:center; gap:8px">
           <button class="btn" id="exp-reset">Reset to full video</button>
           <span class="muted" style="flex:1" id="exp-status"></span>
-          <button class="btn success" id="exp-next">Next</button>
+        </div>
+        <div class="pane-footer">
+          <div class="muted">Set precise experiment start/end using the fields above.</div>
+          <div class="muted" style="font-weight:600; margin-top:6px">Keyboard Shortcuts</div>
+          <div class="shortcut-list" style="margin-top:6px">
+            <div class="shortcut-item"><span class="kbd">[</span><span class="kbd">]</span><span>Step 1 frame backward / forward</span></div>
+            <div class="shortcut-item"><span class="kbd">←</span><span class="kbd">→</span><span>Jump 1 second backward / forward</span></div>
+            <div class="shortcut-item"><span class="kbd">Shift</span> + <span class="kbd">←</span><span class="kbd">→</span><span>Jump 5 seconds backward / forward</span></div>
+          </div>
         </div>
       </div>
       <!-- Save pane removed; replaced by Save dialog button above -->

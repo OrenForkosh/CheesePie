@@ -311,6 +311,12 @@ select:focus{border-color:var(--primary); outline:none}
 }
 .icon-btn:focus{outline:none}
 .icon-btn:active{transform:translateY(0.5px)}
+/* Add comfy side padding for video preview control rows */
+.video-preview .controls-row{ padding: 0 10px; }
+/* Icon image inside icon buttons */
+.icon-btn .mi{ display:block; width:20px; height:20px; }
+/* Invert icon for dark backgrounds (all themes except light) */
+:root:not([data-theme="light"]) .invert-on-dark{ filter: invert(1); }
 
 /* nicer range slider */
 input[type="range"]{
@@ -382,7 +388,7 @@ input[type="range"]::-moz-range-track{height:6px; border-radius:999px; backgroun
 .empty{padding:48px; text-align:center}
 .empty .emoji{font-size:48px; margin-bottom:8px}
 
-.badge{display:inline-flex; align-items:center; gap:6px; padding:4px 8px; font-size:12px; border-radius:999px; border:1px solid var(--border); background:#171b2a}
+.badge{display:inline-flex; align-items:center; gap:6px; padding:4px 8px; font-size:12px; border-radius:999px; border:1px solid var(--border); background:var(--surface); color:var(--text)}
 .badge .dot{width:6px; height:6px; border-radius:999px; background:var(--accent)}
 
 @media (max-width: 900px){
@@ -410,10 +416,10 @@ input[type="range"]::-moz-range-track{height:6px; border-radius:999px; backgroun
 .cam-btn{display:inline-flex; align-items:center; justify-content:center; min-width:28px; padding:4px 8px; border-radius:999px; border:1px solid var(--border); background:#171b2a; color:var(--text); font-size:12px; cursor:pointer; user-select:none}
 .cam-btn:hover{filter:brightness(1.06)}
 .cam-btn.active{background:linear-gradient(180deg, var(--primary), var(--primary-600)); border-color:transparent}
-.timeline-wrap{border:1px solid var(--border); border-radius:10px; background:#0e1220; padding:10px}
-#timeline{width:100%; display:block; background:#0b0f1c; border-radius:6px}
+.timeline-wrap{border:1px solid var(--border); border-radius:10px; background:var(--surface); padding:10px}
+#timeline{width:100%; display:block; background:var(--surface); border-radius:6px}
 .legend{display:flex; flex-wrap:wrap; gap:8px; margin-top:8px}
-.legend-badge{display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px; border:1px solid var(--border); background:#171b2a; font-size:12px}
+.legend-badge{display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px; border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:12px}
 .legend-badge .dot{width:8px; height:8px; border-radius:999px; display:inline-block}
 
 .side-column{padding:10px 12px}
@@ -445,7 +451,7 @@ input[type="range"]::-moz-range-track{height:6px; border-radius:999px; backgroun
 }
 #pp-handle-tl.dragging, #pp-handle-br.dragging{ cursor: grabbing; }
 
-.controls{ display:grid; gap:12px; align-items:start; background:var(--bg); padding:8px; border-radius:12px }
+.controls{ display:grid; gap:12px; align-items:start; background:var(--surface); padding:12px; border:1px solid var(--border); border-radius:12px }
 .subpanel{ background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:24px }
 
 /* Pane footers: subtle top separator + muted explanatory text */
@@ -463,10 +469,12 @@ input[type="range"]::-moz-range-track{height:6px; border-radius:999px; backgroun
 #pp-right #pp-panes > div{ position:absolute; inset:0; overflow:auto; }
 
 .table-wrap{padding:12px}
-#events-table{width:100%; border-collapse:collapse; font-size:13px}
-#events-table th,#events-table td{border-bottom:1px solid #20263a; padding:8px}
-#events-table tbody tr.selected{background:#1a2032}
-#events-table td[contenteditable="true"]{background:#141a2b; border-radius:6px}
+#events-table{width:100%; border-collapse:collapse; font-size:13px; background: var(--surface); border:1px solid var(--border); border-radius:10px; overflow:hidden}
+#events-table th,#events-table td{border-bottom:1px solid var(--border); padding:8px}
+#events-table th{ background: var(--panel); color: var(--text) }
+#events-table tbody tr.selected{background: rgba(79,140,255,0.18)}
+:root[data-theme="light"] #events-table tbody tr.selected{background: rgba(47,111,232,0.18)}
+#events-table td[contenteditable="true"]{background: var(--surface); border-radius:6px}
 
 /* Preproc: Regions table hover affordances */
 #roi-table .roi-name{ user-select:none }
@@ -485,7 +493,7 @@ input[type="range"]::-moz-range-track{height:6px; border-radius:999px; backgroun
 .overlay-header{display:flex; align-items:center; justify-content:space-between; margin-bottom:10px}
 .shortcut-list{display:grid; grid-template-columns:1fr; gap:6px; font-size:13px}
 .shortcut-item{display:flex; align-items:center; gap:10px}
-.kbd{display:inline-block; padding:2px 6px; border:1px solid var(--border); border-radius:6px; background:#171b2a; font-family:ui-monospace,Menlo,Monaco,Consolas,monospace; font-size:12px}
+.kbd{display:inline-block; padding:2px 6px; border:1px solid var(--border); border-radius:6px; background:var(--surface); color:var(--text); font-family:ui-monospace,Menlo,Monaco,Consolas,monospace; font-size:12px}
 
 @media (max-width: 1000px){
   .annotator-layout{grid-template-columns:1fr}

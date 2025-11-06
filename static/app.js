@@ -559,12 +559,14 @@
     const timeLbl = document.getElementById('pp-time');
     if (!v || !playBtn || !seek || !timeLbl) return;
     const fmt = (sec) => {
-      if (!isFinite(sec)) return '00:00';
+      if (!isFinite(sec)) return '00:00.000';
       const h = Math.floor(sec/3600);
       const m = Math.floor((sec%3600)/60);
       const s = Math.floor(sec%60);
+      const ms = Math.floor((sec - Math.floor(sec)) * 1000);
       const pad2 = (n)=>String(n).padStart(2,'0');
-      return h ? `${h}:${pad2(m)}:${pad2(s)}` : `${pad2(m)}:${pad2(s)}`;
+      const pad3 = (n)=>String(n).padStart(3,'0');
+      return h ? `${h}:${pad2(m)}:${pad2(s)}.${pad3(ms)}` : `${pad2(m)}:${pad2(s)}.${pad3(ms)}`;
     };
     const updateTime = () => {
       const cur = Number(v.currentTime||0);

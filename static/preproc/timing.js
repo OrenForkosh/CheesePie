@@ -31,6 +31,7 @@
 
   function init(){
     const video = U.$('#pp-video');
+    const pane = U.$('#pane-timing');
     const cur = U.$('#exp-current');
     const startEl = U.$('#exp-start');
     const endEl = U.$('#exp-end');
@@ -70,23 +71,65 @@
       } catch(e){}
     })();
 
-    // Buttons
-    if (setStart) setStart.addEventListener('click', function(){ if (!video) return; startEl.value = formatMs((video.currentTime||0)*1000); });
-    if (setEnd) setEnd.addEventListener('click', function(){ if (!video) return; endEl.value = formatMs((video.currentTime||0)*1000); });
-    if (resetBtn) resetBtn.addEventListener('click', function(){ if (!video) return; startEl.value='00:00:00.000'; endEl.value = formatMs((isFinite(video.duration)? video.duration*1000 : 0)); });
-    if (saveBtn) saveBtn.addEventListener('click', function(){
+    // Save helper (reused by various triggers)
+    async function saveTiming(){
       try{
         const vp = (Preproc.State && Preproc.State.videoPath) || '';
-        if (!vp){ alert('Select a video first.'); return; }
+        if (!vp){ if (status) status.textContent='Select a video first.'; return; }
         const s = (startEl && startEl.value || '').trim();
         const e = (endEl && endEl.value || '').trim();
-        if (parseTime(s) == null || parseTime(e) == null){ alert('Enter times as HH:MM:SS.mmm'); return; }
+        if (parseTime(s) == null || parseTime(e) == null){ if (status) status.textContent='Enter times as HH:MM:SS.mmm'; return; }
         if (status) status.textContent = 'Saving…';
-        fetch('/api/preproc/timing', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ video: vp, start_time: s, end_time: e }) })
-          .then(r=>r.json().then(d=>({ok:!d.error, d, status:r.statusText})))
-          .then(res=>{ if (status) status.textContent = res.ok ? 'Saved' : ('Error: ' + (res.d && res.d.error || res.status)); try{ document.dispatchEvent(new CustomEvent('preproc:go-next', { detail:{ from: 'timing' } })); }catch(e){} })
-          .catch(err=>{ if (status) status.textContent = 'Error: ' + err; });
-      } catch(e){}
+        const r = await fetch('/api/preproc/timing', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ video: vp, start_time: s, end_time: e }) });
+        const d = await r.json();
+        if (status) status.textContent = (!d || d.error) ? ('Error: ' + (d && d.error || r.statusText)) : 'Saved';
+      } catch(e){ if (status) status.textContent = 'Error: ' + e; }
+    }
+    let saveTimer = null;
+    function scheduleSave(){ try{ if (saveTimer) clearTimeout(saveTimer); saveTimer = setTimeout(saveTiming, 400); }catch(e){} }
+    // Buttons
+    if (setStart) setStart.addEventListener('click', function(){ if (!video) return; startEl.value = formatMs((video.currentTime||0)*1000); scheduleSave(); });
+    if (setEnd) setEnd.addEventListener('click', function(){ if (!video) return; endEl.value = formatMs((video.currentTime||0)*1000); scheduleSave(); });
+    if (resetBtn) resetBtn.addEventListener('click', function(){ if (!video) return; startEl.value='00:00:00.000'; endEl.value = formatMs((isFinite(video.duration)? video.duration*1000 : 0)); scheduleSave(); });
+    if (saveBtn) saveBtn.addEventListener('click', function(){
+      saveTiming();
+    });
+    // Auto-save on editing inputs
+    if (startEl){ startEl.addEventListener('input', scheduleSave); startEl.addEventListener('change', saveTiming); startEl.addEventListener('keydown', function(ev){ if (ev.key==='Enter'){ ev.preventDefault(); saveTiming(); } }); }
+    if (endEl){ endEl.addEventListener('input', scheduleSave); endEl.addEventListener('change', saveTiming); endEl.addEventListener('keydown', function(ev){ if (ev.key==='Enter'){ ev.preventDefault(); saveTiming(); } }); }
+
+    // Keyboard: Arrow keys step by frames when Timing tab is active
+    function cfgFps(){
+      try{ const cfg = window.CHEESEPIE || {}; const afps = (cfg.annotator && cfg.annotator.default_fps) || 30; const n = parseInt(afps,10)||30; return Math.max(1, Math.min(300, n)); }catch(e){ return 30; }
+    }
+    function paneActive(){ try{ return pane && pane.style.display !== 'none'; }catch(e){ return false; } }
+    function isTypingTarget(t){ try{ if(!t) return false; const tag = (t.tagName||'').toLowerCase(); return tag==='input' || tag==='textarea' || t.isContentEditable; }catch(e){ return false; } }
+    document.addEventListener('keydown', function(ev){
+      try{
+        if (!paneActive()) return;
+        if (!video || !isFinite(video.duration)) return;
+        if (isTypingTarget(ev.target)) return; // don't hijack while typing
+        const k = ev.key;
+        const code = ev.code;
+        let dt = null; // seconds delta
+        // [ / ] step by one frame
+        if (k === '[' || code === 'BracketLeft'){
+          dt = -1 / cfgFps();
+        } else if (k === ']' || code === 'BracketRight'){
+          dt = +1 / cfgFps();
+        } else if (k === 'ArrowLeft' || k === 'ArrowRight'){
+          // Arrow keys jump seconds: 1s, or 5s with Shift
+          const jump = ev.shiftKey ? 5 : 1;
+          dt = (k === 'ArrowRight' ? +jump : -jump);
+        } else {
+          return;
+        }
+        let t = (video.currentTime || 0) + dt;
+        t = Math.max(0, Math.min(t, Math.max(0, (video.duration||0)-1e-6)));
+        ev.preventDefault(); ev.stopPropagation();
+        try{ video.pause(); }catch(e){}
+        video.currentTime = t;
+      }catch(e){}
     });
   }
 
