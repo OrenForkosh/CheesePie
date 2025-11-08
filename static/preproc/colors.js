@@ -160,6 +160,7 @@
 
     // Toggle dock visibility with tab changes and auto-save when leaving Colors
     let __wasOnColors = false;
+    let __suppressClickUntil = 0;
     document.addEventListener('preproc:tab-changed', function(ev){
       try{
         const name = ev && ev.detail && ev.detail.name;
@@ -170,6 +171,10 @@
         if (dock) dock.style.display = onColors ? 'flex' : 'none';
         // Hide processed segmentation overlay when leaving Colors
         if (!onColors && processed){ processed.style.display = 'none'; }
+        // Ensure interactive overlay receives input when on Colors
+        try{
+          if (onColors){ if(processed) processed.style.pointerEvents='none'; if(overlay) overlay.style.pointerEvents='auto'; }
+        }catch(e){}
       } catch(e){}
     });
 
@@ -200,7 +205,7 @@
 
     (function enablePlacedDrag(){
       if (!overlay) return;
-      let dragging = null; // { idx, mark, ghost, startX, startY, hostRect }
+      let dragging = null; // { idx, mark, ghost, startX, startY, hostRect, dot, initialLeft, initialTop }
       function onDown(ev){
         try{
           const oRect = overlay.getBoundingClientRect();
@@ -216,10 +221,14 @@
           document.body.appendChild(ghost);
           // Visual
           const dot = document.createElement('div'); dot.style.position='absolute'; dot.style.width='18px'; dot.style.height='18px'; dot.style.borderRadius='50%'; dot.style.border='2px solid #fff'; dot.style.boxShadow='0 1px 4px rgba(0,0,0,0.35)'; dot.style.background = markColor(hit.mark.mouse);
-          const sp = screenPosForMark(hit.mark); const gx = sp? sp.x : px, gy = sp? sp.y : py;
-          dot.style.left = (gx)+'px'; dot.style.top = (gy)+'px'; dot.style.transform='translate(-50%,-50%)';
+          const sp = screenPosForMark(hit.mark);
+          const initialLeft = sp ? sp.x : px;
+          const initialTop = sp ? sp.y : py;
+          dot.style.left = initialLeft + 'px';
+          dot.style.top = initialTop + 'px';
+          dot.style.transform='translate(-50%,-50%)';
           ghost.appendChild(dot);
-          dragging = { idx: hit.idx, mark: hit.mark, ghost, startX: (ev.touches? ev.touches[0].clientX : ev.clientX), startY: (ev.touches? ev.touches[0].clientY : ev.clientY), hostRect, dot };
+          dragging = { idx: hit.idx, mark: hit.mark, ghost, startX: (ev.touches? ev.touches[0].clientX : ev.clientX), startY: (ev.touches? ev.touches[0].clientY : ev.clientY), hostRect, dot, initialLeft, initialTop };
           window.addEventListener('mousemove', onMove, { passive:false });
           window.addEventListener('mouseup', onUp);
           window.addEventListener('touchmove', onMove, { passive:false });
@@ -229,8 +238,10 @@
       function onMove(ev){ if (!dragging) return; try{ ev.preventDefault(); }catch(e){}
         const px = (ev.touches? ev.touches[0].clientX : ev.clientX);
         const py = (ev.touches? ev.touches[0].clientY : ev.clientY);
-        const dx = px - dragging.startX, dy = py - dragging.startY;
-        dragging.dot.style.transform = `translate(${dx-0.5}px, ${dy-0.5}px)`; // keep center alignment
+        const dx = px - dragging.startX;
+        const dy = py - dragging.startY;
+        dragging.dot.style.left = (dragging.initialLeft + dx) + 'px';
+        dragging.dot.style.top = (dragging.initialTop + dy) + 'px';
       }
       function onUp(ev){ if (!dragging) return; const ctx = dragging; dragging = null; overlay.style.cursor='default';
         window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp);
@@ -265,6 +276,8 @@
           // Replace the dragged mark entry (keep mouse id but new label/centroid)
           list[ctx.idx] = { mouse: ctx.mark.mouse, segment_label: lab, centroid: { x: cx, y: cy } };
           marks[t] = list; drawMarks(); updateIndicator(); renderHistogram();
+          // Suppress the subsequent click event from re-assigning via currentMouse
+          __suppressClickUntil = Date.now() + 300;
         }catch(e){}
       }
       overlay.addEventListener('mousedown', onDown);
@@ -370,6 +383,7 @@
           processed.width=vw; processed.height=vh;
           const pctx=processed.getContext('2d'); pctx.imageSmoothingEnabled=false; pctx.clearRect(0,0,vw,vh); const r=fitRect(img.naturalWidth||img.width, img.naturalHeight||img.height, vw, vh); pctx.drawImage(img,r.dx,r.dy,r.dw,r.dh);
           processed.style.display='';
+          try{ processed.style.pointerEvents = 'none'; }catch(e){}
         }
         syncFromSaved(); drawMarks(); updateIndicator(); renderHistogram(); setStatus('');
       }catch(e){ setStatus('Error: '+e); }
@@ -391,7 +405,7 @@
     }
 
     function colorForLabel(l){ if(!l||l<=0) return [0,0,0,0]; const hue=(l*137.508)%360; const s=0.7,vv=0.95; const c=vv*s,x=c*(1-Math.abs(((hue/60)%2)-1)),m=vv-c; let r=0,g=0,b=0; if(0<=hue&&hue<60){r=c;g=x;b=0;} else if(60<=hue&&hue<120){r=x;g=c;b=0;} else if(120<=hue&&hue<180){r=0;g=c;b=x;} else if(180<=hue&&hue<240){r=0;g=x;b=c;} else if(240<=hue&&hue<300){r=x;g=0;b=c;} else {r=c;g=0;b=x;} return [Math.round((r+m)*255),Math.round((g+m)*255),Math.round((b+m)*255),255]; }
-    async function showSegmentsOnly(){ try{ if(!lastIndex){ await run(); } if(!lastIndex){ setStatus('No labels available'); return;} const W=lastSize.w,H=lastSize.h; if(!W||!H){ setStatus('No labels available'); return;} const vw=v&&v.clientWidth?v.clientWidth:(processed&&processed.clientWidth)||0; const vh=v&&v.clientHeight?v.clientHeight:(processed&&processed.clientHeight)||0; if(!vw||!vh){ setStatus('Video panel not ready'); return;} const off=document.createElement('canvas'); off.width=W; off.height=H; const octx=off.getContext('2d'); const img=octx.createImageData(W,H); const d=img.data; for(let y=0,p=0;y<H;y++){ const row=lastIndex[y]||[]; for(let x=0;x<W;x++,p+=4){ const l=row[x]|0; const c=colorForLabel(l); d[p]=c[0]; d[p+1]=c[1]; d[p+2]=c[2]; d[p+3]=c[3]; } } octx.putImageData(img,0,0); processed.width=vw; processed.height=vh; processed.style.display=''; const pctx=processed.getContext('2d'); pctx.imageSmoothingEnabled=false; pctx.clearRect(0,0,vw,vh); const r=fitRect(W,H,vw,vh); pctx.drawImage(off,r.dx,r.dy,r.dw,r.dh); setStatus(''); }catch(e){ setStatus('Error: '+e); } }
+    async function showSegmentsOnly(){ try{ if(!lastIndex){ await run(); } if(!lastIndex){ setStatus('No labels available'); return;} const W=lastSize.w,H=lastSize.h; if(!W||!H){ setStatus('No labels available'); return;} const vw=v&&v.clientWidth?v.clientWidth:(processed&&processed.clientWidth)||0; const vh=v&&v.clientHeight?v.clientHeight:(processed&&processed.clientHeight)||0; if(!vw||!vh){ setStatus('Video panel not ready'); return;} const off=document.createElement('canvas'); off.width=W; off.height=H; const octx=off.getContext('2d'); const img=octx.createImageData(W,H); const d=img.data; for(let y=0,p=0;y<H;y++){ const row=lastIndex[y]||[]; for(let x=0;x<W;x++,p+=4){ const l=row[x]|0; const c=colorForLabel(l); d[p]=c[0]; d[p+1]=c[1]; d[p+2]=c[2]; d[p+3]=c[3]; } } octx.putImageData(img,0,0); processed.width=vw; processed.height=vh; processed.style.display=''; try{ processed.style.pointerEvents='none'; }catch(e){} const pctx=processed.getContext('2d'); pctx.imageSmoothingEnabled=false; pctx.clearRect(0,0,vw,vh); const r=fitRect(W,H,vw,vh); pctx.drawImage(off,r.dx,r.dy,r.dw,r.dh); setStatus(''); }catch(e){ setStatus('Error: '+e); } }
 
     function drawSegmentOutlines(){
       try{
@@ -472,7 +486,7 @@
     v?.addEventListener('play', ()=>{ if(pane&&pane.style.display!=='none'){ autoSaveIfNeeded(); } });
     v?.addEventListener('seeked', ()=>{ if(pane&&pane.style.display!=='none'){ syncFromSaved(); drawMarks(); updateIndicator(); renderHistogram(); run(); } });
 
-    overlay?.addEventListener('click', (ev)=>{ try{ if(!lastIndex){ setStatus('Run segmentation first'); return;} const rect=overlay.getBoundingClientRect(); const mx=ev.clientX-rect.left, my=ev.clientY-rect.top; const vw=overlay.clientWidth, vh=overlay.clientHeight; const W=lastSize.w,H=lastSize.h; const r=fitRect(W,H,vw,vh); if(mx<r.dx||my<r.dy||mx>r.dx+r.dw||my>r.dy+r.dh){ setStatus('Click inside the video area'); return;} const lx=Math.round((mx-r.dx)*(W/r.dw)); const ly=Math.round((my-r.dy)*(H/r.dh)); const labelAt=(x,y)=>{ if(y<0||y>=H||x<0||x>=W) return 0; const row=lastIndex[y]||[]; return row[x]|0; }; let lab=labelAt(lx,ly); if(lab===0){ const rad=2; outer: for(let dy=-rad;dy<=rad;dy++){ for(let dx=-rad;dx<=rad;dx++){ const l2=labelAt(lx+dx,ly+dy); if(l2>0){ lab=l2; break outer; } } } } if(lab===0 && currentMouse!=='BG'){ setStatus('No segment here'); return;} let sumx=0,sumy=0,cnt=0; for(let y=0;y<H;y++){ const row=lastIndex[y]||[]; for(let x=0;x<W;x++){ if((row[x]|0)===lab){ sumx+=x; sumy+=y; cnt++; } } } const cx=cnt?(sumx/cnt):lx; const cy=cnt?(sumy/cnt):ly; const t=timeKey(); if(!marks[t]) marks[t]=[]; marks[t]=marks[t].filter(m=>m.segment_label!==lab); marks[t].push({ mouse:currentMouse, segment_label:lab, centroid:{x:cx,y:cy} }); drawMarks(); updateIndicator(); renderHistogram(); }catch(e){ setStatus('Error: '+e); } });
+    overlay?.addEventListener('click', (ev)=>{ try{ if(Date.now() < __suppressClickUntil){ ev.preventDefault(); ev.stopPropagation(); return; } if(!lastIndex){ setStatus('Run segmentation first'); return;} const rect=overlay.getBoundingClientRect(); const mx=ev.clientX-rect.left, my=ev.clientY-rect.top; const vw=overlay.clientWidth, vh=overlay.clientHeight; const W=lastSize.w,H=lastSize.h; const r=fitRect(W,H,vw,vh); if(mx<r.dx||my<r.dy||mx>r.dx+r.dw||my>r.dy+r.dh){ setStatus('Click inside the video area'); return;} const lx=Math.round((mx-r.dx)*(W/r.dw)); const ly=Math.round((my-r.dy)*(H/r.dh)); const labelAt=(x,y)=>{ if(y<0||y>=H||x<0||x>=W) return 0; const row=lastIndex[y]||[]; return row[x]|0; }; let lab=labelAt(lx,ly); if(lab===0){ const rad=2; outer: for(let dy=-rad;dy<=rad;dy++){ for(let dx=-rad;dx<=rad;dx++){ const l2=labelAt(lx+dx,ly+dy); if(l2>0){ lab=l2; break outer; } } } } if(lab===0 && currentMouse!=='BG'){ setStatus('No segment here'); return;} let sumx=0,sumy=0,cnt=0; for(let y=0;y<H;y++){ const row=lastIndex[y]||[]; for(let x=0;x<W;x++){ if((row[x]|0)===lab){ sumx+=x; sumy+=y; cnt++; } } } const cx=cnt?(sumx/cnt):lx; const cy=cnt?(sumy/cnt):ly; const t=timeKey(); if(!marks[t]) marks[t]=[]; marks[t]=marks[t].filter(m=>m.segment_label!==lab); marks[t].push({ mouse:currentMouse, segment_label:lab, centroid:{x:cx,y:cy} }); drawMarks(); updateIndicator(); renderHistogram(); }catch(e){ setStatus('Error: '+e); } });
 
     // Manual save removed in favor of auto-save
     clearBtn?.addEventListener('click', ()=>{ const t=timeKey(); marks[t]=[]; drawMarks(); setIndicator(''); renderHistogram(); if(listEl) listEl.style.display='none'; setStatus('Cleared'); });
