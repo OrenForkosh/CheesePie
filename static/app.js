@@ -628,7 +628,20 @@
     const updateTime = () => {
       const cur = Number(v.currentTime||0);
       const dur = Number(v.duration||0);
-      if (timeCur && timeDur){ timeCur.value = fmt(cur); timeDur.textContent = fmt(dur); }
+      if (timeCur && timeDur){
+        timeCur.value = fmt(cur);
+        timeDur.textContent = fmt(dur);
+        // Match input width to duration label width (max possible)
+        try{
+          // Force same font on both and measure duration width
+          const durRect = timeDur.getBoundingClientRect();
+          // Add small padding to account for input padding
+          const padLeft = parseFloat(getComputedStyle(timeCur).paddingLeft||'0')||0;
+          const padRight = parseFloat(getComputedStyle(timeCur).paddingRight||'0')||0;
+          const extra = Math.ceil(padLeft + padRight + 2); // +2 for caret space
+          timeCur.style.width = Math.max(60, Math.ceil(durRect.width) + extra) + 'px';
+        }catch(e){}
+      }
       else if (timeLbl){ timeLbl.textContent = `${fmt(cur)} / ${fmt(dur)}`; }
       if (!seek.dragging) seek.value = String(cur);
     };

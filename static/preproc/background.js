@@ -14,12 +14,31 @@
 
     function setStatus(msg){ if (status) status.textContent = msg; }
 
-    function randTimes(n, dur){
-      var s = new Set();
-      for (var i=0;i<n*2 && s.size<n;i++){
-        s.add(Math.random()*Math.max(0.1, dur-0.2)+0.1);
+    function parseTimeText(s){
+      try{
+        var str = String(s||'').trim(); if (!str) return null;
+        var m = str.match(/^(\d+)(?::(\d+))?(?::(\d+))?(?:\.(\d{1,3}))?$/);
+        if (!m) return null;
+        var h=0, mi=0, se=0, ms=0;
+        if (m[3]!=null){ h=parseInt(m[1],10)||0; mi=parseInt(m[2],10)||0; se=parseInt(m[3],10)||0; }
+        else if (m[2]!=null){ mi=parseInt(m[1],10)||0; se=parseInt(m[2],10)||0; }
+        else { se=parseFloat(m[1])||0; }
+        if (m[4]!=null){ ms=parseInt((m[4]+'').padEnd(3,'0'),10)||0; }
+        return h*3600 + mi*60 + se + (ms/1000);
+      }catch(e){ return null; }
+    }
+    function randTimesInRange(n, startSec, endSec){
+      var out = new Set();
+      var lo = Math.max(0, Number(startSec||0));
+      var hi = Math.max(lo, Number(endSec||0));
+      var span = Math.max(0, hi - lo);
+      if (span <= 0){ return [Math.max(0.05, lo)]; }
+      for (var i=0;i<n*4 && out.size<n;i++){
+        var t = lo + Math.random()*span;
+        t = Math.max(lo+0.05, Math.min(hi-0.05, t));
+        out.add(t);
       }
-      return Array.from(s).slice(0,n).sort(function(a,b){return a-b;});
+      return Array.from(out).slice(0,n).sort(function(a,b){return a-b;});
     }
 
     async function computeBackground(){
@@ -41,8 +60,25 @@
         var maxW = 640; var scale = Math.min(1, maxW / (hv.videoWidth||maxW));
         var w = Math.max(1, Math.round((hv.videoWidth||maxW)*scale));
         var h = Math.max(1, Math.round((hv.videoHeight||maxW*9/16)*scale));
-        var work = document.createElement('canvas'); work.width=w; work.height=h; var wctx=work.getContext('2d');
-        var times = randTimes(n, hv.duration||v.duration||10);
+        var work = document.createElement('canvas'); work.width=w; work.height=h;
+        // Hint to browser that we'll be calling getImageData repeatedly
+        var wctx = work.getContext('2d', { willReadFrequently: true });
+        // Determine timing window from Timing tab (if available)
+        var startSec = 0, endSec = hv.duration||v.duration||0;
+        try{
+          var stEl = document.getElementById('exp-start');
+          var enEl = document.getElementById('exp-end');
+          var ps = parseTimeText(stEl && stEl.value);
+          var pe = parseTimeText(enEl && enEl.value);
+          if (ps!=null) startSec = ps;
+          if (pe!=null) endSec = pe;
+        }catch(e){}
+        // Clamp to video duration
+        try{ startSec = Math.max(0, Math.min(startSec, Math.max(0, (hv.duration||0)))); }catch(e){}
+        try{ endSec = Math.max(0, Math.min(endSec, Math.max(0, (hv.duration||0)))); }catch(e){}
+        if (!isFinite(startSec)) startSec = 0; if (!isFinite(endSec) || endSec<=0) endSec = hv.duration||v.duration||0;
+        if (endSec <= startSec){ endSec = Math.max(startSec + 0.5, (hv.duration||0)); }
+        var times = randTimesInRange(n, startSec, endSec);
         var frames = [];
         var origT = (v && v.currentTime) || 0;
         for (let i=0;i<times.length;i++){

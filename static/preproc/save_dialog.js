@@ -92,6 +92,18 @@
     // Compute background using hidden video element
     return new Promise(async (resolve)=>{
       try{
+        // Try to fetch timing window for this video
+        let startSec = 0, endSec = null;
+        try{
+          const rs = await fetch('/api/preproc/state?video=' + encodeURIComponent(videoPath));
+          const ds = await rs.json();
+          const meta = ds && ds.meta || {};
+          function parseTimeText(s){ try{ const str=String(s||'').trim(); const m=str.match(/^(\d+)(?::(\d+))?(?::(\d+))?(?:\.(\d{1,3}))?$/); if(!m) return null; let h=0,mi=0,se=0,ms=0; if(m[3]!=null){h=parseInt(m[1],10)||0;mi=parseInt(m[2],10)||0;se=parseInt(m[3],10)||0;} else if(m[2]!=null){mi=parseInt(m[1],10)||0;se=parseInt(m[2],10)||0;} else { se=parseFloat(m[1])||0; } if(m[4]!=null){ ms=parseInt((m[4]+'').padEnd(3,'0'),10)||0; } return h*3600+mi*60+se+(ms/1000); }catch(e){ return null; } }
+          const ps = parseTimeText(meta && meta.start_time);
+          const pe = parseTimeText(meta && meta.end_time);
+          if (ps!=null) startSec = ps;
+          if (pe!=null) endSec = pe;
+        }catch(e){}
         const hv = document.createElement('video'); hv.muted=true; hv.preload='auto'; hv.playsInline=true; hv.crossOrigin='anonymous';
         const src = document.createElement('source'); src.src = '/media?path=' + encodeURIComponent(videoPath); src.type='video/mp4'; hv.appendChild(src);
         document.body.appendChild(hv); hv.style.position='fixed'; hv.style.left='-9999px'; hv.style.top='0'; hv.style.visibility='hidden';
@@ -100,8 +112,12 @@
         const w = Math.max(1, Math.round((hv.videoWidth||maxW)*scale));
         const h = Math.max(1, Math.round((hv.videoHeight||maxW*9/16)*scale));
         const work = document.createElement('canvas'); work.width=w; work.height=h; const wctx=work.getContext('2d');
-        function randTimes(cnt, dur){ const s=new Set(); for(let i=0;i<cnt*2 && s.size<cnt;i++){ s.add(Math.random()*Math.max(0.1, dur-0.2)+0.1); } return Array.from(s).slice(0,cnt).sort((a,b)=>a-b); }
-        const times = randTimes(n, hv.duration||10);
+        function randTimesInRange(cnt, lo, hi){ const out=new Set(); lo=Math.max(0,Number(lo||0)); hi=Math.max(lo,Number(hi||0)); const span=Math.max(0,hi-lo); if(span<=0) return [Math.max(0.05, lo)]; for(let i=0;i<cnt*4 && out.size<cnt;i++){ let t=lo+Math.random()*span; t=Math.max(lo+0.05, Math.min(hi-0.05, t)); out.add(t);} return Array.from(out).slice(0,cnt).sort((a,b)=>a-b);} 
+        // Clamp timing window to duration
+        let lo = startSec||0; let hi = (endSec!=null? endSec : (hv.duration||0));
+        lo = Math.max(0, Math.min(lo, Math.max(0, hv.duration||0)));
+        hi = Math.max(lo+0.001, Math.min(hi, Math.max(0, hv.duration||0)));
+        const times = randTimesInRange(n, lo, hi);
         const frames = [];
         for (let i=0;i<times.length;i++){
           await new Promise(res=>{ const onSeeked=()=>{ try{ wctx.drawImage(hv,0,0,w,h); const id=wctx.getImageData(0,0,w,h); frames.push(id.data.slice(0)); }catch(e){} hv.removeEventListener('seeked', onSeeked); res(); }; hv.addEventListener('seeked', onSeeked); try{ hv.currentTime = Math.min(Math.max(0.05, times[i]), Math.max(0.05, (hv.duration||10)-0.05)); }catch(e){ hv.removeEventListener('seeked', onSeeked); res(); } });

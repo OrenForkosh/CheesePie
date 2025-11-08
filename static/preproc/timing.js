@@ -19,12 +19,19 @@
   function parseTime(s){
     if (!s) return 0;
     try{
-      const m = String(s).trim().match(/^(\d{1,2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?$/);
+      const str = String(s).trim();
+      // Flexible: ss(.mmm), mm:ss(.mmm), hh:mm:ss(.mmm)
+      const m = str.match(/^(\d+)(?::(\d+))?(?::(\d+))?(?:\.(\d{1,3}))?$/);
       if (!m) return null;
-      const h = parseInt(m[1],10)||0;
-      const mi = parseInt(m[2],10)||0;
-      const se = parseInt(m[3],10)||0;
-      const ms = parseInt(pad(m[4]||'0',3),10)||0;
+      let h=0, mi=0, se=0, ms=0;
+      if (m[3] != null){ // hh:mm:ss
+        h = parseInt(m[1],10)||0; mi = parseInt(m[2],10)||0; se = parseInt(m[3],10)||0;
+      } else if (m[2] != null){ // mm:ss
+        mi = parseInt(m[1],10)||0; se = parseInt(m[2],10)||0;
+      } else { // ss
+        se = parseFloat(m[1])||0;
+      }
+      if (m[4] != null){ ms = parseInt(pad(m[4],3),10)||0; }
       return ((h*60+mi)*60+se)*1000 + ms;
     } catch(e){ return null; }
   }
@@ -96,8 +103,8 @@
     let saveTimer = null;
     function scheduleSave(){ try{ if (saveTimer) clearTimeout(saveTimer); saveTimer = setTimeout(saveTiming, 400); }catch(e){} }
     // Buttons
-    if (setStart) setStart.addEventListener('click', function(){ if (!video) return; startEl.value = formatMs((video.currentTime||0)*1000); scheduleSave(); });
-    if (setEnd) setEnd.addEventListener('click', function(){ if (!video) return; endEl.value = formatMs((video.currentTime||0)*1000); scheduleSave(); });
+    if (setStart) setStart.addEventListener('click', function(){ try{ if (!video) return; startEl.value = formatMs((video.currentTime||0)*1000); saveTiming(); }catch(e){} });
+    if (setEnd) setEnd.addEventListener('click', function(){ try{ if (!video) return; endEl.value = formatMs((video.currentTime||0)*1000); saveTiming(); }catch(e){} });
     if (jumpStart) jumpStart.addEventListener('click', function(){
       try{
         if (!video) return; const tms = parseTime((startEl && startEl.value)||''); if (tms==null){ if(status) status.textContent='Enter times as HH:MM:SS.mmm'; return; }
@@ -110,14 +117,26 @@
         try{ video.pause(); }catch(e){} video.currentTime = Math.min(Math.max(0, tms/1000), Math.max(0,(video.duration||0)-1e-6));
       }catch(e){}
     });
-    if (resetBtn) resetBtn.addEventListener('click', function(){ if (!video) return; startEl.value='00:00:00.000'; endEl.value = formatMs((isFinite(video.duration)? video.duration*1000 : 0)); scheduleSave(); });
+    if (resetBtn) resetBtn.addEventListener('click', function(){ try{ if (!video) return; startEl.value='00:00:00.000'; endEl.value = formatMs((isFinite(video.duration)? video.duration*1000 : 0)); saveTiming(); }catch(e){} });
     if (saveBtn) saveBtn.addEventListener('click', function(){
       saveTiming();
     });
     // Jump to time by editing the Current field (Enter or blur)
     if (cur && (cur.tagName||'').toLowerCase()==='input'){
-      cur.addEventListener('keydown', function(ev){ if (ev.key==='Enter'){ ev.preventDefault(); const ms = parseTime(cur.value||''); if (ms==null){ if(status) status.textContent='Enter time as HH:MM:SS.mmm'; return; } try{ video.pause(); }catch(e){} video.currentTime = Math.min(Math.max(0, ms/1000), Math.max(0,(video.duration||0)-1e-6)); });
-      cur.addEventListener('blur', function(){ const ms = parseTime(cur.value||''); if (ms==null) return; try{ video.pause(); }catch(e){} video.currentTime = Math.min(Math.max(0, ms/1000), Math.max(0,(video.duration||0)-1e-6)); });
+      cur.addEventListener('keydown', function(ev){
+        if (ev.key==='Enter'){
+          ev.preventDefault();
+          const ms = parseTime(cur.value||'');
+          if (ms==null){ if(status) status.textContent='Enter time as HH:MM:SS.mmm'; return; }
+          try{ video.pause(); }catch(e){}
+          video.currentTime = Math.min(Math.max(0, ms/1000), Math.max(0,(video.duration||0)-1e-6));
+        }
+      });
+      cur.addEventListener('blur', function(){
+        const ms = parseTime(cur.value||''); if (ms==null) return;
+        try{ video.pause(); }catch(e){}
+        video.currentTime = Math.min(Math.max(0, ms/1000), Math.max(0,(video.duration||0)-1e-6));
+      });
     }
     // Auto-save on editing inputs
     if (startEl){ startEl.addEventListener('input', scheduleSave); startEl.addEventListener('change', saveTiming); startEl.addEventListener('keydown', function(ev){ if (ev.key==='Enter'){ ev.preventDefault(); saveTiming(); } }); }

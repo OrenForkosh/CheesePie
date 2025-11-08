@@ -31,6 +31,22 @@
     var isRegionsEditing = false;
     var order = ['arena','timing','background','regions','colors','save'];
     function nextOf(name){ var i = order.indexOf(name); return (i>=0 && i < order.length-1) ? order[i+1] : null; }
+    function _persistTab(name){
+      try{
+        var url = new URL(window.location.href);
+        url.searchParams.set('step', String(name||''));
+        history.replaceState(null, '', url.toString());
+        try{ localStorage.setItem('cheesepie.preproc.step', String(name||'')); }catch(e){}
+      }catch(e){}
+    }
+    function _initialTab(){
+      try{
+        var usp = new URLSearchParams(location.search);
+        var step = usp.get('step') || '';
+        if (!step){ try{ step = localStorage.getItem('cheesepie.preproc.step') || ''; }catch(e){} }
+        return step;
+      }catch(e){ return ''; }
+    }
     function switchTab(name){
       // Guard against disabled tabs
       var btn = tabs[name];
@@ -44,6 +60,7 @@
       U.setActiveTab(name, tabs);
       // Allow overlay interactions in Arena (for marking) and in Colors (for segment marking)
       overlay.style.pointerEvents = ((name === 'arena' && S.marking) || name === 'colors') ? 'auto' : 'none';
+      _persistTab(name);
       try{ document.dispatchEvent(new CustomEvent('preproc:tab-changed', { detail: { name: name } })); }catch(e){}
       try{ if (arena && arena.drawOverlay) arena.drawOverlay(); }catch(e){}
     }
@@ -137,25 +154,23 @@
 
     function setTabsEnabled(enabled){
       try{
+        // Allow tabs only when facility and setup are chosen
+        var hasFacility = !!(facilitySel && facilitySel.value);
+        var hasSetup = !!(document.getElementById('pp-setup') && document.getElementById('pp-setup').value);
+        var allowed = !!enabled && hasFacility && hasSetup;
+
         // Tabs button state
-        Object.keys(tabs).forEach(function(k){ if (tabs[k]) { tabs[k].disabled = !enabled; tabs[k].title = enabled? '' : 'Select a facility to continue'; } });
+        Object.keys(tabs).forEach(function(k){ if (tabs[k]) { tabs[k].disabled = !allowed; tabs[k].title = allowed? '' : 'Select a facility and setup to continue'; } });
+
         // Panes visibility and interactivity
         var v = ensureVeil();
-        if (!enabled){
-          // Disable only; keep layout stable
+        if (!allowed){
           if (v) v.classList.add('visible');
           Object.keys(panes).forEach(function(k){ if (panes[k]) { setTreeDisabled(panes[k], true); } });
         } else {
           if (v) v.classList.remove('visible');
           Object.keys(panes).forEach(function(k){ if (panes[k]) { setTreeDisabled(panes[k], false); } });
-          // Additional gating: Regions/Save require a valid arena
-          var okArena = arenaIsValid();
-          if (tabs.timing){ tabs.timing.disabled = !okArena; tabs.timing.title = okArena? '' : 'Mark the arena first'; }
-          if (tabs.regions){ tabs.regions.disabled = !okArena; tabs.regions.title = okArena? '' : 'Mark the arena first'; }
-          if (tabs.save){ tabs.save.disabled = !okArena; tabs.save.title = okArena? '' : 'Mark the arena first'; }
-          // Colors requires a computed or loaded background
-          var hasBg = !!S.hasBackground;
-          if (tabs.colors){ tabs.colors.disabled = (!hasBg); tabs.colors.title = hasBg? '' : 'Compute or load background first'; }
+          // No inter-tab dependencies: all tabs enabled when allowed
         }
       } catch(e){}
     }
@@ -278,8 +293,16 @@
       names.sort(function(a,b){ if (a==='default') return -1; if (b==='default') return 1; return a.localeCompare(b); });
       names.forEach(function(n){ var o=document.createElement('option'); o.value=n; o.textContent=n; setupSel.appendChild(o); });
       var chosen = names[0] || 'default';
+      // Restore last chosen setup for this facility if present
+      try{
+        var key = 'cheesepie.preproc.setup.' + String(fac||'').toLowerCase();
+        var saved = localStorage.getItem(key) || localStorage.getItem('cheesepie.preproc.setup') || '';
+        if (saved && names.indexOf(saved) !== -1){ chosen = saved; }
+      }catch(e){}
       setupSel.value = chosen;
       applySetupDefaults(fac, setupSel.value, setups);
+      // After facility + setup are populated, enable tabs
+      setTabsEnabled(true);
     }
     function applySetupDefaults(fac, name, setups){
       try{
@@ -301,7 +324,7 @@
         if (arena && arena.drawOverlay) arena.drawOverlay();
       } catch(e){}
     }
-    if (setupSel){ setupSel.addEventListener('change', function(){ var fac = facilitySel?facilitySel.value:''; if (!currentSetups){ populateSetupsForFacility(fac); } applySetupDefaults(fac, setupSel.value, currentSetups); }); }
+    if (setupSel){ setupSel.addEventListener('change', function(){ var fac = facilitySel?facilitySel.value:''; if (!currentSetups){ populateSetupsForFacility(fac); } applySetupDefaults(fac, setupSel.value, currentSetups); try{ localStorage.setItem('cheesepie.preproc.setup.'+String(fac||'').toLowerCase(), setupSel.value||''); localStorage.setItem('cheesepie.preproc.setup', setupSel.value||''); }catch(e){} setTabsEnabled(true); }); }
     if (applySetupBtn){ applySetupBtn.addEventListener('click', function(){ var fac = facilitySel?facilitySel.value:''; if (!fac){ alert('Select a facility first.'); return; } if (!currentSetups){ populateSetupsForFacility(fac); } applySetupDefaults(fac, setupSel && setupSel.value, currentSetups); }); }
     if (saveSetupBtn){
       saveSetupBtn.addEventListener('click', function(){
@@ -373,13 +396,14 @@
       }
     } catch(e){}
 
-    // Only allow switching once a facility is set; otherwise show placeholder
-    if (facilitySel && !facilitySel.value){
-      setTabsEnabled(false);
-    } else {
-      setTabsEnabled(true);
-      if (facilitySel && facilitySel.value){ populateSetupsForFacility(facilitySel.value); }
-    }
+    // On first load, enable tabs and restore active tab
+    if (facilitySel && facilitySel.value){ populateSetupsForFacility(facilitySel.value); }
+    setTabsEnabled(true);
+    try{
+      var usp0 = new URLSearchParams(location.search);
+      var step0 = usp0.get('step') || (localStorage.getItem('cheesepie.preproc.step')||'');
+      if (step0 && panes[step0]) switchTab(step0);
+    }catch(e){}
 
     // Load saved preproc state (arena, background, etc.) for this video
     (function loadState(){
