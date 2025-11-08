@@ -187,8 +187,8 @@
 
     function findPlacedMarkAt(px, py){
       try{
-        const t = timeKey(); const list = marks[t] || [];
-        let best = null, bestD2 = Infinity; const R = 10;
+        const t = _nearestMarksKey(timeKey()); const list = marks[t] || [];
+        let best = null, bestD2 = Infinity; const R = 16;
         for (let i=0;i<list.length;i++){
           const sp = screenPosForMark(list[i]); if (!sp) continue;
           const dx = px - sp.x, dy = py - sp.y; const d2 = dx*dx + dy*dy;
@@ -243,7 +243,7 @@
           const oRect = overlay.getBoundingClientRect();
           const mx = px - oRect.left, my = py - oRect.top;
           const vw = overlay.clientWidth, vh = overlay.clientHeight; const W = lastSize.w, H = lastSize.h; const r = fitRect(W,H,vw,vh);
-          const t=timeKey(); const list=marks[t]||[];
+          const t=_nearestMarksKey(timeKey()); const list=marks[t]||[];
           if (mx < r.dx || my < r.dy || mx > r.dx + r.dw || my > r.dy + r.dh){
             // Remove the mark if dropped outside the video area
             if (list.length){ list.splice(ctx.idx, 1); marks[t] = list; }
@@ -283,7 +283,7 @@
 
     async function ensureSavedFrames(){ try{ if(savedFrames!==null) return; const vp=(window.Preproc&&window.Preproc.State&&window.Preproc.State.videoPath)||''; if(!vp){ savedFrames={}; return;} const r=await fetch('/api/preproc/state?video='+encodeURIComponent(vp)); const d=await r.json(); const colors=d&&d.colors||null; savedFrames=(colors&&colors.frames)||{}; }catch(e){ savedFrames={}; } }
     function nearestKey(tk){ try{ if(!savedFrames) return tk; if(savedFrames[tk]) return tk; const keys=Object.keys(savedFrames||{}); if(!keys.length) return tk; const t=parseFloat(tk); let best=tk,d=Infinity; keys.forEach(k=>{ const v=Math.abs(parseFloat(k)-t); if(v<d){ d=v; best=k; } }); return d<=0.05?best:tk; }catch(e){ return tk; } }
-    function updateIndicator(){ try{ const t=timeKey(); const list=marks[t]||[]; const c={R:0,G:0,B:0,Y:0,BG:0}; list.forEach(m=>{ if(c[m.mouse]!==undefined) c[m.mouse]++; }); setIndicator(`R:${c.R} G:${c.G} B:${c.B} Y:${c.Y} BG:${c.BG}`);}catch(e){ setIndicator(''); } }
+    function updateIndicator(){ try{ const t=_nearestMarksKey(timeKey()); const list=marks[t]||[]; const c={R:0,G:0,B:0,Y:0,BG:0}; list.forEach(m=>{ if(c[m.mouse]!==undefined) c[m.mouse]++; }); setIndicator(`R:${c.R} G:${c.G} B:${c.B} Y:${c.Y} BG:${c.BG}`);}catch(e){ setIndicator(''); } }
     function computeHistogramCounts(){
       try{
         const codes=['R','G','B','Y','BG'];
@@ -317,7 +317,20 @@
       }
       histEl.innerHTML = html;
     }catch(e){} }
-    function drawMarks(){ if(!overlay) return; const vw=overlay.clientWidth||overlay.width||0; const vh=overlay.clientHeight||overlay.height||0; if(!vw||!vh) return; overlay.width=vw; overlay.height=vh; const ctx=overlay.getContext('2d'); ctx.clearRect(0,0,vw,vh); const W=lastSize.w,H=lastSize.h; if(!W||!H) return; const r=fitRect(W,H,vw,vh); const list=marks[timeKey()]||[]; list.forEach(m=>{ const cx=r.dx+(m.centroid.x*(r.dw/W)); const cy=r.dy+(m.centroid.y*(r.dh/H)); ctx.beginPath(); ctx.arc(cx,cy,6,0,Math.PI*2); ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fill(); ctx.beginPath(); ctx.arc(cx,cy,4,0,Math.PI*2); ctx.fillStyle=markColor(m.mouse||'BG'); ctx.fill(); ctx.fillStyle='#000'; ctx.font='10px ui-monospace, Menlo, monospace'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(m.mouse||'', cx, cy-12); }); }
+    function _nearestMarksKey(tk){
+      try{
+        const keys = Object.keys(marks||{}); if (!keys.length) return tk;
+        if (marks[tk]) return tk;
+        const t = parseFloat(tk);
+        let best = tk, dmin = Infinity;
+        for (let i=0;i<keys.length;i++){
+          const k = keys[i]; const v = Math.abs(parseFloat(k) - t);
+          if (v < dmin){ dmin = v; best = k; }
+        }
+        return (dmin <= 0.05) ? best : tk; // 50ms tolerance
+      }catch(e){ return tk; }
+    }
+    function drawMarks(){ if(!overlay) return; const vw=overlay.clientWidth||overlay.width||0; const vh=overlay.clientHeight||overlay.height||0; if(!vw||!vh) return; overlay.width=vw; overlay.height=vh; const ctx=overlay.getContext('2d'); ctx.clearRect(0,0,vw,vh); const W=lastSize.w,H=lastSize.h; if(!W||!H) return; const r=fitRect(W,H,vw,vh); const key=_nearestMarksKey(timeKey()); const list=marks[key]||[]; list.forEach(m=>{ const cx=r.dx+(m.centroid.x*(r.dw/W)); const cy=r.dy+(m.centroid.y*(r.dh/H)); ctx.beginPath(); ctx.arc(cx,cy,6,0,Math.PI*2); ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fill(); ctx.beginPath(); ctx.arc(cx,cy,4,0,Math.PI*2); ctx.fillStyle=markColor(m.mouse||'BG'); ctx.fill(); ctx.fillStyle='#000'; ctx.font='10px ui-monospace, Menlo, monospace'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(m.mouse||'', cx, cy-12); }); }
     function syncFromSaved(){ try{ if(!savedFrames) return; const tk=timeKey(); const key=nearestKey(tk); const fr=savedFrames[key]; if(!fr) return; if(Array.isArray(fr.marks)) marks[tk]=fr.marks.map(m=>({mouse:m.mouse, segment_label:m.segment_label, centroid:m.centroid})); if(Array.isArray(fr.labels)&&fr.labels.length){ lastIndex=fr.labels; lastSize={h:fr.labels.length|0,w:(fr.labels[0]||[]).length|0}; } }catch(e){} }
 
     function setSegCountFromIndex(index){
