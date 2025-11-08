@@ -2,310 +2,531 @@
 <section class="panel panel--nochrome">
   <div class="controls" style="grid-template-columns: 3fr 2fr">
     <div class="subpanel" id="pp-right">
-    <div class="control-group" style="margin-bottom:8px">
-      <h1 style="margin:0 0 4px 0">Preprocessing</h1>
-      <p class="muted" style="margin:0">Prepare a video for tracking: define arena and background.</p>
-    </div>
-    <div class="control-group">
-      <label>Video</label>
-      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
-        <input
-          type="text"
-          id="preproc-video-path"
-          value="{{ video or '' }}"
-          readonly
-          style="flex:1"
-        />
-        <button class="btn success" id="pp-open-save" title="Save preproc to multiple days">Save…</button>
-        <div id="pp-day-strip" class="muted" style="display:flex; gap:6px; flex-wrap:wrap"></div>
+      <div class="control-group" style="margin-bottom: 8px">
+        <h1 style="margin: 0 0 4px 0">Preprocessing</h1>
+        <p class="muted" style="margin: 0">
+          Prepare a video for tracking: define arena and background.
+        </p>
+      </div>
+      <div class="control-group">
+        <label>Video</label>
+        <div
+          style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap"
+        >
+          <input
+            type="text"
+            id="preproc-video-path"
+            value="{{ video or '' }}"
+            readonly
+            style="flex: 1"
+          />
+          <button
+            class="btn success"
+            id="pp-open-save"
+            title="Save preproc to multiple days"
+          >
+            Save…
+          </button>
+          <div
+            id="pp-day-strip"
+            class="muted"
+            style="display: flex; gap: 6px; flex-wrap: wrap"
+          ></div>
+        </div>
+      </div>
+
+      <div class="control-group" style="margin-top: 12px">
+        <div class="video-wrap">
+          <div class="video-preview">
+            <div id="pp-vwrap" style="position: relative">
+              <video
+                id="pp-video"
+                preload="metadata"
+                {%
+                if
+                video
+                %}src="/media?path={{ video|urlencode }}"
+                {%
+                endif
+                %}
+                style="display: block; width: 100%; height: auto"
+              ></video>
+              <canvas
+                id="pp-processed"
+                style="
+                  position: absolute;
+                  left: 0;
+                  top: 0;
+                  width: 100%;
+                  height: 100%;
+                  pointer-events: none;
+                  display: none;
+                "
+              ></canvas>
+              <canvas
+                id="pp-overlay"
+                style="
+                  position: absolute;
+                  left: 0;
+                  top: 0;
+                  width: 100%;
+                  height: 100%;
+                  pointer-events: auto;
+                "
+              ></canvas>
+              <div
+                id="pp-handle-tl"
+                style="
+                  position: absolute;
+                  width: 12px;
+                  height: 12px;
+                  background: #4f8cff;
+                  border: 2px solid #fff;
+                  border-radius: 2px;
+                  transform: translate(-50%, -50%);
+                  display: none;
+                  cursor: nwse-resize;
+                "
+              ></div>
+              <div
+                id="pp-handle-br"
+                style="
+                  position: absolute;
+                  width: 12px;
+                  height: 12px;
+                  background: #4f8cff;
+                  border: 2px solid #fff;
+                  border-radius: 2px;
+                  transform: translate(-50%, -50%);
+                  display: none;
+                  cursor: nwse-resize;
+                "
+              ></div>
+            </div>
+            <div class="controls-row" style="margin-top: 8px">
+              <button
+                class="icon-btn"
+                id="pp-play"
+                title="Play"
+                aria-label="Play"
+                style="margin-left: 6px"
+              >
+                ▶
+              </button>
+              <div class="fill">
+                <input
+                  type="range"
+                  id="pp-seek"
+                  min="0"
+                  value="0"
+                  step="0.01"
+                  style="width: 100%"
+                />
+              </div>
+              <div
+                class="muted"
+                id="pp-time"
+                style="
+                  margin-right: 6px;
+                  font-family: ui-monospace, Menlo, Monaco, Consolas, monospace;
+                "
+              >
+                00:00 / 00:00
+              </div>
+            </div>
+            <div
+              class="controls-row"
+              style="margin-top: 6px; align-items: center"
+            >
+              <div
+                id="pp-filter-chips"
+                class="fill"
+                style="display: flex; gap: 6px; align-items: center"
+              >
+                <button class="chip" data-filter="invert" title="Invert colors">
+                  <img
+                    class="mi invert-on-dark"
+                    src="https://fonts.gstatic.com/s/i/materialiconsoutlined/invert_colors/v12/24px.svg"
+                    alt="Invert"
+                    width="20"
+                    height="20"
+                  />
+                </button>
+                <button
+                  class="chip"
+                  data-filter="histeq"
+                  title="Histogram equalization"
+                >
+                  <img
+                    class="mi invert-on-dark"
+                    src="https://fonts.gstatic.com/s/i/materialiconsoutlined/bar_chart/v13/24px.svg"
+                    alt="Hist Eq"
+                    width="20"
+                    height="20"
+                  />
+                </button>
+              </div>
+              <button
+                class="icon-btn"
+                id="pp-export-frame"
+                title="Export current frame as PNG"
+                aria-label="Export frame as PNG"
+                style="margin-left: 6px"
+              >
+                <img
+                  class="mi invert-on-dark"
+                  src="https://fonts.gstatic.com/s/i/materialiconsoutlined/photo_camera/v15/24px.svg"
+                  alt="Camera"
+                  width="20"
+                  height="20"
+                />
+              </button>
+              <span class="muted" style="min-width: 1px"></span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
+    <!-- end left subpanel -->
 
-    <div class="control-group" style="margin-top:12px">
-      <div class="video-wrap">
-        <div class="video-preview">
-          
-          <div id="pp-vwrap" style="position: relative">
-            <video
-              id="pp-video"
-              preload="metadata"
-              {% if video %}src="/media?path={{ video|urlencode }}"{% endif %}
-              style="display: block; width: 100%; height: auto"
-            ></video>
-            <canvas
-              id="pp-processed"
-              style="
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 100%;
-                height: 100%;
-                pointer-events: none;
-                display: none;
-              "
-            ></canvas>
-            <canvas
-              id="pp-overlay"
-              style="
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 100%;
-                height: 100%;
-                pointer-events: auto;
-              "
-            ></canvas>
-            <div
-              id="pp-handle-tl"
-              style="
-                position: absolute;
-                width: 12px;
-                height: 12px;
-                background: #4f8cff;
-                border: 2px solid #fff;
-                border-radius: 2px;
-                transform: translate(-50%, -50%);
-                display: none;
-                cursor: nwse-resize;
-              "
-            ></div>
-            <div
-              id="pp-handle-br"
-              style="
-                position: absolute;
-                width: 12px;
-                height: 12px;
-                background: #4f8cff;
-                border: 2px solid #fff;
-                border-radius: 2px;
-                transform: translate(-50%, -50%);
-                display: none;
-                cursor: nwse-resize;
-              "
-            ></div>
-          </div>
-          <div class="controls-row" style="margin-top: 8px">
+    <div class="subpanel">
+      <div class="control-group">
+        <div class="kv" style="margin-bottom: 8px">
+          <div class="k">Facility</div>
+          <select id="pp-facility"></select>
+          <div class="k">Setup</div>
+          <div style="display: flex; gap: 6px; align-items: center">
+            <select id="pp-setup" style="flex: 1"></select>
             <button
-              class="icon-btn"
-              id="pp-play"
-              title="Play"
-              aria-label="Play"
-              style="margin-left: 6px"
+              class="btn mini"
+              id="pp-apply-setup"
+              title="Apply selected setup values to the tabs"
             >
-              ▶
+              Apply
             </button>
-            <div class="fill">
+            <button
+              class="btn mini"
+              id="pp-save-setup"
+              title="Save current settings as a setup (overwrite or add new)"
+            >
+              Save...
+            </button>
+          </div>
+          <div class="k"></div>
+          <div class="v"><span id="pp-setup-status" class="muted"></span></div>
+        </div>
+        <div
+          class="tabs small"
+          style="
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+            align-items: center;
+            justify-content: flex-start;
+          "
+        >
+          <div style="display: flex; gap: 8px; align-items: center">
+            <button class="btn mini" id="tab-arena">Arena</button>
+            <button class="btn mini" id="tab-timing">Timing</button>
+            <button class="btn mini" id="tab-background">Background</button>
+            <button class="btn mini" id="tab-regions">Regions</button>
+            <button class="btn mini" id="tab-colors">Colors</button>
+          </div>
+        </div>
+        <div id="pp-panes" style="position: relative">
+          <div id="pane-arena">
+            <div class="kv">
+              <div class="k">Grid cols</div>
+              <input type="number" id="grid-cols" min="1" value="6" />
+              <div class="k">Grid rows</div>
+              <input type="number" id="grid-rows" min="1" value="4" />
+              <div class="k">Width (cm)</div>
+              <input type="number" id="arena-wcm" min="1" value="40" />
+              <div class="k">Height (cm)</div>
+              <input type="number" id="arena-hcm" min="1" value="30" />
+            </div>
+            <div
+              class="controls-row pane-next"
+              style="border-top: none; padding-top: 0"
+            >
+              <span class="muted" id="arena-status" style="flex: 1"></span>
+              <button class="btn" id="arena-mark">Mark</button>
+            </div>
+            <div class="pane-footer">
+              <div class="muted">
+                Arena is axis-aligned rectangle within the frame. Click Mark to
+                define: top-left then bottom-right. Drag handles to refine while
+                marking.
+              </div>
+              <div class="muted" style="font-weight: 600; margin-top: 6px">
+                Keyboard Shortcuts
+              </div>
+              <div class="shortcut-list" style="margin-top: 6px">
+                <div class="shortcut-item">
+                  <span class="kbd">Esc</span><span>Stop marking</span>
+                </div>
+                <div class="shortcut-item">
+                  <span class="kbd">Enter</span> / <span class="kbd">Space</span
+                  ><span>Finish marking</span>
+                </div>
+                <div class="shortcut-item">
+                  <span class="kbd">↑</span><span class="kbd">↓</span
+                  ><span class="kbd">←</span><span class="kbd">→</span
+                  ><span>Nudge active handle by 1px</span>
+                </div>
+                <div class="shortcut-item">
+                  <span class="kbd">Shift</span> + <span class="kbd">↑</span
+                  ><span class="kbd">↓</span><span class="kbd">←</span
+                  ><span class="kbd">→</span><span>Nudge by 10px</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="pane-background" style="display: none">
+            <div class="kv">
+              <div class="k">Frames</div>
               <input
-                type="range"
-                id="pp-seek"
+                type="number"
+                id="bg-frames"
+                min="5"
+                max="200"
+                value="25"
+              />
+              <div class="k">Quantile</div>
+              <input
+                type="number"
+                id="bg-quant"
                 min="0"
-                value="0"
-                step="0.01"
-                style="width: 100%"
+                max="100"
+                step="1"
+                value="50"
               />
             </div>
             <div
-              class="muted"
-              id="pp-time"
+              class="controls-row pane-next"
               style="
-                margin-right: 6px;
-                font-family: ui-monospace, Menlo, Monaco, Consolas, monospace;
+                margin: 8px 0;
+                border-top: none;
+                padding-top: 0;
+                align-items: center;
               "
             >
-              00:00 / 00:00
+              <span class="muted" id="bg-status" style="flex: 1"></span>
+              <button class="btn" id="bg-run">Run</button>
+            </div>
+            <div id="bg-canvas-wrap" style="position: relative; width: 100%">
+              <canvas
+                id="bg-canvas"
+                style="
+                  width: 100%;
+                  max-width: 100%;
+                  border: 1px solid var(--border);
+                  border-radius: 8px;
+                  display: block;
+                "
+              ></canvas>
+              <button
+                class="icon-btn"
+                id="pp-export-background"
+                title="Export background as PNG"
+                aria-label="Export background as PNG"
+                style="
+                  position: absolute;
+                  right: 8px;
+                  bottom: 8px;
+                  background: rgba(0, 0, 0, 0.55);
+                  border-radius: 20px;
+                  padding: 4px;
+                "
+              >
+                <img
+                  class="mi invert-on-dark"
+                  src="https://fonts.gstatic.com/s/i/materialiconsoutlined/photo_camera/v15/24px.svg"
+                  alt="Camera"
+                  width="20"
+                  height="20"
+                />
+              </button>
             </div>
           </div>
-          <div
-            class="controls-row"
-            style="margin-top: 6px; align-items: center"
-          >
-            <div id="pp-filter-chips" class="fill" style="display:flex; gap:6px; align-items:center">
-              <button class="chip" data-filter="invert" title="Invert colors">
-                <img class="mi invert-on-dark" src="https://fonts.gstatic.com/s/i/materialiconsoutlined/invert_colors/v12/24px.svg" alt="Invert" width="20" height="20" />
-              </button>
-              <button class="chip" data-filter="histeq" title="Histogram equalization">
-                <img class="mi invert-on-dark" src="https://fonts.gstatic.com/s/i/materialiconsoutlined/bar_chart/v13/24px.svg" alt="Hist Eq" width="20" height="20" />
-              </button>
+          <div id="pane-regions" style="display: none">
+            <div class="table-wrap" style="padding: 0; margin-top: 8px">
+              <table
+                id="roi-table"
+                style="width: 100%; border-collapse: collapse; font-size: 13px"
+              >
+                <thead>
+                  <tr>
+                    <th style="text-align: left; padding: 6px">Name</th>
+                    <th style="text-align: left; padding: 6px">Enabled</th>
+                    <th style="text-align: left; padding: 6px">Sheltered</th>
+                    <th style="text-align: left; padding: 6px">Cells</th>
+                    <th style="text-align: left; padding: 6px"></th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
             </div>
-            <button
-              class="icon-btn"
-              id="pp-export-frame"
-              title="Export current frame as PNG"
-              aria-label="Export frame as PNG"
-              style="margin-left:6px"
+            <div
+              class="pane-next"
+              style="margin-top: 8px; border-top: none; padding-top: 0"
             >
-              <img class="mi invert-on-dark" src="https://fonts.gstatic.com/s/i/materialiconsoutlined/photo_camera/v15/24px.svg" alt="Camera" width="20" height="20" />
-            </button>
-            <span class="muted" style="min-width: 1px"></span>
+              <span
+                class="muted"
+                id="roi-status"
+                style="margin-right: auto"
+              ></span>
+              <button class="btn" id="roi-add">Add</button>
+            </div>
+            <div class="pane-footer">
+              Tip: Click "Edit" for a region, then click grid cells in the
+              overlay to toggle. Press Esc or click Edit again to finish.
+            </div>
           </div>
+          <div id="pane-colors" style="display: none">
+            <div
+              class="controls-row"
+              style="
+                align-items: center;
+                gap: 12px;
+                margin: 8px 0;
+                flex-wrap: wrap;
+              "
+            >
+              <button
+                class="btn"
+                id="pp-colors-random"
+                title="Jump to a random frame"
+              >
+                Random
+              </button>
+              <button
+                class="btn"
+                id="pp-colors-show-only"
+                title="Show segments only"
+              >
+                Segments
+              </button>
+              <span class="muted" id="pp-colors-segcount" style="min-width: 80px"></span>
+              <span
+                class="muted"
+                id="pp-colors-status"
+                style="min-width: 200px"
+              ></span>
+            </div>
+            <div id="pp-colors-hist" style="margin-top: 8px"></div>
+            <div
+              style="
+                display: flex;
+                gap: 8px;
+                align-items: center;
+                margin-top: 8px;
+                flex-wrap: wrap;
+                justify-content: flex-end;
+              "
+            >
+              <button
+                class="btn mini"
+                id="pp-colors-clear"
+                title="Clear marks for this frame"
+              >
+                Clear
+              </button>
+              <button
+                class="btn mini"
+                id="pp-colors-clear-all"
+                title="Clear all marks in this video"
+              >
+                Clear all
+              </button>
+            </div>
+            <div class="pane-footer">
+              Drag a marker (R/G/B/Y/BG) from the top-left dock onto a segment
+              to assign it, or click a segment to assign the current mouse (use
+              keys 1–4 and 0).
+            </div>
+          </div>
+          <div id="pane-timing" style="display: none">
+            <div class="kv">
+              <div class="k">Current</div>
+              <div class="v"><span id="exp-current">00:00:00.000</span></div>
+              <div class="k">Start</div>
+              <div
+                class="v"
+                style="display: flex; gap: 8px; align-items: center"
+              >
+                <input type="text" id="exp-start" placeholder="HH:MM:SS.mmm" />
+                <button class="btn mini" id="exp-set-start">Set</button>
+                <button
+                  class="btn mini"
+                  id="exp-jump-start"
+                  title="Jump video to Start time"
+                >
+                  Jump
+                </button>
+              </div>
+              <div class="k">End</div>
+              <div
+                class="v"
+                style="display: flex; gap: 8px; align-items: center"
+              >
+                <input type="text" id="exp-end" placeholder="HH:MM:SS.mmm" />
+                <button class="btn mini" id="exp-set-end">Set</button>
+                <button
+                  class="btn mini"
+                  id="exp-jump-end"
+                  title="Jump video to End time"
+                >
+                  Jump
+                </button>
+              </div>
+            </div>
+            <div
+              class="controls-row pane-next"
+              style="
+                margin-top: 8px;
+                align-items: center;
+                gap: 8px;
+                border-top: none;
+                padding-top: 0;
+              "
+            >
+              <span class="muted" style="flex: 1" id="exp-status"></span>
+              <button class="btn" id="exp-reset">Reset</button>
+            </div>
+            <div class="pane-footer">
+              <div class="muted">
+                Set precise experiment start/end using the fields above.
+              </div>
+              <div class="muted" style="font-weight: 600; margin-top: 6px">
+                Keyboard Shortcuts
+              </div>
+              <div class="shortcut-list" style="margin-top: 6px">
+                <div class="shortcut-item">
+                  <span class="kbd">[</span><span class="kbd">]</span
+                  ><span>Step 1 frame backward / forward</span>
+                </div>
+                <div class="shortcut-item">
+                  <span class="kbd">←</span><span class="kbd">→</span
+                  ><span>Jump 1 second backward / forward</span>
+                </div>
+                <div class="shortcut-item">
+                  <span class="kbd">Shift</span> + <span class="kbd">←</span
+                  ><span class="kbd">→</span
+                  ><span>Jump 5 seconds backward / forward</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Save pane removed; replaced by Save dialog button above -->
+          <div id="pane-save" style="display: none"></div>
         </div>
+        <!-- end #pp-panes -->
       </div>
-      
     </div>
-    </div> <!-- end left subpanel -->
-
-    <div class="subpanel">
-    <div class="control-group">
-      <div class="kv" style="margin-bottom:8px">
-        <div class="k">Facility</div>
-        <select id="pp-facility"></select>
-        <div class="k">Setup</div>
-        <div style="display:flex; gap:6px; align-items:center">
-          <select id="pp-setup" style="flex:1"></select>
-          <button class="btn mini" id="pp-apply-setup" title="Apply selected setup values to the tabs">Apply</button>
-          <button class="btn mini" id="pp-save-setup" title="Save current settings as a setup (overwrite or add new)">Save...</button>
-        </div>
-        <div class="k"></div>
-        <div class="v"><span id="pp-setup-status" class="muted"></span></div>
-      </div>
-      <div
-        class="tabs small"
-        style="display: flex; gap: 8px; margin-bottom: 8px; align-items:center; justify-content:flex-start"
-      >
-        <div style="display:flex; gap:8px; align-items:center">
-        <button class="btn mini" id="tab-arena">Arena</button>
-        <button class="btn mini" id="tab-timing">Timing</button>
-        <button class="btn mini" id="tab-background">Background</button>
-        <button class="btn mini" id="tab-regions">Regions</button>
-        <button class="btn mini" id="tab-colors">Colors</button>
-        </div>
-      </div>
-      <div id="pp-panes" style="position:relative">
-      <div id="pane-arena">
-        <div class="kv">
-          <div class="k">Grid cols</div>
-          <input type="number" id="grid-cols" min="1" value="6" />
-          <div class="k">Grid rows</div>
-          <input type="number" id="grid-rows" min="1" value="4" />
-          <div class="k">Width (cm)</div>
-          <input type="number" id="arena-wcm" min="1" value="40" />
-          <div class="k">Height (cm)</div>
-          <input type="number" id="arena-hcm" min="1" value="30" />
-        </div>
-        <div class="controls-row pane-next" style="border-top:none; padding-top:0">
-          <span class="muted" id="arena-status" style="flex:1"></span>
-          <button class="btn" id="arena-mark">Mark</button>
-        </div>
-        <div class="pane-footer">
-          <div class="muted">
-            Arena is axis-aligned rectangle within the frame. Click Mark to
-            define: top-left then bottom-right. Drag handles to refine while marking.
-          </div>
-          <div class="muted" style="font-weight:600; margin-top:6px">Keyboard Shortcuts</div>
-          <div class="shortcut-list" style="margin-top:6px">
-            <div class="shortcut-item"><span class="kbd">Esc</span><span>Stop marking</span></div>
-            <div class="shortcut-item"><span class="kbd">Enter</span> / <span class="kbd">Space</span><span>Finish marking</span></div>
-            <div class="shortcut-item"><span class="kbd">↑</span><span class="kbd">↓</span><span class="kbd">←</span><span class="kbd">→</span><span>Nudge active handle by 1px</span></div>
-            <div class="shortcut-item"><span class="kbd">Shift</span> + <span class="kbd">↑</span><span class="kbd">↓</span><span class="kbd">←</span><span class="kbd">→</span><span>Nudge by 10px</span></div>
-          </div>
-        </div>
-      </div>
-      <div id="pane-background" style="display: none">
-        <div class="kv">
-          <div class="k">Frames</div>
-          <input type="number" id="bg-frames" min="5" max="200" value="25" />
-          <div class="k">Quantile</div>
-          <input
-            type="number"
-            id="bg-quant"
-            min="0"
-            max="100"
-            step="1"
-            value="50"
-          />
-        </div>
-        <div class="controls-row pane-next" style="margin: 8px 0; border-top:none; padding-top:0">
-          <span class="muted" id="bg-status" style="flex:1"></span>
-          <button class="btn" id="bg-run">Run</button>
-        </div>
-        <canvas
-          id="bg-canvas"
-          style="
-            width: 100%;
-            max-width: 100%;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-          "
-        ></canvas>
-      </div>
-      <div id="pane-regions" style="display: none">
-        <div class="table-wrap" style="padding: 0; margin-top: 8px">
-          <table
-            id="roi-table"
-            style="width: 100%; border-collapse: collapse; font-size: 13px"
-          >
-            <thead>
-              <tr>
-                <th style="text-align: left; padding: 6px">Name</th>
-                <th style="text-align: left; padding: 6px">Enabled</th>
-                <th style="text-align: left; padding: 6px">Sheltered</th>
-                <th style="text-align: left; padding: 6px">Cells</th>
-                <th style="text-align: left; padding: 6px"></th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-        <div class="pane-next" style="margin-top:8px; border-top:none; padding-top:0">
-          <span class="muted" id="roi-status" style="margin-right:auto"></span>
-          <button class="btn" id="roi-add">Add</button>
-        </div>
-        <div class="pane-footer">
-          Tip: Click "Edit" for a region, then click grid cells in the
-          overlay to toggle. Press Esc or click Edit again to finish.
-        </div>
-      </div>
-      <div id="pane-colors" style="display: none">
-        <div class="controls-row" style="align-items:center; gap:12px; margin: 8px 0; flex-wrap: wrap">
-          <button class="btn" id="pp-colors-random" title="Jump to a random frame">Random</button>
-          <button class="btn" id="pp-colors-show-only" title="Show segments only">Segments</button>
-          <span class="muted" id="pp-colors-status" style="min-width:200px"></span>
-        </div>
-        <div id="pp-colors-hist" style="margin-top:8px"></div>
-        <div style="display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap; justify-content:flex-end">
-          <button class="btn mini" id="pp-colors-clear" title="Clear marks for this frame">Clear</button>
-          <button class="btn mini" id="pp-colors-clear-all" title="Clear all marks in this video">Clear all</button>
-        </div>
-        <div class="pane-footer">
-          Drag a marker (R/G/B/Y/BG) from the top-left dock onto a segment to assign it, or click a segment to assign the current mouse (use keys 1–4 and 0).
-        </div>
-      </div>
-      <div id="pane-timing" style="display:none">
-        <div class="kv">
-          <div class="k">Current</div>
-          <div class="v"><span id="exp-current">00:00:00.000</span></div>
-          <div class="k">Start</div>
-          <div class="v" style="display:flex; gap:8px; align-items:center">
-            <input type="text" id="exp-start" placeholder="HH:MM:SS.mmm" />
-            <button class="btn mini" id="exp-set-start">Set from current</button>
-          </div>
-          <div class="k">End</div>
-          <div class="v" style="display:flex; gap:8px; align-items:center">
-            <input type="text" id="exp-end" placeholder="HH:MM:SS.mmm" />
-            <button class="btn mini" id="exp-set-end">Set from current</button>
-          </div>
-        </div>
-        <div class="controls-row pane-next" style="margin-top:8px; align-items:center; gap:8px; border-top:none; padding-top:0">
-          <span class="muted" style="flex:1" id="exp-status"></span>
-          <button class="btn" id="exp-reset">Reset</button>
-        </div>
-        <div class="pane-footer">
-          <div class="muted">Set precise experiment start/end using the fields above.</div>
-          <div class="muted" style="font-weight:600; margin-top:6px">Keyboard Shortcuts</div>
-          <div class="shortcut-list" style="margin-top:6px">
-            <div class="shortcut-item"><span class="kbd">[</span><span class="kbd">]</span><span>Step 1 frame backward / forward</span></div>
-            <div class="shortcut-item"><span class="kbd">←</span><span class="kbd">→</span><span>Jump 1 second backward / forward</span></div>
-            <div class="shortcut-item"><span class="kbd">Shift</span> + <span class="kbd">←</span><span class="kbd">→</span><span>Jump 5 seconds backward / forward</span></div>
-          </div>
-        </div>
-      </div>
-      <!-- Save pane removed; replaced by Save dialog button above -->
-      <div id="pane-save" style="display:none"></div>
-      </div> <!-- end #pp-panes -->
-    </div>
-    </div> <!-- end right subpanel -->
+    <!-- end right subpanel -->
   </div>
- </section>
+</section>
 
 <script>
   // New modular JS includes for Preproc

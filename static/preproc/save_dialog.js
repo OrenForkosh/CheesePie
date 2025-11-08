@@ -139,19 +139,37 @@
     const arena = currentArena(); const regions = currentRegions();
     if (!vp || !arena){ status.textContent='Mark the arena first'; return; }
     const params = bgParams();
-    const total = selected.length * 3; let done=0;
+    const startVal = ($('#exp-start') && $('#exp-start').value || '').trim();
+    const endVal = ($('#exp-end') && $('#exp-end').value || '').trim();
+    // Steps per file: timing + (bg if non-current) + arena + regions + save_final
+    const total = selected.length * 5; let done=0;
     function step(){ done++; if(bar) bar.style.width = Math.round(100*done/Math.max(1,total))+'%'; }
     for (let i=0;i<selected.length;i++){
       const path = selected[i]; const isCurrent = String(path) === String(vp);
       status.textContent = 'Preparing '+(path.split('/').pop()||path)+'…';
-      // 1) Background for non-current
-      if (!isCurrent){ await computeBackgroundFor(path, params.n, params.q); }
+      const row = document.querySelector(`label[data-path="${CSS.escape(path)}"]`);
+      const img = row && row.querySelector('img.pp-save-preview');
+      const times = row && row.querySelector('.pp-save-times');
+      // 1) Set timing first (required before background)
+      try{ await postJSON('/api/preproc/timing', { video: path, start_time: startVal, end_time: endVal }); if (times) times.textContent = `Start: ${startVal || '—'}  End: ${endVal || '—'}`; }catch(e){}
       step();
-      // 2) Copy arena + regions
+      // 2) Background for non-current (and show preview)
+      if (!isCurrent){
+        const bg = await computeBackgroundFor(path, params.n, params.q);
+        if (img && bg) img.src = bg;
+      } else {
+        // For current video, if background canvas exists, show it
+        try{
+          const bgCanvas = document.getElementById('bg-canvas');
+          if (img && bgCanvas && bgCanvas.width && bgCanvas.height){ img.src = bgCanvas.toDataURL('image/png'); }
+        }catch(e){}
+      }
+      step();
+      // 3) Copy arena + regions
       try{ await postJSON('/api/preproc/arena', { video: path, arena }); }catch(e){}
       try{ await postJSON('/api/preproc/regions', { video: path, regions }); }catch(e){}
       step();
-      // 3) Save final
+      // 4) Save final
       try{ await postJSON('/api/preproc/save_final', { video: path }); }catch(e){}
       step();
     }
@@ -171,11 +189,17 @@
       listEl.innerHTML='';
       let chosen=0;
       items.forEach(it=>{
-        const row = el('label'); row.style.display='flex'; row.style.alignItems='center'; row.style.gap='8px'; row.style.padding='4px 2px';
+        const row = el('label'); row.dataset.path = it.path; row.style.display='grid'; row.style.gridTemplateColumns='auto 1fr auto'; row.style.alignItems='center'; row.style.gap='8px'; row.style.padding='6px'; row.style.borderBottom='1px solid var(--border)';
         const cb = el('input', { type:'checkbox' }); cb.checked = true; cb.disabled = (it.path === vp);
         if (cb.checked) chosen++;
-        const name = el('div'); name.textContent = it.name + (it.path===vp ? ' (current)' : ''); name.style.flex='1';
-        row.appendChild(cb); row.appendChild(name); listEl.appendChild(row);
+        const metaWrap = el('div'); metaWrap.style.display='flex'; metaWrap.style.flexDirection='column'; metaWrap.style.gap='4px';
+        const name = el('div'); name.textContent = it.name + (it.path===vp ? ' (current)' : ''); name.style.fontWeight='600';
+        const times = el('div'); times.className='pp-save-times';
+        try{ const s = ($('#exp-start')&&$('#exp-start').value)||''; const e = ($('#exp-end')&&$('#exp-end').value)||''; times.textContent = `Start: ${s||'—'}  End: ${e||'—'}`; }catch(e){}
+        metaWrap.appendChild(name); metaWrap.appendChild(times);
+        const preview = el('img'); preview.className='pp-save-preview'; preview.alt='Background preview'; preview.style.width='120px'; preview.style.height='auto'; preview.style.border='1px solid var(--border)'; preview.style.borderRadius='4px'; preview.style.background='#f7f7f7';
+        row.appendChild(cb); row.appendChild(metaWrap); row.appendChild(preview);
+        listEl.appendChild(row);
         it._cb = cb;
         cb.addEventListener('change',()=>{ chosen = items.filter(x=> x._cb && x._cb.checked).length; countEl.textContent = chosen + ' selected'; });
       });
@@ -194,4 +218,3 @@
 
   Preproc.SaveDialog = { open };
 })();
-

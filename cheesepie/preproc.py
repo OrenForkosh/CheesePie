@@ -117,6 +117,17 @@ def api_preproc_apply_settings():
                 dst['regions'] = src_regions
             if src_colors is not None:
                 dst['colors'] = src_colors
+                # Ensure mice list exists under colors (default 'RGBY')
+                try:
+                    if isinstance(dst.get('colors'), dict) and not dst['colors'].get('mice'):
+                        dst['colors']['mice'] = 'RGBY'
+                except Exception:
+                    pass
+            # Ensure type marker on created/updated preproc files
+            try:
+                dst['type'] = 'preproc'
+            except Exception:
+                pass
             tp.write_text(json.dumps(dst, ensure_ascii=False, indent=2), encoding='utf-8')
             if src_arena is not None:
                 tpath.with_suffix('.arena.json').write_text(json.dumps(src_arena, ensure_ascii=False, indent=2), encoding='utf-8')
@@ -174,6 +185,60 @@ def api_preproc_state():
             meta = st.get('meta')
         except Exception:
             arena = None; bg = None; regions = None
+    # Also look for a finalized sidecar next to the video and merge fields as defaults
+    try:
+        sidecar = vpath.parent / f"{vpath.name}.preproc.json"
+        if sidecar.exists() and sidecar.is_file():
+            try:
+                sc = json.loads(sidecar.read_text(encoding='utf-8'))
+            except Exception:
+                sc = None
+            if isinstance(sc, dict):
+                if arena is None and sc.get('arena') is not None:
+                    arena = sc.get('arena')
+                if ('regions' not in locals() or regions is None) and (sc.get('roi') is not None or sc.get('regions') is not None):
+                    regions = sc.get('roi') or sc.get('regions')
+                if colors is None and sc.get('colors') is not None:
+                    sc_colors = sc.get('colors')
+                    # Convert frames from list [{timestamp,..}] to mapping { 't': {...} } expected by UI state
+                    try:
+                        if isinstance(sc_colors, dict):
+                            fr = sc_colors.get('frames')
+                            if isinstance(fr, list):
+                                out_map: Dict[str, Any] = {}
+                                for item in fr:
+                                    if not isinstance(item, dict):
+                                        continue
+                                    ts = item.get('timestamp')
+                                    try:
+                                        key = f"{float(ts):.3f}" if ts is not None else ''
+                                    except Exception:
+                                        key = str(ts)
+                                    temp = dict(item)
+                                    temp.pop('timestamp', None)
+                                    # Normalize segms_b64 -> labels_b64 for temp UI consumption
+                                    if 'segms_b64' in temp and 'labels_b64' not in temp:
+                                        temp['labels_b64'] = temp.pop('segms_b64')
+                                    out_map[key] = temp
+                                sc_colors = dict(sc_colors)
+                                sc_colors['frames'] = out_map
+                            elif isinstance(fr, dict):
+                                # Ensure any segms_b64 keys are exposed as labels_b64
+                                try:
+                                    for k, v in list(fr.items()):
+                                        if isinstance(v, dict) and 'segms_b64' in v and 'labels_b64' not in v:
+                                            v['labels_b64'] = v.get('segms_b64')
+                                except Exception:
+                                    pass
+                        colors = sc_colors
+                    except Exception:
+                        colors = sc.get('colors')
+                if meta is None and sc.get('meta') is not None:
+                    meta = sc.get('meta')
+                if bg is None and sc.get('background') is not None:
+                    bg = sc.get('background')
+    except Exception:
+        pass
     if arena is None:
         a_path = _arena_path_for(vpath)
         if a_path.exists():
@@ -185,6 +250,14 @@ def api_preproc_state():
         b_path = _background_path_for(vpath)
         if b_path.exists():
             bg = str(b_path)
+        else:
+            # Also check next to the video for a saved background image
+            try:
+                b2 = vpath.with_suffix('.background.png')
+                if b2.exists() and b2.is_file():
+                    bg = str(b2)
+            except Exception:
+                pass
     return jsonify({'ok': True, 'arena': arena, 'background': bg, 'roi': regions if 'regions' in locals() else None, 'colors': colors, 'meta': meta})
 
 
@@ -313,6 +386,17 @@ def api_preproc_save_multi():
                 except Exception:
                     pass
                 st['colors'] = cols_out
+            # Ensure mice list present under colors (default 'RGBY')
+            try:
+                if isinstance(st.get('colors'), dict) and not st['colors'].get('mice'):
+                    st['colors']['mice'] = 'RGBY'
+            except Exception:
+                pass
+            # Ensure type marker on created/updated preproc files
+            try:
+                st['type'] = 'preproc'
+            except Exception:
+                pass
             s_path.parent.mkdir(parents=True, exist_ok=True)
             s_path.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding='utf-8')
             results.append({'path': str(tpath), 'ok': True})
@@ -359,6 +443,11 @@ def api_preproc_arena():
     except Exception:
         arena_out = arena if isinstance(arena, dict) else {}
     st['arena'] = arena_out
+    # Ensure type marker on created/updated preproc files
+    try:
+        st['type'] = 'preproc'
+    except Exception:
+        pass
     try:
         s_path.parent.mkdir(parents=True, exist_ok=True)
         s_path.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding='utf-8')
@@ -377,6 +466,14 @@ def api_preproc_background():
     vpath = Path(video).expanduser()
     if not vpath.exists() or not vpath.is_file():
         return jsonify({'error': 'Video file not found'}), 404
+    # Previously required timing before saving; now proceed even if timing is missing.
+    # We keep this check for potential future use but do not block.
+    try:
+        s_path_check = _preproc_state_path_for(vpath)
+        state_check = json.loads(s_path_check.read_text(encoding='utf-8')) if s_path_check.exists() else {}
+        _ = (state_check.get('meta') or {})
+    except Exception:
+        pass
     try:
         # Store background image as Base64 in preproc JSON
         s_path = _preproc_state_path_for(vpath)
@@ -397,6 +494,11 @@ def api_preproc_background():
         except Exception:
             pass
         st['background'] = bg
+        # Ensure type marker on created/updated preproc files
+        try:
+            st['type'] = 'preproc'
+        except Exception:
+            pass
         s_path.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding='utf-8')
         return jsonify({'ok': True, 'background': bg})
     except Exception as e:
@@ -455,6 +557,11 @@ def api_preproc_regions():
             except Exception:
                 continue
     st['roi'] = roi_map
+    # Ensure type marker on created/updated preproc files
+    try:
+        st['type'] = 'preproc'
+    except Exception:
+        pass
     try:
         s_path.parent.mkdir(parents=True, exist_ok=True)
         s_path.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding='utf-8')
@@ -517,8 +624,24 @@ def api_preproc_colors():
     except Exception:
         pass
     st_colors['frames'] = frames_out
+    # Ensure mice list present under colors (default 'RGBY')
+    try:
+        if not st_colors.get('mice'):
+            st_colors['mice'] = 'RGBY'
+    except Exception:
+        pass
     # Drop top-level marks append behavior; keep marks inside frames only
     st['colors'] = st_colors
+    # Ensure mice list present under colors (default 'RGBY') and type marker
+    try:
+        if isinstance(st.get('colors'), dict) and not st['colors'].get('mice'):
+            st['colors']['mice'] = 'RGBY'
+    except Exception:
+        pass
+    try:
+        st['type'] = 'preproc'
+    except Exception:
+        pass
     try:
         s_path.parent.mkdir(parents=True, exist_ok=True)
         s_path.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding='utf-8')
@@ -549,6 +672,11 @@ def api_preproc_timing():
     if end_time:
         meta['end_time'] = end_time
     st['meta'] = meta
+    # Ensure type marker on created/updated preproc files
+    try:
+        st['type'] = 'preproc'
+    except Exception:
+        pass
     try:
         s_path.parent.mkdir(parents=True, exist_ok=True)
         s_path.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding='utf-8')
@@ -601,9 +729,10 @@ def api_preproc_save_final():
                         continue
             st['roi'] = roi_map
             st.pop('regions', None)
-        # Colors marks drop mouse
+        # Colors normalization for final output
         cols = st.get('colors')
         if isinstance(cols, dict):
+            # Drop 'mouse' from marks and ensure list of dicts
             marks = cols.get('marks', [])
             if isinstance(marks, list):
                 out = []
@@ -618,12 +747,66 @@ def api_preproc_save_final():
                         pass
                     mko.pop('mouse', None)
                     out.append(mko)
-                st['colors']['marks'] = out
+                st.setdefault('colors', {})['marks'] = out
+            # Ensure mice list present under colors (default 'RGBY')
+            try:
+                if not st.setdefault('colors', {}).get('mice'):
+                    st['colors']['mice'] = 'RGBY'
+            except Exception:
+                pass
+            # Convert frames mapping -> list with timestamp field; rename labels_b64 -> segms_b64
+            frames_any = cols.get('frames')
+            try:
+                if isinstance(frames_any, dict):
+                    items = []
+                    for tk, v in frames_any.items():
+                        try:
+                            ts = float(tk)
+                        except Exception:
+                            ts = tk  # fallback if non-numeric key
+                        if not isinstance(v, dict):
+                            v = {}
+                        obj = {}
+                        obj['timestamp'] = ts
+                        if 'image_b64' in v:
+                            obj['image_b64'] = v.get('image_b64')
+                        if 'labels_b64' in v:
+                            obj['segms_b64'] = v.get('labels_b64')
+                        # also accept already-normalized key
+                        if 'segms_b64' in v and 'segms_b64' not in obj:
+                            obj['segms_b64'] = v.get('segms_b64')
+                        if 'marks' in v and isinstance(v.get('marks'), list):
+                            obj['marks'] = v.get('marks')
+                        items.append(obj)
+                    # Optional: stable sort by timestamp if numeric
+                    try:
+                        items.sort(key=lambda it: float(it.get('timestamp')))
+                    except Exception:
+                        pass
+                    st.setdefault('colors', {})['frames'] = items
+                elif isinstance(frames_any, list):
+                    # Just ensure rename labels_b64 -> segms_b64
+                    items = []
+                    for v in frames_any:
+                        if not isinstance(v, dict):
+                            continue
+                        obj = dict(v)
+                        if 'labels_b64' in obj and 'segms_b64' not in obj:
+                            obj['segms_b64'] = obj.pop('labels_b64')
+                        items.append(obj)
+                    st.setdefault('colors', {})['frames'] = items
+            except Exception:
+                pass
     except Exception:
         pass
     # Final file next to video: append suffix without replacing original extension
     final_path = vpath.parent / f"{vpath.name}.preproc.json"
     try:
+        # Ensure type marker on created/updated preproc files
+        try:
+            st['type'] = 'preproc'
+        except Exception:
+            pass
         final_path.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding='utf-8')
         return jsonify({'ok': True, 'path': str(final_path)})
     except Exception as e:

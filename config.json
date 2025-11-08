@@ -136,7 +136,7 @@
           "arena_height_cm": 60,
           "grid_cols": 6,
           "grid_rows": 6,
-          "bg_frames": 20,
+          "bg_frames": 100,
           "bg_quantile": 50,
           "arena": { "x": 150, "y": 100, "width": 800, "height": 800 },
           "roi": {

@@ -10,6 +10,7 @@
     var quantEl = document.getElementById('bg-quant');
     var runBtn = document.getElementById('bg-run');
     var saveBtn = document.getElementById('bg-save');
+    var exportBtn = document.getElementById('pp-export-background');
 
     function setStatus(msg){ if (status) status.textContent = msg; }
 
@@ -116,6 +117,18 @@
 
     if (runBtn) runBtn.addEventListener('click', computeBackground);
     if (saveBtn) saveBtn.addEventListener('click', saveBackground);
+    if (exportBtn) exportBtn.addEventListener('click', function(){
+      try{
+        if (!canvas || !canvas.width || !canvas.height){ setStatus('No background'); return; }
+        var dataUrl = canvas.toDataURL('image/png');
+        var base = (window.Preproc && window.Preproc.State && window.Preproc.State.videoPath) || 'background';
+        try{ base = (base.split('/').pop()||base).replace(/\.[^.]+$/, ''); }catch(e){}
+        var a = document.createElement('a');
+        a.download = base + '.background.png';
+        a.href = dataUrl;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      } catch(e){ setStatus('Export failed: ' + e); }
+    });
 
     return { computeBackground, saveBackground };
   }

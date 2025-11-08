@@ -9,6 +9,7 @@
     const processed = document.getElementById('pp-processed');
     const overlay = document.getElementById('pp-overlay');
     const statusEl = document.getElementById('pp-colors-status');
+    const segCountEl = document.getElementById('pp-colors-segcount');
     const indicatorEl = document.getElementById('pp-colors-indicator');
     const runBtn = document.getElementById('pp-colors-run');
     const randBtn = document.getElementById('pp-colors-random');
@@ -319,6 +320,23 @@
     function drawMarks(){ if(!overlay) return; const vw=overlay.clientWidth||overlay.width||0; const vh=overlay.clientHeight||overlay.height||0; if(!vw||!vh) return; overlay.width=vw; overlay.height=vh; const ctx=overlay.getContext('2d'); ctx.clearRect(0,0,vw,vh); const W=lastSize.w,H=lastSize.h; if(!W||!H) return; const r=fitRect(W,H,vw,vh); const list=marks[timeKey()]||[]; list.forEach(m=>{ const cx=r.dx+(m.centroid.x*(r.dw/W)); const cy=r.dy+(m.centroid.y*(r.dh/H)); ctx.beginPath(); ctx.arc(cx,cy,6,0,Math.PI*2); ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fill(); ctx.beginPath(); ctx.arc(cx,cy,4,0,Math.PI*2); ctx.fillStyle=markColor(m.mouse||'BG'); ctx.fill(); ctx.fillStyle='#000'; ctx.font='10px ui-monospace, Menlo, monospace'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(m.mouse||'', cx, cy-12); }); }
     function syncFromSaved(){ try{ if(!savedFrames) return; const tk=timeKey(); const key=nearestKey(tk); const fr=savedFrames[key]; if(!fr) return; if(Array.isArray(fr.marks)) marks[tk]=fr.marks.map(m=>({mouse:m.mouse, segment_label:m.segment_label, centroid:m.centroid})); if(Array.isArray(fr.labels)&&fr.labels.length){ lastIndex=fr.labels; lastSize={h:fr.labels.length|0,w:(fr.labels[0]||[]).length|0}; } }catch(e){} }
 
+    function setSegCountFromIndex(index){
+      try{
+        if (!segCountEl){ return; }
+        if (!index || !Array.isArray(index) || !index.length){ segCountEl.textContent = 'Found: 0'; return; }
+        let maxW = 0; try{ maxW = (index[0]||[]).length|0; }catch(e){}
+        let seen = new Set();
+        for (let y=0; y<index.length; y++){
+          const row = index[y]||[];
+          for (let x=0; x<row.length; x++){
+            const v = row[x]|0; if (v>0) seen.add(v);
+          }
+          // small optimization: bail if set grows large; keep scanning anyway typically fast
+        }
+        segCountEl.textContent = 'Found: ' + String(seen.size|0);
+      }catch(e){ try{ if(segCountEl) segCountEl.textContent='Found: —'; }catch(_){} }
+    }
+
     async function run(){
       const snap=snapshotDataURL(); const dataUrl=snap.frame; if(!dataUrl){ setStatus('Video not ready'); return; }
       setStatus('Segmenting…');
@@ -328,7 +346,7 @@
         const resp=await fetch('/api/preproc/segment_simple',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ image:dataUrl, background })});
         const data=await resp.json(); if(!resp.ok||!data||!data.ok){ setStatus('Error: '+(data&&data.error||resp.statusText)); return; }
         if(data.stats&&typeof data.stats.nonzero==='number'){ if(data.stats.nonzero===0) setStatus('No segments detected (try a different frame or compute background)'); else setStatus(`Segments detected: ${data.stats.unique ? data.stats.unique.length-(data.stats.unique.includes(0)?1:0):''}`);} 
-        if(Array.isArray(data.index)&&data.index.length){ lastIndex=data.index; lastSize={h:data.index.length|0,w:(data.index[0]||[]).length|0}; }
+        if(Array.isArray(data.index)&&data.index.length){ lastIndex=data.index; lastSize={h:data.index.length|0,w:(data.index[0]||[]).length|0}; setSegCountFromIndex(lastIndex); }
         cached = { time: timeKey(), image: dataUrl, labels: lastIndex };
         // Draw either the server-provided overlay image (base) or the color map
         const overlayImg=data.overlay_b64; if(!overlayImg){ setStatus('No overlay returned'); return; }

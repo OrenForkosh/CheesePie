@@ -37,6 +37,8 @@
     const endEl = U.$('#exp-end');
     const setStart = U.$('#exp-set-start');
     const setEnd = U.$('#exp-set-end');
+    const jumpStart = U.$('#exp-jump-start');
+    const jumpEnd = U.$('#exp-jump-end');
     const resetBtn = U.$('#exp-reset');
     const saveBtn = U.$('#exp-next');
     const status = U.$('#exp-status');
@@ -90,6 +92,18 @@
     // Buttons
     if (setStart) setStart.addEventListener('click', function(){ if (!video) return; startEl.value = formatMs((video.currentTime||0)*1000); scheduleSave(); });
     if (setEnd) setEnd.addEventListener('click', function(){ if (!video) return; endEl.value = formatMs((video.currentTime||0)*1000); scheduleSave(); });
+    if (jumpStart) jumpStart.addEventListener('click', function(){
+      try{
+        if (!video) return; const tms = parseTime((startEl && startEl.value)||''); if (tms==null){ if(status) status.textContent='Enter times as HH:MM:SS.mmm'; return; }
+        const t = Math.max(0, (tms/1000)|0); try{ video.pause(); }catch(e){} video.currentTime = Math.min(Math.max(0, tms/1000), Math.max(0,(video.duration||0)-1e-6));
+      }catch(e){}
+    });
+    if (jumpEnd) jumpEnd.addEventListener('click', function(){
+      try{
+        if (!video) return; const tms = parseTime((endEl && endEl.value)||''); if (tms==null){ if(status) status.textContent='Enter times as HH:MM:SS.mmm'; return; }
+        try{ video.pause(); }catch(e){} video.currentTime = Math.min(Math.max(0, tms/1000), Math.max(0,(video.duration||0)-1e-6));
+      }catch(e){}
+    });
     if (resetBtn) resetBtn.addEventListener('click', function(){ if (!video) return; startEl.value='00:00:00.000'; endEl.value = formatMs((isFinite(video.duration)? video.duration*1000 : 0)); scheduleSave(); });
     if (saveBtn) saveBtn.addEventListener('click', function(){
       saveTiming();
