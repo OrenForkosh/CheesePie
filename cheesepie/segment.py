@@ -7,7 +7,7 @@ from typing import Optional, Tuple
 import numpy as np
 from PIL import Image
 from skimage.measure import label
-from skimage.morphology import remove_small_objects, dilation, square
+from skimage.morphology import remove_small_objects, dilation, square, disk, closing
 from skimage.segmentation import find_boundaries
 
 
@@ -19,7 +19,7 @@ class Options:
     maxNumObjects: int = 20
     minNumPixels: int = 25
     outline_color: Tuple[int, int, int] = (255, 255, 255)  # white by default
-    outline_thickness: int = 3
+    outline_thickness: int = 2
     outline_pattern: str = "solid"  # "solid" or "striped"
     outline_alpha: float = 0.8  # transparency of overlay (0=transparent, 1=opaque)
 
@@ -71,27 +71,42 @@ def simple_segment(
     bw = lum > (meanBkg + thresh * stdBkg)
     labeled = label(bw, connectivity=2)
     filtered = remove_small_objects(labeled, min_size=int(opt.minNumPixels))
-
-    # Boundary mask
-    boundaries = find_boundaries(filtered, connectivity=2, mode="outer")
+    # filtered = closing(filtered, disk(5))
+    # Image.fromarray(filtered).save("/tmp/qqq2.png", format="PNG")
+    
+    # === Resize labels to original frame size for boundary detection on full-res ===
+    from skimage.transform import resize as _resize
+    filtered_large = _resize(filtered, (orig_size[1], orig_size[0]), order=0, preserve_range=True, anti_aliasing=False,).astype(filtered.dtype)
+    filtered_large = (filtered_large > 0).astype(filtered.dtype)
+    
+    # Boundary mask on full-resolution labels
+    boundaries = find_boundaries(filtered_large, connectivity=2, mode="outer")
     if opt.outline_thickness > 1:
-        boundaries = dilation(boundaries, square(opt.outline_thickness))
-
-    # Apply stripe pattern
-    if opt.outline_pattern == "striped":
-        pattern = (np.indices(boundaries.shape).sum(axis=0) % 4 == 0)
-        boundaries = boundaries & pattern
-
-    # Overlay outlines
-    overlay_small = frame_rgb.copy()
-    overlay_small[boundaries] = opt.outline_color
-
-    # Upscale overlay and blend onto original
-    overlay_large = Image.fromarray(overlay_small).resize(orig_size, Image.BICUBIC)
+        boundaries = dilation(boundaries, disk(opt.outline_thickness))
+    
+    # Apply stripe pattern (optional)
+    # if opt.outline_pattern == "striped":
+    #     pattern = (np.indices(boundaries.shape).sum(axis=0) % 4 == 0)
+    #     boundaries = boundaries & pattern
+    
+    # Overlay outlines directly onto the original-size frame
+    overlay_large_np = np.array(frame.convert("RGB"), dtype=np.uint8)
+    overlay_large_np[boundaries] = opt.outline_color
+    overlay_large = Image.fromarray(overlay_large_np)
     overlay_final = Image.blend(frame.convert("RGB"), overlay_large, alpha=opt.outline_alpha)
+    
+    # Preserve full label IDs as uint16 for downstream consumers
+    labels_u16 = np.asarray(filtered, dtype=np.uint16)
+    return Image.fromarray(labels_u16), overlay_final
 
-    labels_uint8 = np.clip(filtered, 0, 255).astype(np.uint8)
-    return Image.fromarray(labels_uint8), overlay_final
+
+# Alias 'simple' for callers that expect this name
+def simple(
+    frame: Image.Image,
+    bkg: Image.Image,
+    opt: Optional[Options] = None,
+):
+    return simple_segment(frame, bkg, opt=opt)
 
 
 def parse_args():

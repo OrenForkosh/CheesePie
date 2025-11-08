@@ -123,15 +123,17 @@
                   style="width: 100%"
                 />
               </div>
-              <div
-                class="muted"
-                id="pp-time"
-                style="
-                  margin-right: 6px;
-                  font-family: ui-monospace, Menlo, Monaco, Consolas, monospace;
-                "
-              >
-                00:00 / 00:00
+              <div class="muted" style="display:flex; align-items:center; gap:4px; margin-right:6px; font-family: ui-monospace, Menlo, Monaco, Consolas, monospace;">
+                <input
+                  type="text"
+                  id="pp-time-cur"
+                  value="00:00.000"
+                  placeholder="HH:MM:SS.mmm"
+                  title="Edit and press Enter to jump"
+                  style="width: 110px; padding:2px 6px; font-family: inherit; font-size: inherit; border:1px solid var(--border); border-radius:6px; background:transparent; color:inherit"
+                />
+                <span>/</span>
+                <span id="pp-time-dur">00:00.000</span>
               </div>
             </div>
             <div
@@ -407,6 +409,20 @@
               >
                 Segments
               </button>
+              <button
+                class="icon-btn"
+                id="pp-colors-export-labels"
+                title="Export label map as PNG"
+                aria-label="Export labels as PNG"
+              >
+                <img
+                  class="mi invert-on-dark"
+                  src="https://fonts.gstatic.com/s/i/materialiconsoutlined/photo_camera/v15/24px.svg"
+                  alt="Camera"
+                  width="20"
+                  height="20"
+                />
+              </button>
               <span class="muted" id="pp-colors-segcount" style="min-width: 80px"></span>
               <span
                 class="muted"
@@ -425,13 +441,7 @@
                 justify-content: flex-end;
               "
             >
-              <button
-                class="btn mini"
-                id="pp-colors-clear"
-                title="Clear marks for this frame"
-              >
-                Clear
-              </button>
+              <button class="btn mini" id="pp-colors-clear" title="Clear marks for this frame">Clear</button>
               <button
                 class="btn mini"
                 id="pp-colors-clear-all"
@@ -448,8 +458,8 @@
           </div>
           <div id="pane-timing" style="display: none">
             <div class="kv">
-              <div class="k">Current</div>
-              <div class="v"><span id="exp-current">00:00:00.000</span></div>
+          <div class="k">Current</div>
+          <div class="v"><span id="exp-current">00:00:00.000</span></div>
               <div class="k">Start</div>
               <div
                 class="v"

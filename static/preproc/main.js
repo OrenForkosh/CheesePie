@@ -70,7 +70,15 @@
     // Export current frame as PNG
     (function wireExport(){
       var btn = U.$('#pp-export-frame'); if (!btn || !v) return;
-      function tsString(sec){ try{ var s=Math.max(0,sec|0); var h=(s/3600)|0; var m=((s%3600)/60)|0; var ss=(s%60)|0; var pad=(n)=>String(n).padStart(2,'0'); return (h? h+"-":"") + pad(m) + '-' + pad(ss); }catch(e){ return 'time'; } }
+      function tsString(sec){
+        try{
+          var totalMs = Math.max(0, Math.round((+sec||0)*1000));
+          var s = (totalMs/1000)|0; var ms = totalMs % 1000;
+          var h = (s/3600)|0; var m = ((s%3600)/60)|0; var ss = (s%60)|0;
+          var pad2 = (n)=>String(n).padStart(2,'0'); var pad3=(n)=>String(n).padStart(3,'0');
+          return (h? h+"-":"") + pad2(m) + '-' + pad2(ss) + '.' + pad3(ms);
+        }catch(e){ return 'time'; }
+      }
       btn.addEventListener('click', function(){
         try{
           if (!v.videoWidth){ alert('Video not ready'); return; }

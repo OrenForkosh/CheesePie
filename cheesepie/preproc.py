@@ -988,51 +988,33 @@ def api_preproc_segment_simple():
         if bkg is not None and bkg.size != img.size:
             bkg = bkg.resize(img.size, Image.BILINEAR)
 
-        # Import cheesepie.segment lazily to avoid app startup failures if optional deps are missing
+        # Import cheesepie.segment lazily and call the 'simple' function exclusively
         try:
             from . import segment as _seg
         except Exception as e:
             return jsonify({'error': f'Failed to import segmenter: {e}. Install optional dependencies (e.g., scikit-image).'}), 500
-        # Resolve function name: prefer 'simple', fallback to 'simple_segment'
         seg_fn = getattr(_seg, 'simple', None)
         if seg_fn is None:
-            seg_fn = getattr(_seg, 'simple_segment', None)
-        if seg_fn is None:
-            return jsonify({'error': "Segmenter function not found (expected 'simple' or 'simple_segment')"}), 500
-        # segment.simple now returns (labels_img, overlay_img) with same size as inputs.
-        # If Options dataclass exists, allow tuning via params
+            return jsonify({'error': "Segmenter function 'simple' not found"}), 500
+        # Build Options if available
         opt = None
-        try:
-            OptCls = getattr(_seg, 'Options', None)
-            if OptCls is not None:
-                opt = OptCls(
-                    height=int(img.height),
-                    width=int(img.width),
-                    noiseThresh=int(params.get('noiseThresh', 10)),
-                    maxNumObjects=int(params.get('maxNumObjects', 20)),
-                    minNumPixels=int(params.get('minNumPixels', 25)),
-                )
-        except Exception:
-            opt = None
-        # Call signatures supported:
-        # - simple(frame) -> (labels, overlay)
-        # - simple(frame, bkg) -> (labels, overlay)
-        # - simple(frame, bkg, opt)
+        # try:
+        #     OptCls = getattr(_seg, 'Options', None)
+        #     if OptCls is not None:
+        #         opt = OptCls(
+        #             height=int(img.height),
+        #             width=int(img.width),
+        #             noiseThresh=int(params.get('noiseThresh', 10)),
+        #             maxNumObjects=int(params.get('maxNumObjects', 20)),
+        #             minNumPixels=int(params.get('minNumPixels', 25)),
+        #         )
+        # except Exception:
+        #     opt = None
+        # Ensure we always pass a background image to 'simple'
         if bkg is None:
-            # Try calling with just frame; fallback to passing frame as background
-            try:
-                result = seg_fn(img, opt=opt) if opt is not None else seg_fn(img)
-            except TypeError:
-                try:
-                    result = seg_fn(img, img, opt=opt) if opt is not None else seg_fn(img, img)
-                except TypeError:
-                    # Last resort: assume signature (frame, bkg) without opt
-                    result = seg_fn(img, img)
-        else:
-            try:
-                result = seg_fn(img, bkg, opt=opt) if opt is not None else seg_fn(img, bkg)
-            except TypeError:
-                result = seg_fn(img, bkg)
+            bkg = img.copy()
+        # Call 'simple' which returns (labels_img, overlay_img)
+        result = seg_fn(img, bkg, opt=opt) if opt is not None else seg_fn(img, bkg)
         overlay_b64 = None
         labels_img: Image.Image
         if isinstance(result, (list, tuple)) and len(result) >= 2:
@@ -1046,7 +1028,8 @@ def api_preproc_segment_simple():
                 overlay_b64 = None
         else:
             labels_img = result  # backward compatibility
-        arr = np.array(labels_img, dtype=np.uint8)
+        # Preserve labels as uint16 for clients that wish to export losslessly
+        arr = np.array(labels_img, dtype=np.uint16)
         index = arr.tolist()
         # Basic stats for debugging
         try:
@@ -1064,3 +1047,28 @@ def api_preproc_segment_simple():
         return jsonify(payload_out)
     except Exception as e:
         return jsonify({'error': f'segment.simple failed: {e}'}), 500
+
+
+@bp.route('/labels_png', methods=['POST'])
+def api_preproc_labels_png():
+    """Convert a label map (2D list of ints) into a 16-bit grayscale PNG.
+
+    Input JSON: { labels: [[int,...], ...] }
+    Returns: { ok: True, image_b64: 'data:image/png;base64,...' }
+    """
+    try:
+        payload = request.json or {}
+        labels = payload.get('labels')
+        if not isinstance(labels, list) or not labels:
+            return jsonify({'error': 'Missing labels'}), 400
+        import numpy as np  # type: ignore
+        from PIL import Image  # type: ignore
+        import io, base64
+        arr = np.array(labels, dtype=np.uint16)
+        img = Image.fromarray(arr, mode='I;16')
+        buf = io.BytesIO()
+        img.save(buf, format='PNG')
+        data_url = 'data:image/png;base64,' + base64.b64encode(buf.getvalue()).decode('ascii')
+        return jsonify({'ok': True, 'image_b64': data_url})
+    except Exception as e:
+        return jsonify({'error': f'Failed to encode labels: {e}'}), 500

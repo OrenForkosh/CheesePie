@@ -43,7 +43,13 @@
     const saveBtn = U.$('#exp-next');
     const status = U.$('#exp-status');
 
-    function updateCurrent(){ try{ if (cur) cur.textContent = formatMs((video.currentTime||0)*1000); }catch(e){} }
+    function updateCurrent(){
+      try{
+        const val = formatMs((video.currentTime||0)*1000);
+        if (!cur) return;
+        if ((cur.tagName||'').toLowerCase()==='input') cur.value = val; else cur.textContent = val;
+      }catch(e){}
+    }
     video && video.addEventListener('timeupdate', updateCurrent);
     video && video.addEventListener('seeked', updateCurrent);
     video && video.addEventListener('loadedmetadata', function(){
@@ -108,6 +114,11 @@
     if (saveBtn) saveBtn.addEventListener('click', function(){
       saveTiming();
     });
+    // Jump to time by editing the Current field (Enter or blur)
+    if (cur && (cur.tagName||'').toLowerCase()==='input'){
+      cur.addEventListener('keydown', function(ev){ if (ev.key==='Enter'){ ev.preventDefault(); const ms = parseTime(cur.value||''); if (ms==null){ if(status) status.textContent='Enter time as HH:MM:SS.mmm'; return; } try{ video.pause(); }catch(e){} video.currentTime = Math.min(Math.max(0, ms/1000), Math.max(0,(video.duration||0)-1e-6)); });
+      cur.addEventListener('blur', function(){ const ms = parseTime(cur.value||''); if (ms==null) return; try{ video.pause(); }catch(e){} video.currentTime = Math.min(Math.max(0, ms/1000), Math.max(0,(video.duration||0)-1e-6)); });
+    }
     // Auto-save on editing inputs
     if (startEl){ startEl.addEventListener('input', scheduleSave); startEl.addEventListener('change', saveTiming); startEl.addEventListener('keydown', function(ev){ if (ev.key==='Enter'){ ev.preventDefault(); saveTiming(); } }); }
     if (endEl){ endEl.addEventListener('input', scheduleSave); endEl.addEventListener('change', saveTiming); endEl.addEventListener('keydown', function(ev){ if (ev.key==='Enter'){ ev.preventDefault(); saveTiming(); } }); }

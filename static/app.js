@@ -1,4 +1,40 @@
 (() => {
+  // Global auth-aware fetch wrapper to surface session expiry
+  try {
+    const origFetch = window.fetch.bind(window);
+    function showAuthOverlay(){
+      if (document.getElementById('auth-expired-overlay')) return;
+      const ov = document.createElement('div');
+      ov.id = 'auth-expired-overlay';
+      ov.style.position = 'fixed';
+      ov.style.left = '0'; ov.style.top = '0'; ov.style.right = '0'; ov.style.bottom = '0';
+      ov.style.background = 'rgba(0,0,0,0.6)'; ov.style.zIndex = '9999';
+      ov.style.display = 'flex'; ov.style.alignItems = 'center'; ov.style.justifyContent = 'center';
+      const panel = document.createElement('div');
+      panel.style.background = 'var(--panel-bg, #fff)'; panel.style.color = 'var(--text, #111)';
+      panel.style.borderRadius = '12px'; panel.style.boxShadow = '0 4px 24px rgba(0,0,0,0.35)';
+      panel.style.padding = '20px 24px'; panel.style.minWidth = '280px'; panel.style.maxWidth = '90%';
+      panel.style.textAlign = 'center';
+      const h = document.createElement('div'); h.textContent = 'Session expired'; h.style.fontSize='18px'; h.style.fontWeight='700'; h.style.marginBottom='6px';
+      const p = document.createElement('div'); p.textContent = 'Please log in again to continue.'; p.style.marginBottom='12px'; p.className='muted';
+      const btn = document.createElement('a'); btn.textContent='Login'; btn.className='btn primary'; btn.style.display='inline-block'; btn.href = '/auth/login?next=' + encodeURIComponent(location.pathname + location.search);
+      panel.appendChild(h); panel.appendChild(p); panel.appendChild(btn);
+      ov.appendChild(panel);
+      document.body.appendChild(ov);
+    }
+    window.fetch = function(input, init){
+      return origFetch(input, init).then((resp) => {
+        try{
+          if (resp && (resp.status === 401 || (resp.redirected && String(resp.url).indexOf('/auth/login') !== -1))){
+            showAuthOverlay();
+            // Reject to stop downstream handlers expecting JSON
+            const err = new Error('Unauthorized'); err.response = resp; throw err;
+          }
+        }catch(e){}
+        return resp;
+      });
+    };
+  } catch (e) { /* no-op */ }
   const $ = (sel, el = document) => el.querySelector(sel);
   // Global MATLAB status indicator in header
   const mlDot = $('#ml-dot');
@@ -557,7 +593,9 @@
     const playBtn = document.getElementById('pp-play');
     const seek = document.getElementById('pp-seek');
     const timeLbl = document.getElementById('pp-time');
-    if (!v || !playBtn || !seek || !timeLbl) return;
+    const timeCur = document.getElementById('pp-time-cur');
+    const timeDur = document.getElementById('pp-time-dur');
+    if (!v || !playBtn || !seek || (!timeLbl && !(timeCur && timeDur))) return;
     const fmt = (sec) => {
       if (!isFinite(sec)) return '00:00.000';
       const h = Math.floor(sec/3600);
@@ -568,10 +606,30 @@
       const pad3 = (n)=>String(n).padStart(3,'0');
       return h ? `${h}:${pad2(m)}:${pad2(s)}.${pad3(ms)}` : `${pad2(m)}:${pad2(s)}.${pad3(ms)}`;
     };
+    const parse = (str) => {
+      try{
+        const s = String(str||'').trim();
+        if (!s) return null;
+        // Accept flexible forms: ss(.mmm), mm:ss(.mmm), hh:mm:ss(.mmm)
+        const m = s.match(/^(\d+)(?::(\d+))?(?::(\d+))?(?:\.(\d{1,3}))?$/);
+        if (!m) return null;
+        let h=0, mi=0, se=0, ms=0;
+        if (m[3] != null){ // hh:mm:ss[.mmm]
+          h = parseInt(m[1],10)||0; mi = parseInt(m[2],10)||0; se = parseInt(m[3],10)||0;
+        } else if (m[2] != null){ // mm:ss[.mmm]
+          mi = parseInt(m[1],10)||0; se = parseInt(m[2],10)||0;
+        } else { // ss[.mmm]
+          se = parseFloat(m[1])||0;
+        }
+        if (m[4] != null){ ms = parseInt(String(m[4]).padEnd(3,'0'),10)||0; }
+        return h*3600 + mi*60 + se + (ms/1000);
+      }catch(e){ return null; }
+    };
     const updateTime = () => {
       const cur = Number(v.currentTime||0);
       const dur = Number(v.duration||0);
-      timeLbl.textContent = `${fmt(cur)} / ${fmt(dur)}`;
+      if (timeCur && timeDur){ timeCur.value = fmt(cur); timeDur.textContent = fmt(dur); }
+      else if (timeLbl){ timeLbl.textContent = `${fmt(cur)} / ${fmt(dur)}`; }
       if (!seek.dragging) seek.value = String(cur);
     };
     const updateMax = () => { try{ seek.max = String(Math.max(0, Number(v.duration||0))); updateTime(); } catch{} };
@@ -589,6 +647,19 @@
     playBtn.addEventListener('click', () => { try{ v.paused ? v.play() : v.pause(); } catch{} });
     seek.addEventListener('input', () => { seek.dragging = true; try{ v.currentTime = Number(seek.value||0); } catch{} });
     seek.addEventListener('change', () => { seek.dragging = false; });
+    if (timeCur){
+      const jump = () => {
+        try{
+          const t = parse(timeCur.value);
+          if (t == null) return;
+          const target = Math.min(Math.max(0, t), Math.max(0, Number(v.duration||0)-1e-6));
+          try{ v.pause(); }catch(e){}
+          v.currentTime = target; updateTime();
+        }catch(e){}
+      };
+      timeCur.addEventListener('keydown', (ev)=>{ if (ev.key==='Enter'){ ev.preventDefault(); jump(); } });
+      timeCur.addEventListener('blur', jump);
+    }
     if (v.readyState >= 1) { updateMax(); updatePlayUI(); }
   } catch{}
 })();

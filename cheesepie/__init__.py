@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from flask import Flask, redirect, request, url_for
+from flask import Flask, redirect, request, url_for, jsonify
 
 
 def create_app() -> Flask:
@@ -69,6 +69,15 @@ def create_app() -> Flask:
             except Exception:
                 ok = False
         if not ok:
+            # For API requests, return 401 JSON so clients can react gracefully
+            try:
+                path = request.path or ''
+                accept = (request.headers.get('Accept') or '').lower()
+                is_api = path.startswith('/api') or 'application/json' in accept
+            except Exception:
+                is_api = False
+            if is_api:
+                return jsonify({'error': 'unauthorized', 'login': url_for('auth.login', next=request.path)}), 401
             return redirect(url_for('auth.login', next=request.path))
         return None
 

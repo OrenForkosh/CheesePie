@@ -425,6 +425,35 @@
     });
     showOnlyBtn?.addEventListener('click', ()=>{ setSegmentsMode(!segmentsOn); });
     renderMouseSelection();
+    // Wire export labels button
+    (function wireExportLabels(){
+      try{
+        const btn = document.getElementById('pp-colors-export-labels');
+        if (!btn) return;
+        btn.addEventListener('click', async function(){
+          try{
+            if (!lastIndex || !lastIndex.length){ setStatus('No segments to export'); return; }
+            const H = lastIndex.length|0; const W = (lastIndex[0]||[]).length|0; if(!H||!W){ setStatus('No segments to export'); return; }
+            // Ask backend to encode as 16-bit PNG
+            const resp = await fetch('/api/preproc/labels_png', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ labels: lastIndex }) });
+            const d = await resp.json();
+            if (!resp.ok || !d || !d.ok || !d.image_b64){ setStatus('Export failed: ' + (d&&d.error||resp.statusText)); return; }
+            let base=(window.Preproc&&window.Preproc.State&&window.Preproc.State.videoPath)||'labels';
+            try{ base=(base.split('/').pop()||base).replace(/\.[^.]+$/, ''); }catch(e){}
+            // Timestamp like frame export (H-MM-SS.mmm; hours omitted if 0)
+            const sec = (v && isFinite(v.currentTime)) ? Number(v.currentTime||0) : 0;
+            const totalMs = Math.max(0, Math.round(sec*1000));
+            const s = (totalMs/1000)|0; const ms = totalMs % 1000;
+            const h = (s/3600)|0; const m = ((s%3600)/60)|0; const ss = (s%60)|0;
+            const pad2=(n)=>String(n).padStart(2,'0'), pad3=(n)=>String(n).padStart(3,'0');
+            const at = (h? String(h)+'-':'') + pad2(m) + '-' + pad2(ss) + '.' + pad3(ms);
+            const a=document.createElement('a'); a.download = base + '.labels.' + at + '.png'; a.href=d.image_b64; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            setStatus('Labels exported');
+          }catch(e){ setStatus('Export failed: '+e); }
+        });
+      }catch(e){}
+    })();
+
     tab?.addEventListener('click', async ()=>{ if(pane) pane.style.display=''; await ensureSavedFrames(); syncFromSaved(); drawMarks(); updateIndicator(); renderHistogram(); run(); });
     v?.addEventListener('seeking', ()=>{ if(pane&&pane.style.display!=='none'){ autoSaveIfNeeded(); } });
     v?.addEventListener('play', ()=>{ if(pane&&pane.style.display!=='none'){ autoSaveIfNeeded(); } });
