@@ -452,6 +452,19 @@
                 Clear all
               </button>
             </div>
+            <div id="pp-zoom-wrap" style="margin-top:8px; display:flex; justify-content:flex-end">
+              <canvas
+                id="pp-zoom"
+                style="
+                  width: 220px;
+                  height: 220px;
+                  border: 1px solid var(--border);
+                  border-radius: 8px;
+                  background: var(--panel-bg, #111);
+                  pointer-events: none;
+                "
+              ></canvas>
+            </div>
             <div class="pane-footer">
               Drag a marker (R/G/B/Y/BG) from the top-left dock onto a segment
               to assign it, or click a segment to assign the current mouse (use

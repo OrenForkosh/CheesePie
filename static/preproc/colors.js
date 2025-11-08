@@ -8,6 +8,37 @@
     const v = document.getElementById('pp-video');
     const processed = document.getElementById('pp-processed');
     const overlay = document.getElementById('pp-overlay');
+    const zoom = document.getElementById('pp-zoom');
+    function ensureZoomSize(){
+      try{
+        if (!zoom) return false;
+        const ZW = Math.max(1, zoom.clientWidth|0), ZH = Math.max(1, zoom.clientHeight|0);
+        let changed = false;
+        if (zoom.width !== ZW){ zoom.width = ZW; changed = true; }
+        if (zoom.height !== ZH){ zoom.height = ZH; changed = true; }
+        return changed || true;
+      }catch(e){ return false; }
+    }
+    function drawZoomPlaceholder(){
+      try{
+        if (!zoom) return;
+        ensureZoomSize();
+        const ZW = zoom.width|0, ZH = zoom.height|0;
+        const ctx = zoom.getContext('2d');
+        ctx.save();
+        ctx.clearRect(0,0,ZW,ZH);
+        // Subtle background
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--border') || '#444';
+        ctx.globalAlpha = 0.12; ctx.fillRect(0,0,ZW,ZH); ctx.globalAlpha = 1.0;
+        // Placeholder crosshair
+        ctx.strokeStyle='rgba(255,255,255,0.25)'; ctx.lineWidth=1; ctx.beginPath();
+        ctx.moveTo(ZW/2,0); ctx.lineTo(ZW/2,ZH); ctx.moveTo(0,ZH/2); ctx.lineTo(ZW,ZH/2); ctx.stroke();
+        // Text
+        ctx.fillStyle='rgba(255,255,255,0.45)'; ctx.font='12px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto'; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText('Hover to zoom', ZW/2, ZH/2);
+        ctx.restore();
+      }catch(e){}
+    }
     const statusEl = document.getElementById('pp-colors-status');
     const segCountEl = document.getElementById('pp-colors-segcount');
     const indicatorEl = document.getElementById('pp-colors-indicator');
@@ -290,8 +321,52 @@
           const px = ev.clientX - rect.left, py = ev.clientY - rect.top;
           const hit = findPlacedMarkAt(px, py);
           overlay.style.cursor = hit ? 'grab' : 'default';
+          // Update zoom preview
+          try{
+            if (!zoom) return;
+            const vw = overlay.clientWidth, vh = overlay.clientHeight;
+            if (!vw || !vh) return;
+            const Vw = (v && v.videoWidth)|0, Vh = (v && v.videoHeight)|0;
+            if (!Vw || !Vh) return;
+            const r = fitRect(Vw, Vh, vw, vh);
+            const inside = (px >= r.dx && py >= r.dy && px <= r.dx + r.dw && py <= r.dy + r.dh);
+            if (!inside){ drawZoomPlaceholder(); return; }
+            // Prepare zoom canvas backing size to match CSS
+            ensureZoomSize();
+            const ZW = zoom.width|0, ZH = zoom.height|0;
+            const ctx = zoom.getContext('2d');
+            ctx.imageSmoothingEnabled = false;
+            // Map mouse to video pixels
+            const mx = px, my = py;
+            const sx = (mx - r.dx) * (Vw / r.dw);
+            const sy = (my - r.dy) * (Vh / r.dh);
+            const scale = 3.0; // zoom factor
+            const srcW = Math.max(1, Math.round(ZW / scale));
+            const srcH = Math.max(1, Math.round(ZH / scale));
+            const srcX = Math.max(0, Math.min(Math.round(sx - srcW/2), Vw - srcW));
+            const srcY = Math.max(0, Math.min(Math.round(sy - srcH/2), Vh - srcH));
+            // Draw base video
+            ctx.clearRect(0,0,ZW,ZH);
+            ctx.drawImage(v, srcX, srcY, srcW, srcH, 0, 0, ZW, ZH);
+            // Draw processed overlay portion if available
+            try{
+              if (processed && processed.width>0 && processed.height>0){
+                const srcWo = Math.round(ZW / scale), srcHo = Math.round(ZH / scale);
+                const srcXo = Math.round(mx - srcWo/2);
+                const srcYo = Math.round(my - srcHo/2);
+                ctx.drawImage(processed, srcXo, srcYo, srcWo, srcHo, 0, 0, ZW, ZH);
+              }
+            }catch(e){}
+            // Optional: draw a subtle crosshair
+            try{ ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(ZW/2,0); ctx.lineTo(ZW/2,ZH); ctx.moveTo(0,ZH/2); ctx.lineTo(ZW,ZH/2); ctx.stroke(); }catch(e){}
+            // keep visible at all times
+          }catch(e){}
         }catch(e){}
       });
+      overlay.addEventListener('mouseenter', function(){ try{ if(zoom) drawZoomPlaceholder(); }catch(e){} });
+      overlay.addEventListener('mouseleave', function(){ try{ if(zoom) drawZoomPlaceholder(); }catch(e){} });
+      // Initialize placeholder
+      try{ drawZoomPlaceholder(); }catch(e){}
     })();
 
     async function ensureSavedFrames(){ try{ if(savedFrames!==null) return; const vp=(window.Preproc&&window.Preproc.State&&window.Preproc.State.videoPath)||''; if(!vp){ savedFrames={}; return;} const r=await fetch('/api/preproc/state?video='+encodeURIComponent(vp)); const d=await r.json(); const colors=d&&d.colors||null; savedFrames=(colors&&colors.frames)||{}; }catch(e){ savedFrames={}; } }
