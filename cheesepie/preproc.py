@@ -237,6 +237,17 @@ def api_preproc_state():
                     meta = sc.get('meta')
                 if bg is None and sc.get('background') is not None:
                     bg = sc.get('background')
+                # Surface facility/setup to client for restoring UI selections
+                try:
+                    fac_sc = sc.get('facility')
+                    setup_sc = sc.get('setup')
+                    if isinstance(fac_sc, str) and fac_sc:
+                        # attach to response via locals
+                        facility_from_sc = fac_sc
+                    if isinstance(setup_sc, str) and setup_sc:
+                        setup_from_sc = setup_sc
+                except Exception:
+                    pass
     except Exception:
         pass
     if arena is None:
@@ -258,7 +269,12 @@ def api_preproc_state():
                     bg = str(b2)
             except Exception:
                 pass
-    return jsonify({'ok': True, 'arena': arena, 'background': bg, 'roi': regions if 'regions' in locals() else None, 'colors': colors, 'meta': meta})
+    out = {'ok': True, 'arena': arena, 'background': bg, 'roi': regions if 'regions' in locals() else None, 'colors': colors, 'meta': meta}
+    if 'facility_from_sc' in locals():
+        out['facility'] = facility_from_sc
+    if 'setup_from_sc' in locals():
+        out['setup'] = setup_from_sc
+    return jsonify(out)
 
 
 @bp.route('/save_multi', methods=['POST'])
@@ -802,6 +818,16 @@ def api_preproc_save_final():
     # Final file next to video: append suffix without replacing original extension
     final_path = vpath.parent / f"{vpath.name}.preproc.json"
     try:
+        # Persist facility/setup if provided
+        try:
+            fac = str(payload.get('facility', '') or '').strip()
+            setup = str(payload.get('setup', '') or '').strip()
+            if fac:
+                st['facility'] = fac
+            if setup:
+                st['setup'] = setup
+        except Exception:
+            pass
         # Ensure type marker on created/updated preproc files
         try:
             st['type'] = 'preproc'

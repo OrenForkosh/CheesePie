@@ -160,7 +160,22 @@
         var allowed = !!enabled && hasFacility && hasSetup;
 
         // Tabs button state
-        Object.keys(tabs).forEach(function(k){ if (tabs[k]) { tabs[k].disabled = !allowed; tabs[k].title = allowed? '' : 'Select a facility and setup to continue'; } });
+        Object.keys(tabs).forEach(function(k){
+          if (!tabs[k]) return;
+          if (!allowed){
+            tabs[k].disabled = true;
+            tabs[k].title = 'Select a facility and setup to continue';
+            return;
+          }
+          // Allowed overall; enforce only Colors dependency on background
+          if (k === 'colors' && !((Preproc && Preproc.State && Preproc.State.hasBackground) || false)){
+            tabs[k].disabled = true;
+            tabs[k].title = 'Compute or load background first';
+          } else {
+            tabs[k].disabled = false;
+            tabs[k].title = '';
+          }
+        });
 
         // Panes visibility and interactivity
         var v = ensureVeil();
@@ -169,8 +184,12 @@
           Object.keys(panes).forEach(function(k){ if (panes[k]) { setTreeDisabled(panes[k], true); } });
         } else {
           if (v) v.classList.remove('visible');
-          Object.keys(panes).forEach(function(k){ if (panes[k]) { setTreeDisabled(panes[k], false); } });
-          // No inter-tab dependencies: all tabs enabled when allowed
+          // Enable all panes except Colors when background is missing
+          Object.keys(panes).forEach(function(k){
+            if (!panes[k]) return;
+            var disablePane = (k === 'colors' && !((Preproc && Preproc.State && Preproc.State.hasBackground) || false));
+            setTreeDisabled(panes[k], !!disablePane);
+          });
         }
       } catch(e){}
     }
@@ -293,14 +312,14 @@
       names.sort(function(a,b){ if (a==='default') return -1; if (b==='default') return 1; return a.localeCompare(b); });
       names.forEach(function(n){ var o=document.createElement('option'); o.value=n; o.textContent=n; setupSel.appendChild(o); });
       var chosen = names[0] || 'default';
-      // Restore last chosen setup for this facility if present
+      // Restore last chosen setup for this facility if present (do not apply automatically)
       try{
         var key = 'cheesepie.preproc.setup.' + String(fac||'').toLowerCase();
         var saved = localStorage.getItem(key) || localStorage.getItem('cheesepie.preproc.setup') || '';
         if (saved && names.indexOf(saved) !== -1){ chosen = saved; }
       }catch(e){}
       setupSel.value = chosen;
-      applySetupDefaults(fac, setupSel.value, setups);
+      // Do NOT apply setup automatically; only apply when user clicks the Apply button
       // After facility + setup are populated, enable tabs
       setTabsEnabled(true);
     }
@@ -324,7 +343,7 @@
         if (arena && arena.drawOverlay) arena.drawOverlay();
       } catch(e){}
     }
-    if (setupSel){ setupSel.addEventListener('change', function(){ var fac = facilitySel?facilitySel.value:''; if (!currentSetups){ populateSetupsForFacility(fac); } applySetupDefaults(fac, setupSel.value, currentSetups); try{ localStorage.setItem('cheesepie.preproc.setup.'+String(fac||'').toLowerCase(), setupSel.value||''); localStorage.setItem('cheesepie.preproc.setup', setupSel.value||''); }catch(e){} setTabsEnabled(true); }); }
+    if (setupSel){ setupSel.addEventListener('change', function(){ var fac = facilitySel?facilitySel.value:''; if (!currentSetups){ populateSetupsForFacility(fac); } /* do not auto-apply */ try{ localStorage.setItem('cheesepie.preproc.setup.'+String(fac||'').toLowerCase(), setupSel.value||''); localStorage.setItem('cheesepie.preproc.setup', setupSel.value||''); }catch(e){} setTabsEnabled(true); }); }
     if (applySetupBtn){ applySetupBtn.addEventListener('click', function(){ var fac = facilitySel?facilitySel.value:''; if (!fac){ alert('Select a facility first.'); return; } if (!currentSetups){ populateSetupsForFacility(fac); } applySetupDefaults(fac, setupSel && setupSel.value, currentSetups); }); }
     if (saveSetupBtn){
       saveSetupBtn.addEventListener('click', function(){
@@ -368,8 +387,13 @@
         if (!videoPath){ alert('Select a video first.'); return; }
         var statusEl = document.getElementById('pp-mday-status');
         if (statusEl) statusEl.textContent = 'Saving final preproc…';
+        // Include facility and setup so they are persisted into the sidecar
+        var facSel = U.$('#pp-facility');
+        var setupSelEl = U.$('#pp-setup');
+        var facility = (facSel && facSel.value) || '';
+        var setup = (setupSelEl && setupSelEl.value) || '';
         fetch('/api/preproc/save_final', {
-          method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ video: videoPath })
+          method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ video: videoPath, facility: facility, setup: setup })
         }).then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d, status:r.statusText}; }); })
           .then(function(res){ if (statusEl) statusEl.textContent = res.ok? ('Saved to ' + (res.d && res.d.path || '')) : ('Error: ' + (res.d && res.d.error || res.status)); })
           .catch(function(e){ if (statusEl) statusEl.textContent = 'Error: ' + e; });
@@ -413,6 +437,24 @@
           .then(function(r){ return r.json(); })
           .then(function(d){
             if (!d || d.error) return;
+            // Restore facility/setup selection from sidecar metadata if provided
+            try{
+              var facVal = d.facility || '';
+              var setupVal = d.setup || '';
+              if (facVal){
+                if (facilitySel){ facilitySel.value = facVal; }
+                // Persist and populate setups for this facility
+                try{ localStorage.setItem('cheesepie.preproc.facility', facVal); }catch(e){}
+                populateSetupsForFacility(facVal);
+                if (setupVal && document.getElementById('pp-setup')){
+                  var ssel = document.getElementById('pp-setup');
+                  // Only set the value; do not auto-apply
+                  ssel.value = setupVal;
+                  try{ localStorage.setItem('cheesepie.preproc.setup.'+String(facVal).toLowerCase(), setupVal); localStorage.setItem('cheesepie.preproc.setup', setupVal); }catch(e){}
+                }
+                setTabsEnabled(true);
+              }
+            }catch(e){}
             if (d.arena){
               // Prefill grid/size inputs if present
               try{

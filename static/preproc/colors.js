@@ -446,7 +446,10 @@
         let background=null; try{ const bg=document.getElementById('bg-canvas'); if(bg&&bg.width&&bg.height) background=bg.toDataURL('image/png'); }catch(e){}
         const resp=await fetch('/api/preproc/segment_simple',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ image:dataUrl, background })});
         const data=await resp.json(); if(!resp.ok||!data||!data.ok){ setStatus('Error: '+(data&&data.error||resp.statusText)); return; }
-        if(data.stats&&typeof data.stats.nonzero==='number'){ if(data.stats.nonzero===0) setStatus('No segments detected (try a different frame or compute background)'); else setStatus(`Segments detected: ${data.stats.unique ? data.stats.unique.length-(data.stats.unique.includes(0)?1:0):''}`);} 
+        if(data.stats&&typeof data.stats.nonzero==='number'){
+          // keep status reserved but do not persist a message here; seg count is shown separately
+          if(data.stats.nonzero===0) setStatus('No segments detected (try a different frame or compute background)');
+        }
         if(Array.isArray(data.index)&&data.index.length){ lastIndex=data.index; lastSize={h:data.index.length|0,w:(data.index[0]||[]).length|0}; setSegCountFromIndex(lastIndex); }
         cached = { time: timeKey(), image: dataUrl, labels: lastIndex };
         // Draw either the server-provided overlay image (base) or the color map

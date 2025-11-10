@@ -157,8 +157,8 @@
     const params = bgParams();
     const startVal = ($('#exp-start') && $('#exp-start').value || '').trim();
     const endVal = ($('#exp-end') && $('#exp-end').value || '').trim();
-    // Steps per file: timing + (bg if non-current) + arena + regions + save_final
-    const total = selected.length * 5; let done=0;
+    // Steps per file: timing + background + (arena+regions) + save_final = 4 steps
+    const total = Math.max(1, selected.length * 4); let done=0;
     function step(){ done++; if(bar) bar.style.width = Math.round(100*done/Math.max(1,total))+'%'; }
     for (let i=0;i<selected.length;i++){
       const path = selected[i]; const isCurrent = String(path) === String(vp);
@@ -190,6 +190,7 @@
       step();
     }
     status.textContent = 'Done';
+    if (bar) bar.style.width = '100%';
   }
 
   async function open(){
@@ -209,15 +210,24 @@
         const cb = el('input', { type:'checkbox' }); cb.checked = true; cb.disabled = (it.path === vp);
         if (cb.checked) chosen++;
         const metaWrap = el('div'); metaWrap.style.display='flex'; metaWrap.style.flexDirection='column'; metaWrap.style.gap='4px';
-        const name = el('div'); name.textContent = it.name + (it.path===vp ? ' (current)' : ''); name.style.fontWeight='600';
+        const name = el('div'); name.textContent = it.name + (it.path===vp ? ' (current)' : ''); name.style.fontWeight='600'; name.style.cursor='pointer';
         const times = el('div'); times.className='pp-save-times';
         try{ const s = ($('#exp-start')&&$('#exp-start').value)||''; const e = ($('#exp-end')&&$('#exp-end').value)||''; times.textContent = `Start: ${s||'—'}  End: ${e||'—'}`; }catch(e){}
         metaWrap.appendChild(name); metaWrap.appendChild(times);
-        const preview = el('img'); preview.className='pp-save-preview'; preview.alt='Background preview'; preview.style.width='120px'; preview.style.height='auto'; preview.style.border='1px solid var(--border)'; preview.style.borderRadius='4px'; preview.style.background='#f7f7f7';
+        const preview = el('img'); preview.className='pp-save-preview'; preview.alt='Background preview'; preview.style.width='120px'; preview.style.height='auto'; preview.style.border='1px solid var(--border)'; preview.style.borderRadius='4px'; preview.style.background='#000'; preview.style.objectFit='cover';
         row.appendChild(cb); row.appendChild(metaWrap); row.appendChild(preview);
         listEl.appendChild(row);
         it._cb = cb;
         cb.addEventListener('change',()=>{ chosen = items.filter(x=> x._cb && x._cb.checked).length; countEl.textContent = chosen + ' selected'; });
+        // Clicking the filename opens it in Preproc
+        name.addEventListener('click', function(ev){
+          ev.preventDefault(); ev.stopPropagation();
+          try{
+            const step = localStorage.getItem('cheesepie.preproc.step') || '';
+            const url = `/preproc?video=${encodeURIComponent(it.path)}${step?`&step=${encodeURIComponent(step)}`:''}`;
+            window.location.href = url;
+          }catch(e){ window.location.href = `/preproc?video=${encodeURIComponent(it.path)}`; }
+        });
       });
       countEl.textContent = chosen + ' selected';
     }
