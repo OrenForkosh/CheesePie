@@ -547,6 +547,13 @@
       } else {
         const last = localStorage.getItem(LS_KEY);
         if (last){ currentDir = last; if (dirInput) dirInput.value = currentDir; loadList(); }
+        else {
+          try{
+            const cfg = window.CHEESEPIE || {};
+            const def = (cfg.browser && cfg.browser.default_dir) || '';
+            if (def){ currentDir = def; if (dirInput) dirInput.value = def; loadList(); }
+          }catch(e){}
+        }
       }
     }
   } catch {}

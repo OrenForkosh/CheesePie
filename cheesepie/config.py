@@ -364,6 +364,7 @@ def inject_public_config():
             'browser': {
                 'preview_thumbnails': cfg_preview_thumbnails(),
                 'visible_extensions': cfg_browser_visible_extensions(),
+                'default_dir': str(CONFIG.get('browser', {}).get('default_dir', '')).strip() if isinstance(CONFIG.get('browser', {}), dict) else ''
             },
             'importer': {
                 'facilities': cfg_importer_facilities(),
