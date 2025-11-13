@@ -88,11 +88,11 @@
       }
     },
     "mouse": {
+      "source_dir": "/mnt/MOUSE/surveillance/",
       "ignore_dir_regex": "^@",
       "max_file_duration": "4:00",
-      "output_dir": "/tmp/cheesepie-out",
+      "output_dir": "/mnt/MOUSE/experiments",
       "path_time_regex": "(?P<year>\\d{4})(?P<month>\\d{2})(?P<day>\\d{2}).*?-(?P<hour>\\d{2})(?P<minute>\\d{2})(?P<second>\\d{2})",
-      "source_dir": "/Volumes/surveillance/",
       "camera_list": [1, 2, 3, 4, 5, 6, 7, 8],
       "camera_pattern": "CHEESE{cam:02d}",
       "experiments": {
