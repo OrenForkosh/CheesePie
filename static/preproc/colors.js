@@ -369,7 +369,7 @@
       try{ drawZoomPlaceholder(); }catch(e){}
     })();
 
-    async function ensureSavedFrames(){ try{ if(savedFrames!==null) return; const vp=(window.Preproc&&window.Preproc.State&&window.Preproc.State.videoPath)||''; if(!vp){ savedFrames={}; return;} const r=await fetch('/api/preproc/state?video='+encodeURIComponent(vp)); const d=await r.json(); const colors=d&&d.colors||null; savedFrames=(colors&&colors.frames)||{}; }catch(e){ savedFrames={}; } }
+    async function ensureSavedFrames(){ try{ if(savedFrames!==null) return; const vp=(window.Preproc&&window.Preproc.State&&window.Preproc.State.videoPath)||''; if(!vp){ savedFrames={}; return;} const r=await fetch('/api/preproc/state?video='+encodeURIComponent(vp)); const d=await r.json(); const colors=d&&d.colors||null; savedFrames=(colors&&colors.frames)||{}; }catch(e){ savedFrames={}; } finally { try{ renderHistogram(); }catch(e){} } }
     function nearestKey(tk){ try{ if(!savedFrames) return tk; if(savedFrames[tk]) return tk; const keys=Object.keys(savedFrames||{}); if(!keys.length) return tk; const t=parseFloat(tk); let best=tk,d=Infinity; keys.forEach(k=>{ const v=Math.abs(parseFloat(k)-t); if(v<d){ d=v; best=k; } }); return d<=0.05?best:tk; }catch(e){ return tk; } }
     function updateIndicator(){ try{ const t=_nearestMarksKey(timeKey()); const list=marks[t]||[]; const c={R:0,G:0,B:0,Y:0,BG:0}; list.forEach(m=>{ if(c[m.mouse]!==undefined) c[m.mouse]++; }); setIndicator(`R:${c.R} G:${c.G} B:${c.B} Y:${c.Y} BG:${c.BG}`);}catch(e){ setIndicator(''); } }
     function computeHistogramCounts(){
@@ -404,6 +404,7 @@
         </div>`;
       }
       histEl.innerHTML = html;
+      try{ document.dispatchEvent(new CustomEvent('preproc:colors-counts', { detail: { counts: counts } })); }catch(e){}
     }catch(e){} }
     function _nearestMarksKey(tk){
       try{

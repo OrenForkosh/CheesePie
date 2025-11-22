@@ -53,26 +53,27 @@
   }
 
   function buildOverlay(){
-    const ov = el('div'); ov.className='overlay'; ov.id='pp-save-overlay';
-    const panel = el('div'); panel.className='overlay-panel';
-    const head = el('div'); head.className='overlay-header';
-    const title = el('h3'); title.textContent='Save Preproc to Days';
-    const close = el('button'); close.className='icon-btn'; close.innerHTML='✕';
-    close.addEventListener('click', ()=>{ ov.remove(); });
+    const ov = el('div'); ov.id='pp-save-overlay'; ov.className='pp-save-overlay';
+    const panel = el('div'); panel.className='pp-save-panel';
+    const head = el('div'); head.className='pp-save-header';
+    const title = el('div'); title.className='pp-save-title'; title.textContent='Save Preproc to Days';
+    const close = el('button'); close.className='pp-save-close icon-btn'; close.innerHTML='✕'; close.addEventListener('click', ()=>{ ov.remove(); });
     head.appendChild(title); head.appendChild(close);
-    const body = el('div');
+    const body = el('div'); body.className='pp-save-body';
     body.innerHTML = `
-      <div class="muted" style="margin-bottom:8px">Select days in the same group to save preproc. Backgrounds will be computed per day using current settings.</div>
-      <div id="pp-save-group" class="muted" style="margin:6px 0">Group: —</div>
-      <div id="pp-save-list" style="max-height:220px; overflow:auto; border:1px solid var(--border); border-radius:8px; padding:6px"></div>
-      <div style="display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap">
-        <button class="btn mini" id="pp-save-all">All</button>
-        <button class="btn mini" id="pp-save-none">None</button>
+      <div class="muted pp-save-intro">Select days in the same group to save preproc. Backgrounds will be computed per day using current settings.</div>
+      <div id="pp-save-group" class="muted pp-save-group">Group: —</div>
+      <div id="pp-save-list" class="pp-save-list"></div>
+      <div class="pp-save-controls">
+        <div class="left">
+          <button class="btn mini" id="pp-save-all">All</button>
+          <button class="btn mini" id="pp-save-none">None</button>
+        </div>
         <span class="muted" id="pp-save-count"></span>
       </div>
-      <div class="progress" style="margin-top:10px"><div class="bar" id="pp-save-bar" style="width:0%"></div></div>
-      <div class="muted" id="pp-save-status" style="margin-top:6px"></div>
-      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:10px">
+      <div class="pp-save-progress"><div class="bar" id="pp-save-bar"></div></div>
+      <div class="muted pp-save-status" id="pp-save-status"></div>
+      <div class="pp-save-actions">
         <button class="btn" id="pp-save-cancel">Cancel</button>
         <button class="btn success" id="pp-save-run">Save</button>
       </div>
@@ -241,11 +242,11 @@
       listEl.innerHTML='';
       let chosen=0;
       items.forEach(it=>{
-        const row = el('label'); row.dataset.path = it.path; row.style.display='grid'; row.style.gridTemplateColumns='auto 1fr auto'; row.style.alignItems='center'; row.style.gap='8px'; row.style.padding='6px'; row.style.borderBottom='1px solid var(--border)';
+        const row = el('label'); row.dataset.path = it.path; row.className='pp-save-row';
         const cb = el('input', { type:'checkbox' }); cb.checked = true; cb.disabled = (it.path === vp);
         if (cb.checked) chosen++;
-        const metaWrap = el('div'); metaWrap.style.display='flex'; metaWrap.style.flexDirection='column'; metaWrap.style.gap='4px';
-        const name = el('div'); name.textContent = it.name + (it.path===vp ? ' (current)' : ''); name.style.fontWeight='600'; name.style.cursor='pointer';
+        const metaWrap = el('div'); metaWrap.className='pp-save-meta';
+        const name = el('div'); name.className='pp-save-name'; name.textContent = it.name + (it.path===vp ? ' (current)' : '');
         const times = el('div'); times.className='pp-save-times';
         try{ const s = ($('#exp-start')&&$('#exp-start').value)||''; const e = ($('#exp-end')&&$('#exp-end').value)||''; times.textContent = `Start: ${s||'—'}  End: ${e||'—'}`; }catch(e){}
         metaWrap.appendChild(name); metaWrap.appendChild(times);
@@ -256,10 +257,6 @@
         // Reserve space with the same proportions as the background image
         preview.style.width = prevW + 'px';
         preview.style.height = prevH + 'px';
-        preview.style.border = '1px solid var(--border)';
-        preview.style.borderRadius = '4px';
-        preview.style.background = 'var(--border)'; // theme-grey placeholder
-        preview.style.objectFit = 'contain';
         row.appendChild(cb); row.appendChild(metaWrap); row.appendChild(preview);
         listEl.appendChild(row);
         it._cb = cb;

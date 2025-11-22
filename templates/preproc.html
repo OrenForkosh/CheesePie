@@ -21,7 +21,7 @@
             style="flex: 1"
           />
           <button
-            class="btn success"
+            class="btn"
             id="pp-open-save"
             title="Save preproc to multiple days"
           >
@@ -230,6 +230,7 @@
           "
         >
           <div style="display: flex; gap: 8px; align-items: center">
+            <button class="btn mini" id="tab-info">Info</button>
             <button class="btn mini" id="tab-arena">Arena</button>
             <button class="btn mini" id="tab-timing">Timing</button>
             <button class="btn mini" id="tab-background">Background</button>
@@ -238,7 +239,21 @@
           </div>
         </div>
         <div id="pp-panes" style="position: relative">
-          <div id="pane-arena">
+          <div id="pane-info">
+            <div class="kv">
+              <div class="k">Width</div>
+              <div class="v"><input type="text" id="meta-width" readonly class="input readonly" /></div>
+              <div class="k">Height</div>
+              <div class="v"><input type="text" id="meta-height" readonly class="input readonly" /></div>
+              <div class="k">Frame rate</div>
+              <div class="v"><input type="text" id="meta-fps" readonly class="input readonly" /></div>
+              <div class="k">Duration</div>
+              <div class="v"><input type="text" id="meta-duration" readonly class="input readonly" /></div>
+              <div class="k">Frames</div>
+              <div class="v"><input type="text" id="meta-frames" readonly class="input readonly" /></div>
+            </div>
+          </div>
+          <div id="pane-arena" style="display: none">
             <div class="kv">
               <div class="k">Grid cols</div>
               <input type="number" id="grid-cols" min="1" value="6" />

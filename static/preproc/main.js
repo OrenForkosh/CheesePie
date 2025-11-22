@@ -12,6 +12,7 @@
 
     // Tabs
     var panes = {
+      info: U.$('#pane-info'),
       arena: U.$('#pane-arena'),
       background: U.$('#pane-background'),
       regions: U.$('#pane-regions'),
@@ -20,6 +21,7 @@
       save: U.$('#pane-save')
     };
     var tabs = {
+      info: U.$('#tab-info'),
       arena: U.$('#tab-arena'),
       background: U.$('#tab-background'),
       regions: U.$('#tab-regions'),
@@ -29,7 +31,7 @@
     };
 
     var isRegionsEditing = false;
-    var order = ['arena','timing','background','regions','colors','save'];
+    var order = ['info','arena','timing','background','regions','colors','save'];
     function nextOf(name){ var i = order.indexOf(name); return (i>=0 && i < order.length-1) ? order[i+1] : null; }
     function _persistTab(name){
       try{
@@ -65,6 +67,7 @@
       try{ if (arena && arena.drawOverlay) arena.drawOverlay(); }catch(e){}
     }
 
+    if (tabs.info) tabs.info.addEventListener('click', function(){ if (tabs.info.disabled) return; switchTab('info'); });
     if (tabs.arena) tabs.arena.addEventListener('click', function(){ if (tabs.arena.disabled) return; switchTab('arena'); });
     if (tabs.timing) tabs.timing.addEventListener('click', function(){ if (tabs.timing.disabled) return; switchTab('timing'); });
     if (tabs.background) tabs.background.addEventListener('click', function(){ if (tabs.background.disabled) return; switchTab('background'); });
@@ -412,6 +415,18 @@
     try { Preproc.__regions = regions; } catch(e){}
     var bg = null; if (Preproc.Background) bg = Preproc.Background.init({});
     if (Preproc.Colors) Preproc.Colors.init({});
+    // Save button gating: background + 10 marks per mouse (R,G,B,Y)
+    (function wireSaveGating(){
+      try{
+        var saveBtn = U.$('#pp-open-save'); if (!saveBtn) return;
+        Preproc.State.mouseCounts = {R:0,G:0,B:0,Y:0,BG:0};
+        function meets(){ try{ var bgOk=!!(Preproc&&Preproc.State&&Preproc.State.hasBackground); var c=Preproc.State.mouseCounts||{}; return bgOk && (c.R>=10 && c.G>=10 && c.B>=10 && c.Y>=10); }catch(e){ return false; } }
+        function update(){ try{ saveBtn.classList.toggle('success', !!meets()); }catch(e){} }
+        document.addEventListener('preproc:background-ready', function(){ try{ Preproc.State.hasBackground = true; update(); }catch(e){} });
+        document.addEventListener('preproc:colors-counts', function(ev){ try{ var d=ev&&ev.detail&&ev.detail.counts; if(d){ Preproc.State.mouseCounts=d; update(); } }catch(e){} });
+        update();
+      }catch(e){}
+    })();
     // Wire Save dialog button
     try {
       var openSaveBtn = U.$('#pp-open-save');
@@ -423,11 +438,12 @@
     // On first load, enable tabs and restore active tab
     if (facilitySel && facilitySel.value){ populateSetupsForFacility(facilitySel.value); }
     setTabsEnabled(true);
-    try{
-      var usp0 = new URLSearchParams(location.search);
-      var step0 = usp0.get('step') || (localStorage.getItem('cheesepie.preproc.step')||'');
-      if (step0 && panes[step0]) switchTab(step0);
-    }catch(e){}
+      try{
+        var usp0 = new URLSearchParams(location.search);
+        var step0 = usp0.get('step') || (localStorage.getItem('cheesepie.preproc.step')||'') || 'info';
+        if (step0 && panes[step0]) switchTab(step0);
+        else switchTab('info');
+      }catch(e){ switchTab('info'); }
 
     // Load saved preproc state (arena, background, etc.) for this video
     (function loadState(){
@@ -455,6 +471,18 @@
                 setTabsEnabled(true);
               }
             }catch(e){}
+            // Populate Info tab from metadata
+            try{
+              var vi = d.video || {};
+              var fmtDur = function(sec){ if(!isFinite(sec)||sec<=0) return '—'; var h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), s=Math.floor(sec%60); var mm=h?String(m).padStart(2,'0'):String(m); var ss=String(s).padStart(2,'0'); return h? (h+":"+mm+":"+ss) : (mm+":"+ss); };
+              var setVal = function(id, val){ var el=U.$('#'+id); if(!el) return; try{ el.value = (val!=null && val!=='')? String(val) : '—'; }catch(e){ el.textContent = (val!=null && val!=='')? String(val) : '—'; } };
+              setVal('meta-width', vi.width);
+              setVal('meta-height', vi.height);
+              setVal('meta-fps', (vi.frame_rate!=null? (Number(vi.frame_rate).toFixed(2)+' fps') : '—'));
+              setVal('meta-duration', fmtDur(Number(vi.duration||0)));
+              setVal('meta-frames', (vi.num_frames!=null? vi.num_frames : '—'));
+            }catch(e){}
+
             if (d.arena){
               // Prefill grid/size inputs if present
               try{
@@ -497,6 +525,7 @@
                       S.hasBackground = true;
                       // Update gating now that background is available
                       setTabsEnabled(!!(facilitySel && facilitySel.value));
+                      try{ document.dispatchEvent(new CustomEvent('preproc:background-ready')); }catch(e){}
                     } catch(e){}
                   };
                   if (typeof d.background === 'string'){
@@ -504,7 +533,15 @@
                     img.src = '/media?path=' + encodeURIComponent(d.background);
                   } else if (d.background.image_b64){
                     img.src = d.background.image_b64;
-                  }
+              }
+            // Initialize mouse counts for Save gating from state colors
+            try{
+              var countsInit = {R:0,G:0,B:0,Y:0,BG:0};
+              var frames0 = (d.colors && d.colors.frames) || {};
+              Object.keys(frames0||{}).forEach(function(k){ var ms=(frames0[k]&&frames0[k].marks)||[]; ms.forEach(function(m){ var mm=m&&m.mouse; if(countsInit[mm]!=null) countsInit[mm]++; }); });
+              Preproc.State.mouseCounts = countsInit;
+              document.dispatchEvent(new CustomEvent('preproc:colors-counts', { detail: { counts: countsInit } }));
+            }catch(e){}
                 }
               } catch(e){}
             }
