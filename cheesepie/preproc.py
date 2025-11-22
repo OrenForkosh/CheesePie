@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 from flask import Blueprint, jsonify, request
 
 from .config import CONFIG, _config_path
+from .media import probe_media  # type: ignore
 
 
 bp = Blueprint('preproc', __name__)
@@ -148,6 +149,64 @@ def _tmp_base(video_path: Path) -> Path:
     return tmpdir / base
 
 
+def _video_meta_for(video_path: Path) -> Dict[str, Any]:
+    """Build a compact video metadata dict for saving into preproc JSON files.
+
+    Includes: width, height, frame_rate, format (extension with dot), duration,
+    num_frames (if available), name, path (directory path).
+    """
+    out: Dict[str, Any] = {
+        'width': None,
+        'height': None,
+        'frame_rate': None,
+        'format': video_path.suffix if video_path.suffix else None,
+        'duration': None,
+        'num_frames': None,
+        'name': video_path.name,
+        'path': str(video_path.parent),
+    }
+    try:
+        meta = probe_media(video_path)
+        if meta and meta.get('available') and not meta.get('error'):
+            vs = (meta.get('streams') or {}).get('video') or {}
+            try:
+                if vs.get('width') is not None:
+                    out['width'] = int(vs.get('width'))
+            except Exception:
+                pass
+            try:
+                if vs.get('height') is not None:
+                    out['height'] = int(vs.get('height'))
+            except Exception:
+                pass
+            try:
+                if vs.get('fps') is not None:
+                    out['frame_rate'] = float(vs.get('fps'))
+            except Exception:
+                pass
+            try:
+                if meta.get('duration') is not None:
+                    out['duration'] = float(meta.get('duration'))
+            except Exception:
+                pass
+            # num_frames: prefer nb_frames from ffprobe if present; else approximate
+            try:
+                # If probe_media was extended to include nb_frames, look for it on streams.video
+                nb_frames = vs.get('nb_frames') if isinstance(vs, dict) else None
+                if nb_frames is not None:
+                    try:
+                        out['num_frames'] = int(nb_frames)
+                    except Exception:
+                        out['num_frames'] = None
+                elif out.get('duration') and out.get('frame_rate'):
+                    out['num_frames'] = int(round(float(out['duration']) * float(out['frame_rate'])))
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return out
+
+
 def _arena_path_for(video_path: Path) -> Path:
     # Legacy compatibility file in tmp
     return _tmp_base(video_path).with_suffix('.arena.json')
@@ -235,6 +294,14 @@ def api_preproc_state():
                         colors = sc.get('colors')
                 if meta is None and sc.get('meta') is not None:
                     meta = sc.get('meta')
+                elif isinstance(meta, dict) and isinstance(sc.get('meta'), dict):
+                    try:
+                        # Fill missing timing fields from sidecar if absent in temp state
+                        for k in ('start_time','end_time'):
+                            if k not in meta and sc['meta'].get(k) is not None:
+                                meta[k] = sc['meta'][k]
+                    except Exception:
+                        pass
                 if bg is None and sc.get('background') is not None:
                     bg = sc.get('background')
                 # Surface facility/setup to client for restoring UI selections
@@ -269,7 +336,17 @@ def api_preproc_state():
                     bg = str(b2)
             except Exception:
                 pass
-    out = {'ok': True, 'arena': arena, 'background': bg, 'roi': regions if 'regions' in locals() else None, 'colors': colors, 'meta': meta}
+    # Always surface basic video metadata to clients
+    try:
+        video_meta = None
+        # If temp state had it, use it; otherwise compute
+        if 'st' in locals() and isinstance(st, dict) and isinstance(st.get('video'), dict):
+            video_meta = st.get('video')
+        if video_meta is None:
+            video_meta = _video_meta_for(vpath)
+    except Exception:
+        video_meta = None
+    out = {'ok': True, 'arena': arena, 'background': bg, 'roi': regions if 'regions' in locals() else None, 'colors': colors, 'meta': meta, 'video': video_meta}
     if 'facility_from_sc' in locals():
         out['facility'] = facility_from_sc
     if 'setup_from_sc' in locals():
@@ -354,6 +431,7 @@ def api_preproc_save_multi():
                             'cells': [[int(c[0]), int(c[1])] for c in cells if isinstance(c, (list, tuple)) and len(c) >= 2],
                             'sheltered': bool(rcfg.get('sheltered', False)),
                             'enabled': bool(rcfg.get('enabled', True)),
+                            'type': str(rcfg.get('type')) if rcfg.get('type') is not None else None,
                         }
                     except Exception:
                         continue
@@ -375,6 +453,7 @@ def api_preproc_save_multi():
                             'cells': cells_out,
                             'sheltered': bool(it2.get('sheltered', False)),
                             'enabled': bool(it2.get('enabled', True)),
+                            'type': str(it2.get('type')) if it2.get('type') is not None else None,
                         }
                     except Exception:
                         continue
@@ -411,6 +490,11 @@ def api_preproc_save_multi():
             # Ensure type marker on created/updated preproc files
             try:
                 st['type'] = 'preproc'
+            except Exception:
+                pass
+            # Attach video metadata per target
+            try:
+                st['video'] = _video_meta_for(tpath)
             except Exception:
                 pass
             s_path.parent.mkdir(parents=True, exist_ok=True)
@@ -464,6 +548,11 @@ def api_preproc_arena():
         st['type'] = 'preproc'
     except Exception:
         pass
+    # Attach video metadata
+    try:
+        st['video'] = _video_meta_for(vpath)
+    except Exception:
+        pass
     try:
         s_path.parent.mkdir(parents=True, exist_ok=True)
         s_path.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding='utf-8')
@@ -515,6 +604,11 @@ def api_preproc_background():
             st['type'] = 'preproc'
         except Exception:
             pass
+        # Attach video metadata
+        try:
+            st['video'] = _video_meta_for(vpath)
+        except Exception:
+            pass
         s_path.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding='utf-8')
         return jsonify({'ok': True, 'background': bg})
     except Exception as e:
@@ -548,6 +642,7 @@ def api_preproc_regions():
                     'cells': [[int(c[0]), int(c[1])] for c in cells if isinstance(c, (list, tuple)) and len(c) >= 2],
                     'sheltered': bool(rcfg.get('sheltered', False)),
                     'enabled': bool(rcfg.get('enabled', True)),
+                    'type': str(rcfg.get('type')) if rcfg.get('type') is not None else None,
                 }
             except Exception:
                 continue
@@ -569,6 +664,7 @@ def api_preproc_regions():
                     'cells': cells_out,
                     'sheltered': bool(it.get('sheltered', False)),
                     'enabled': bool(it.get('enabled', True)),
+                    'type': str(it.get('type')) if it.get('type') is not None else None,
                 }
             except Exception:
                 continue
@@ -576,6 +672,11 @@ def api_preproc_regions():
     # Ensure type marker on created/updated preproc files
     try:
         st['type'] = 'preproc'
+    except Exception:
+        pass
+    # Attach video metadata
+    try:
+        st['video'] = _video_meta_for(vpath)
     except Exception:
         pass
     try:
@@ -658,6 +759,11 @@ def api_preproc_colors():
         st['type'] = 'preproc'
     except Exception:
         pass
+    # Attach video metadata
+    try:
+        st['video'] = _video_meta_for(vpath)
+    except Exception:
+        pass
     try:
         s_path.parent.mkdir(parents=True, exist_ok=True)
         s_path.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding='utf-8')
@@ -691,6 +797,11 @@ def api_preproc_timing():
     # Ensure type marker on created/updated preproc files
     try:
         st['type'] = 'preproc'
+    except Exception:
+        pass
+    # Attach video metadata
+    try:
+        st['video'] = _video_meta_for(vpath)
     except Exception:
         pass
     try:
@@ -740,6 +851,7 @@ def api_preproc_save_final():
                             'cells': [[int(c[0]), int(c[1])] for c in cells if isinstance(c,(list,tuple)) and len(c)>=2],
                             'sheltered': bool(rcfg.get('sheltered', False)),
                             'enabled': bool(rcfg.get('enabled', True)),
+                            'type': str(rcfg.get('type')) if rcfg.get('type') is not None else None,
                         }
                     except Exception:
                         continue
@@ -828,6 +940,11 @@ def api_preproc_save_final():
                 st['setup'] = setup
         except Exception:
             pass
+        # Attach video metadata
+        try:
+            st['video'] = _video_meta_for(vpath)
+        except Exception:
+            pass
         # Ensure type marker on created/updated preproc files
         try:
             st['type'] = 'preproc'
@@ -894,6 +1011,7 @@ def api_preproc_setup_save():
                     roi_map[str(rname)] = {
                         'cells': [[int(x[0]), int(x[1])] for x in cells if isinstance(x, (list, tuple)) and len(x) >= 2],
                         'sheltered': bool(rcfg.get('sheltered', False)) if isinstance(rcfg, dict) else False,
+                        'type': str(rcfg.get('type')) if isinstance(rcfg, dict) and rcfg.get('type') is not None else None,
                     }
                 except Exception:
                     continue
@@ -919,7 +1037,7 @@ def api_preproc_setup_save():
                             cells_out.append([r, c2])
                         except Exception:
                             continue
-                roi_map[name] = {'cells': cells_out, 'sheltered': bool(it.get('sheltered', False))}
+                roi_map[name] = {'cells': cells_out, 'sheltered': bool(it.get('sheltered', False)), 'type': str(it.get('type')) if it.get('type') is not None else None}
         setup_obj = {
             'arena_width_cm': _to_int(preproc.get('arena_width_cm')),
             'arena_height_cm': _to_int(preproc.get('arena_height_cm')),

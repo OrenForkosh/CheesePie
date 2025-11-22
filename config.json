@@ -69,11 +69,11 @@
           "bg_frames": 20,
           "bg_quantile": 50,
           "arena": { "x": 150, "y": 100, "width": 800, "height": 800 },
-          "roi": {
-            "Feeder1": { "cells": [[4, 0]], "sheltered": false },
-            "Feeder2": { "cells": [[4, 5]], "sheltered": false },
-            "Water1": { "cells": [[5, 0]], "sheltered": false },
-            "Water2": { "cells": [[5, 5]], "sheltered": false },
+            "roi": {
+            "Feeder1": { "cells": [[4, 0]], "sheltered": false, "type": "Food" },
+            "Feeder2": { "cells": [[4, 5]], "sheltered": false, "type": "Food" },
+            "Water1": { "cells": [[5, 0]], "sheltered": false, "type": "Water" },
+            "Water2": { "cells": [[5, 5]], "sheltered": false, "type": "Water" },
             "Nest": {
               "cells": [
                 [0, 2],
@@ -81,7 +81,8 @@
                 [1, 2],
                 [1, 3]
               ],
-              "sheltered": true
+              "sheltered": true,
+              "type": "Nest"
             }
           }
         }
@@ -96,13 +97,19 @@
       "camera_list": [1, 2, 3, 4, 5, 6, 7, 8],
       "camera_pattern": "CHEESE{cam:02d}",
       "experiments": {
-        "FEMALES_IDS": [
+        "FEMALES_IDs": [
           {
             "end_time": "08:00",
-            "name": "wt",
+            "name": "base2",
             "start_time": "20:00"
-          },
-          "overnight"
+          }
+        ],
+        "PLAYGROUND": [
+          {
+            "name": "females",
+            "end_time": "04:00",
+            "start_time": "16:00"
+          }
         ],
         "SHELTER_SEEKING": [
           "pilot",
@@ -139,11 +146,11 @@
           "bg_frames": 100,
           "bg_quantile": 50,
           "arena": { "x": 150, "y": 100, "width": 800, "height": 800 },
-          "roi": {
-            "Feeder1": { "cells": [[4, 0]], "sheltered": false },
-            "Feeder2": { "cells": [[4, 5]], "sheltered": false },
-            "Water1": { "cells": [[5, 0]], "sheltered": false },
-            "Water2": { "cells": [[5, 5]], "sheltered": false },
+            "roi": {
+            "Feeder1": { "cells": [[4, 0]], "sheltered": false, "type": "Food" },
+            "Feeder2": { "cells": [[4, 5]], "sheltered": false, "type": "Food" },
+            "Water1": { "cells": [[5, 0]], "sheltered": false, "type": "Water" },
+            "Water2": { "cells": [[5, 5]], "sheltered": false, "type": "Water" },
             "Nest": {
               "cells": [
                 [0, 2],
@@ -151,7 +158,8 @@
                 [1, 2],
                 [1, 3]
               ],
-              "sheltered": true
+              "sheltered": true,
+              "type": "Nest"
             }
           }
         }

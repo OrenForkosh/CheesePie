@@ -10,28 +10,57 @@
     const v = ctx.video;
     const overlay = ctx.overlay;
     const rect = overlay.getBoundingClientRect();
-    const vw = v.videoWidth||0, vh=v.videoHeight||0;
-    const scaleX = vw? (rect.width / vw) : 1;
-    const scaleY = vh? (rect.height / vh) : 1;
-    return { rect, vw, vh, scaleX, scaleY };
+    const vw = v.videoWidth||0, vh = v.videoHeight||0;
+    // Compute letterbox-safe content box inside overlay
+    let contentX = 0, contentY = 0, contentW = rect.width, contentH = rect.height;
+    try{
+      if (vw && vh && rect.width && rect.height){
+        const arVideo = vw / vh;
+        const arBox = rect.width / rect.height;
+        if (arBox > arVideo){
+          // Pillarbox: bars left/right; height fits
+          contentH = rect.height;
+          contentW = contentH * arVideo;
+          contentX = (rect.width - contentW) / 2;
+          contentY = 0;
+        } else if (arBox < arVideo){
+          // Letterbox: bars top/bottom; width fits
+          contentW = rect.width;
+          contentH = contentW / arVideo;
+          contentX = 0;
+          contentY = (rect.height - contentH) / 2;
+        } else {
+          contentX = 0; contentY = 0; contentW = rect.width; contentH = rect.height;
+        }
+      }
+    }catch(e){}
+    const scaleX = vw ? (contentW / vw) : 1;
+    const scaleY = vh ? (contentH / vh) : 1;
+    return { rect, vw, vh, scaleX, scaleY, contentX, contentY, contentW, contentH };
   }
 
   function updateHandles(ctx){
     try{
       const hTL = ctx.hTL, hBR = ctx.hBR;
       if (!hTL || !hBR){ return; }
-      if (!(State.tl && State.br)){
-        hTL.style.display = 'none';
-        hBR.style.display = 'none';
-        return;
-      }
       const m = overlayMetrics(ctx);
-      const x1 = Math.round(State.tl.x * m.scaleX);
-      const y1 = Math.round(State.tl.y * m.scaleY);
-      const x2 = Math.round(State.br.x * m.scaleX);
-      const y2 = Math.round(State.br.y * m.scaleY);
-      hTL.style.left = x1 + 'px'; hTL.style.top = y1 + 'px'; hTL.style.display = '';
-      hBR.style.left = x2 + 'px'; hBR.style.top = y2 + 'px'; hBR.style.display = '';
+      // Show TL if present
+      if (State.tl){
+        const x1 = Math.round(m.contentX + State.tl.x * m.scaleX);
+        const y1 = Math.round(m.contentY + State.tl.y * m.scaleY);
+        hTL.style.left = x1 + 'px'; hTL.style.top = y1 + 'px'; hTL.style.display = '';
+      } else {
+        hTL.style.display = 'none';
+      }
+      // Show BR if present, otherwise show hoverBR while marking
+      const brCand = State.br || ctx._hoverBR;
+      if (brCand){
+        const x2 = Math.round(m.contentX + brCand.x * m.scaleX);
+        const y2 = Math.round(m.contentY + brCand.y * m.scaleY);
+        hBR.style.left = x2 + 'px'; hBR.style.top = y2 + 'px'; hBR.style.display = '';
+      } else {
+        hBR.style.display = 'none';
+      }
       // Active handle highlight
       hTL.classList.toggle('active', ctx.activeHandle === 'tl');
       hBR.classList.toggle('active', ctx.activeHandle === 'br');
@@ -60,13 +89,25 @@
       if (!(State.tl && (State.br||ctx._hoverBR))) return;
       const vw = v.videoWidth||0, vh = v.videoHeight||0;
       if (!vw || !vh) return;
-      const scaleX = rect.width / vw;
-      const scaleY = rect.height / vh;
+      const m = overlayMetrics(ctx);
+      const scaleX = m.scaleX;
+      const scaleY = m.scaleY;
       const br = State.br || ctx._hoverBR;
-      const x = State.tl.x * scaleX;
-      const y = State.tl.y * scaleY;
+      const x = m.contentX + State.tl.x * scaleX;
+      const y = m.contentY + State.tl.y * scaleY;
       const w = (br.x - State.tl.x) * scaleX;
       const h = (br.y - State.tl.y) * scaleY;
+
+      // Subtle shaded mask outside the selected arena within the content box
+      try {
+        g.save();
+        // Shade only the content (video) area, not the letterbox bars
+        g.fillStyle = 'rgba(0, 0, 0, 0.35)';
+        g.fillRect(Math.round(m.contentX), Math.round(m.contentY), Math.round(m.contentW), Math.round(m.contentH));
+        // Clear the selected arena area to reveal the video fully
+        g.clearRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
+        g.restore();
+      } catch(e) {}
       g.strokeStyle = '#4f8cff'; g.lineWidth = 2; g.strokeRect(x, y, w, h);
 
       // Draw grid when not in marking mode
@@ -112,10 +153,16 @@
   function handleClick(ctx, ev){
     if (!State.marking) return;
     const overlay = ctx.overlay;
-    const r = overlay.getBoundingClientRect();
     const v = ctx.video;
-    const px = Util.clamp(Math.round((ev.clientX - r.left) / r.width * (v.videoWidth||1)), 0, (v.videoWidth||1)-1);
-    const py = Util.clamp(Math.round((ev.clientY - r.top) / r.height * (v.videoHeight||1)), 0, (v.videoHeight||1)-1);
+    const ob = overlay.getBoundingClientRect();
+    const m = overlayMetrics(ctx);
+    // Map from overlay CSS coords to intrinsic video pixels accounting for letterboxing
+    const ex = ev.clientX - ob.left - m.contentX;
+    const ey = ev.clientY - ob.top - m.contentY;
+    const normX = ex / Math.max(1, m.contentW);
+    const normY = ey / Math.max(1, m.contentH);
+    const px = Util.clamp(Math.round(normX * (v.videoWidth||1)), 0, (v.videoWidth||1)-1);
+    const py = Util.clamp(Math.round(normY * (v.videoHeight||1)), 0, (v.videoHeight||1)-1);
     if (!State.tl){ State.tl = {x:px, y:py}; State.br = null; ctx._hoverBR = null; }
     else if (!State.br){
       State.br = {x: Math.max(px, State.tl.x+MIN_W), y: Math.max(py, State.tl.y+MIN_H)};
@@ -129,9 +176,14 @@
     if (!State.marking || State.br) return;
     const overlay = ctx.overlay;
     const v = ctx.video;
-    const r = overlay.getBoundingClientRect();
-    const px = Util.clamp(Math.round((ev.clientX - r.left) / r.width * (v.videoWidth||1)), 0, (v.videoWidth||1)-1);
-    const py = Util.clamp(Math.round((ev.clientY - r.top) / r.height * (v.videoHeight||1)), 0, (v.videoHeight||1)-1);
+    const ob = overlay.getBoundingClientRect();
+    const m = overlayMetrics(ctx);
+    const ex = ev.clientX - ob.left - m.contentX;
+    const ey = ev.clientY - ob.top - m.contentY;
+    const normX = ex / Math.max(1, m.contentW);
+    const normY = ey / Math.max(1, m.contentH);
+    const px = Util.clamp(Math.round(normX * (v.videoWidth||1)), 0, (v.videoWidth||1)-1);
+    const py = Util.clamp(Math.round(normY * (v.videoHeight||1)), 0, (v.videoHeight||1)-1);
     ctx._hoverBR = { x: Math.max(px, (State.tl?State.tl.x:0)+MIN_W), y: Math.max(py, (State.tl?State.tl.y:0)+MIN_H) };
     drawOverlay(ctx);
   }
@@ -175,9 +227,13 @@
     function onMove(ev){
       if (!dragging) return;
       const m = overlayMetrics(ctx);
-      const r = ctx.overlay.getBoundingClientRect();
-      const px = Util.clamp(Math.round((ev.clientX - r.left) / r.width * (m.vw||1)), 0, (m.vw||1)-1);
-      const py = Util.clamp(Math.round((ev.clientY - r.top) / r.height * (m.vh||1)), 0, (m.vh||1)-1);
+      const ob = ctx.overlay.getBoundingClientRect();
+      const ex = ev.clientX - ob.left - m.contentX;
+      const ey = ev.clientY - ob.top - m.contentY;
+      const normX = ex / Math.max(1, m.contentW);
+      const normY = ey / Math.max(1, m.contentH);
+      const px = Util.clamp(Math.round(normX * (m.vw||1)), 0, (m.vw||1)-1);
+      const py = Util.clamp(Math.round(normY * (m.vh||1)), 0, (m.vh||1)-1);
       if (!(State.tl && State.br)) return;
       if (corner==='tl'){
         State.tl = { x: Math.min(px, State.br.x-MIN_W), y: Math.min(py, State.br.y-MIN_H) };

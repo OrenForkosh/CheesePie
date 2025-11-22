@@ -20,15 +20,51 @@
     } catch(e){ return '#4f8cff'; }
   }
 
+  // Infer a default region type from its name
+  const REGION_TYPES = ['Open','Food','Water','Nest','Ramp','Wall','Enrichment'];
+  function inferTypeByName(name){
+    try{
+      const n = String(name||'').toLowerCase();
+      if (!n) return 'Open';
+      if (/^(feeder|feed)/.test(n)) return 'Food';
+      if (/^(food)/.test(n)) return 'Food';
+      if (/^(water|drink)/.test(n)) return 'Water';
+      if (/^(nest|home|house)/.test(n)) return 'Nest';
+      if (/^(ramp)/.test(n)) return 'Ramp';
+      if (/^(wall|barrier)/.test(n)) return 'Wall';
+      if (/^(enrich|toy|tunnel|tube)/.test(n)) return 'Enrichment';
+      return 'Open';
+    } catch(e){ return 'Open'; }
+  }
+
   function overlayMetrics(){
     try{
       const video = U.$('#pp-video');
       const overlay = U.$('#pp-overlay');
       const rect = overlay.getBoundingClientRect();
       const vw = video.videoWidth||0, vh = video.videoHeight||0;
-      const scaleX = vw? (rect.width / vw) : 1;
-      const scaleY = vh? (rect.height / vh) : 1;
-      return { video, overlay, rect, vw, vh, scaleX, scaleY };
+      // Letterbox/pillarbox-aware content box inside overlay
+      let contentX = 0, contentY = 0, contentW = rect.width, contentH = rect.height;
+      if (vw && vh && rect.width && rect.height){
+        const arVideo = vw / vh;
+        const arBox = rect.width / rect.height;
+        if (arBox > arVideo){
+          // Pillarbox left/right; height fits
+          contentH = rect.height;
+          contentW = contentH * arVideo;
+          contentX = (rect.width - contentW) / 2;
+          contentY = 0;
+        } else if (arBox < arVideo){
+          // Letterbox top/bottom; width fits
+          contentW = rect.width;
+          contentH = contentW / arVideo;
+          contentX = 0;
+          contentY = (rect.height - contentH) / 2;
+        }
+      }
+      const scaleX = vw ? (contentW / vw) : 1;
+      const scaleY = vh ? (contentH / vh) : 1;
+      return { video, overlay, rect, vw, vh, scaleX, scaleY, contentX, contentY, contentW, contentH };
     } catch(e){ return {}; }
   }
 
@@ -63,6 +99,7 @@
         out[String(name)] = {
           enabled: !!r.enabled,
           sheltered: !!r.sheltered,
+          type: (typeof r.type === 'string' && r.type) ? r.type : inferTypeByName(String(name)),
           cells: Array.isArray(r.cells) ? r.cells.map((c)=>[parseInt(c[0])|0, parseInt(c[1])|0]) : [],
         };
       });
@@ -77,6 +114,7 @@
       out[k] = {
         enabled: !!r.enabled,
         sheltered: !!r.sheltered,
+        type: (typeof r.type === 'string' && r.type) ? r.type : inferTypeByName(k),
         cells: Array.from(new Set((r.cells||[]).map((c)=> (c[0]|0)+','+(c[1]|0) )))
                .map((s)=> s.split(',').map((x)=>parseInt(x,10)))
       };
@@ -93,7 +131,7 @@
       const bbox = getArenaBBox();
       const grid = getGrid();
       if (!bbox || !grid.cols || !grid.rows) return;
-      const x = bbox.x * m.scaleX, y = bbox.y * m.scaleY;
+      const x = m.contentX + bbox.x * m.scaleX, y = m.contentY + bbox.y * m.scaleY;
       const w = bbox.width * m.scaleX, h = bbox.height * m.scaleY;
       const cw = w / grid.cols, ch = h / grid.rows;
       // Draw all regions in muted style (each with its own color)
@@ -173,13 +211,18 @@
       const bbox = getArenaBBox();
       const grid = getGrid();
       if (!bbox || !grid.cols || !grid.rows) return;
-      const px = U.clamp(Math.round((ev.clientX - m.rect.left) / m.rect.width * (m.vw||1)), 0, (m.vw||1)-1);
-      const py = U.clamp(Math.round((ev.clientY - m.rect.top) / m.rect.height * (m.vh||1)), 0, (m.vh||1)-1);
+      // Map clicks inside overlay to intrinsic pixels using content box
+      const ex = (ev.clientX - m.rect.left) - m.contentX;
+      const ey = (ev.clientY - m.rect.top) - m.contentY;
+      const normX = ex / Math.max(1, m.contentW);
+      const normY = ey / Math.max(1, m.contentH);
+      const px = U.clamp(Math.round(normX * (m.vw||1)), 0, (m.vw||1)-1);
+      const py = U.clamp(Math.round(normY * (m.vh||1)), 0, (m.vh||1)-1);
       // Position relative to bbox; allow outside-of-bbox cells by extending grid virtually
       const dx = px - bbox.x, dy = py - bbox.y;
       const col = Math.floor(dx * grid.cols / Math.max(1,bbox.width));
       const row = Math.floor(dy * grid.rows / Math.max(1,bbox.height));
-      const r = ctx.regions[ctx.editing] || (ctx.regions[ctx.editing] = { enabled:true, sheltered:false, cells:[] });
+      const r = ctx.regions[ctx.editing] || (ctx.regions[ctx.editing] = { enabled:true, sheltered:false, type:'Open', cells:[] });
       const key = row+','+col;
       const idx = r.cells.findIndex((c)=> (c[0]+','+c[1]) === key);
       if (idx === -1) r.cells.push([row, col]); else r.cells.splice(idx,1);
@@ -252,8 +295,10 @@
       // Actions
       const tdAct = document.createElement('td'); tdAct.style.padding='6px';
       const editBtn = document.createElement('button'); editBtn.className='btn mini'; editBtn.textContent = (ctx.editing===name)?'Done':'Edit';
+      // Keep width stable when toggling label between 'Edit' and 'Done'
+      try { editBtn.style.minWidth = '56px'; } catch(e) {}
       editBtn.addEventListener('click', ()=>{ if (ctx.editing===name) exitEdit(ctx); else enterEdit(ctx, name); });
-      const delBtn = document.createElement('button'); delBtn.className='btn mini'; delBtn.style.marginLeft='6px'; delBtn.textContent='Delete';
+      const delBtn = document.createElement('button'); delBtn.className='btn mini'; delBtn.style.marginLeft='6px'; delBtn.textContent='✕'; delBtn.title = 'Delete'; delBtn.setAttribute('aria-label','Delete');
       delBtn.addEventListener('click', ()=>{ deleteRegion(ctx, name); });
       tdAct.appendChild(editBtn); tdAct.appendChild(delBtn);
 
@@ -271,24 +316,60 @@
 
   function addRegion(ctx){
     const name = uniqueRegionName(ctx, 'Region');
-    ctx.regions[name] = { enabled: true, sheltered: false, cells: [] };
+    ctx.regions[name] = { enabled: true, sheltered: false, type: 'Open', cells: [] };
     renderTable(ctx);
     if (ctx.showAll) try{ document.dispatchEvent(new CustomEvent('preproc:request-overlay-redraw')); }catch(e){}
     scheduleSave(ctx);
   }
 
   function renameRegion(ctx, oldName){
-    const current = String(oldName||'');
-    const next = window.prompt('Rename region:', current);
-    if (!next || next.trim() === '' || next === current) return;
-    const name = next.trim();
-    if (ctx.regions[name]){ alert('A region with that name already exists.'); return; }
-    ctx.regions[name] = ctx.regions[oldName];
-    delete ctx.regions[oldName];
-    if (ctx.editing === oldName) ctx.editing = name;
-    renderTable(ctx);
-    if (ctx.showAll || ctx.editing) try{ document.dispatchEvent(new CustomEvent('preproc:request-overlay-redraw')); }catch(e){}
-    scheduleSave(ctx);
+    try{
+      const current = String(oldName||'');
+      const r = ctx.regions[oldName] || { type: 'Open' };
+      const TYPES = ['Open','Food','Water','Nest','Ramp','Wall','Enrichment'];
+      const ov = document.createElement('div');
+      ov.style.position='fixed'; ov.style.left='0'; ov.style.top='0'; ov.style.right='0'; ov.style.bottom='0';
+      ov.style.background='rgba(0,0,0,0.4)'; ov.style.zIndex='9999'; ov.style.display='flex'; ov.style.alignItems='center'; ov.style.justifyContent='center';
+      const panel = document.createElement('div');
+      panel.style.background='var(--panel)'; panel.style.color='var(--text)'; panel.style.padding='16px'; panel.style.borderRadius='10px'; panel.style.minWidth='280px'; panel.style.boxShadow='0 8px 24px var(--shadow)';
+      const title = document.createElement('div'); title.textContent='Edit Region'; title.style.fontWeight='700'; title.style.marginBottom='8px';
+      const nameLbl = document.createElement('label'); nameLbl.textContent='Name'; nameLbl.className='muted';
+      const nameInput = document.createElement('input'); nameInput.type='text'; nameInput.value=current; nameInput.style.padding='6px 8px'; nameInput.style.border='1px solid var(--border)'; nameInput.style.borderRadius='6px'; nameInput.style.width='100%';
+      const typeLbl = document.createElement('label'); typeLbl.textContent='Type'; typeLbl.className='muted'; typeLbl.style.marginTop='8px';
+      const typeSel = document.createElement('select'); typeSel.style.padding='6px 8px'; typeSel.style.border='1px solid var(--border)'; typeSel.style.borderRadius='6px'; typeSel.style.width='100%';
+      TYPES.forEach(t=>{ const opt=document.createElement('option'); opt.value=t; opt.textContent=t; typeSel.appendChild(opt); });
+      const inferredNow = (r.type && TYPES.indexOf(r.type)!==-1) ? r.type : inferTypeByName(current);
+      typeSel.value = inferredNow;
+      const actions = document.createElement('div'); actions.style.display='flex'; actions.style.gap='8px'; actions.style.justifyContent='flex-end'; actions.style.marginTop='12px';
+      const cancel = document.createElement('button'); cancel.className='btn'; cancel.textContent='Cancel';
+      const ok = document.createElement('button'); ok.className='btn primary'; ok.textContent='OK';
+      actions.appendChild(cancel); actions.appendChild(ok);
+      panel.appendChild(title); panel.appendChild(nameLbl); panel.appendChild(nameInput); panel.appendChild(typeLbl); panel.appendChild(typeSel); panel.appendChild(actions);
+      ov.appendChild(panel); document.body.appendChild(ov);
+      // Auto-update type based on name unless user picks a type
+      let userChangedType = false;
+      typeSel.addEventListener('change', ()=>{ userChangedType = true; });
+      nameInput.addEventListener('input', ()=>{ try{ if (!userChangedType) typeSel.value = inferTypeByName(nameInput.value); }catch(e){} });
+      cancel.addEventListener('click', ()=>{ try{ document.body.removeChild(ov); }catch(e){} });
+      ok.addEventListener('click', ()=>{
+        try{
+          const nextName = (nameInput.value||'').trim();
+          if (!nextName){ alert('Name cannot be empty.'); return; }
+          if (nextName !== current && ctx.regions[nextName]){ alert('A region with that name already exists.'); return; }
+          const chosenType = userChangedType ? typeSel.value : inferTypeByName(nextName) || typeSel.value;
+          const newObj = Object.assign({}, r, { type: chosenType });
+          if (nextName !== current){
+            ctx.regions[nextName] = newObj; delete ctx.regions[oldName]; if (ctx.editing === oldName) ctx.editing = nextName;
+          } else {
+            ctx.regions[oldName] = newObj;
+          }
+          renderTable(ctx);
+          if (ctx.showAll || ctx.editing) try{ document.dispatchEvent(new CustomEvent('preproc:request-overlay-redraw')); }catch(e){}
+          scheduleSave(ctx);
+        } finally { try{ document.body.removeChild(ov); }catch(e){} }
+      });
+      try{ nameInput.focus(); nameInput.select(); }catch(e){}
+    }catch(e){}
   }
 
   function deleteRegion(ctx, name){
@@ -360,7 +441,7 @@
       // Legacy: roi_sets list at facility level
       const legacy = Array.isArray(fcfg.roi_sets) ? fcfg.roi_sets : [];
       const out = {};
-      legacy.forEach((it)=>{ try{ if (it && it.name){ out[it.name] = { cells: it.cells||[], sheltered: !!it.sheltered }; } }catch(e){} });
+      legacy.forEach((it)=>{ try{ if (it && it.name){ out[it.name] = { cells: it.cells||[], sheltered: !!it.sheltered, type: (it.type||'Open') }; } }catch(e){} });
       return out;
     } catch(e){ return {}; }
   }

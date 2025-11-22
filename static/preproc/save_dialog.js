@@ -6,6 +6,8 @@
   function $(sel, el){ return (el||document).querySelector(sel); }
   function el(tag, props){ const e=document.createElement(tag); if(props){ Object.assign(e, props); } return e; }
 
+  // (toast removed per request)
+
   function parseDayPattern(name){
     try{
       const m = name.match(/^(.*?\.day)(\d+)(\..*)$/i);
@@ -191,12 +193,45 @@
     }
     status.textContent = 'Done';
     if (bar) bar.style.width = '100%';
+    // Replace footer buttons with a single OK to let user review previews
+    try {
+      const runBtn = document.getElementById('pp-save-run');
+      const cancelBtn = document.getElementById('pp-save-cancel');
+      const footer = runBtn ? runBtn.parentNode : (cancelBtn ? cancelBtn.parentNode : null);
+      if (runBtn) runBtn.style.display = 'none';
+      if (cancelBtn) cancelBtn.style.display = 'none';
+      if (footer && !document.getElementById('pp-save-ok')){
+        const ok = document.createElement('button');
+        ok.id = 'pp-save-ok';
+        ok.className = 'btn primary';
+        ok.textContent = 'OK';
+        ok.addEventListener('click', function(){
+          const ovNow = document.getElementById('pp-save-overlay');
+          if (ovNow && ovNow.parentNode) ovNow.parentNode.removeChild(ovNow);
+        });
+        footer.appendChild(ok);
+      }
+    } catch(e){}
+    // No toast; user reviews previews then clicks OK
   }
 
   async function open(){
     const ov = buildOverlay();
     const listEl = $('#pp-save-list'); const groupEl = $('#pp-save-group'); const countEl = $('#pp-save-count');
     const vp = (Preproc.State && Preproc.State.videoPath) || '';
+    // Determine preview placeholder aspect ratio from current video's background canvas if available
+    let prevW = 120;
+    let prevAR = 4/3; // default aspect ratio
+    try {
+      const bgCanvas = document.getElementById('bg-canvas');
+      if (bgCanvas && bgCanvas.width && bgCanvas.height){
+        prevAR = Math.max(0.01, (bgCanvas.width / bgCanvas.height));
+      } else {
+        const pv = document.getElementById('pp-video');
+        if (pv && pv.videoWidth && pv.videoHeight){ prevAR = Math.max(0.01, (pv.videoWidth / pv.videoHeight)); }
+      }
+    } catch(e){}
+    const prevH = Math.max(1, Math.round(prevW / prevAR));
     if (!vp){ groupEl.textContent='No video selected'; return; }
     const grp = await findGroupDays(vp);
     const items = (grp && grp.items) || [];
@@ -214,7 +249,17 @@
         const times = el('div'); times.className='pp-save-times';
         try{ const s = ($('#exp-start')&&$('#exp-start').value)||''; const e = ($('#exp-end')&&$('#exp-end').value)||''; times.textContent = `Start: ${s||'—'}  End: ${e||'—'}`; }catch(e){}
         metaWrap.appendChild(name); metaWrap.appendChild(times);
-        const preview = el('img'); preview.className='pp-save-preview'; preview.alt='Background preview'; preview.style.width='120px'; preview.style.height='auto'; preview.style.border='1px solid var(--border)'; preview.style.borderRadius='4px'; preview.style.background='#000'; preview.style.objectFit='cover';
+        const preview = el('img'); preview.className='pp-save-preview';
+        // Avoid broken-image icon and alt text; start with transparent pixel
+        try{ preview.alt = ''; }catch(e){}
+        try{ preview.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='; }catch(e){}
+        // Reserve space with the same proportions as the background image
+        preview.style.width = prevW + 'px';
+        preview.style.height = prevH + 'px';
+        preview.style.border = '1px solid var(--border)';
+        preview.style.borderRadius = '4px';
+        preview.style.background = 'var(--border)'; // theme-grey placeholder
+        preview.style.objectFit = 'contain';
         row.appendChild(cb); row.appendChild(metaWrap); row.appendChild(preview);
         listEl.appendChild(row);
         it._cb = cb;

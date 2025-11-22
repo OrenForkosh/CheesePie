@@ -82,17 +82,40 @@
         var frames = [];
         var origT = (v && v.currentTime) || 0;
         for (let i=0;i<times.length;i++){
+          // Seek hidden worker video and grab pixel data
           await new Promise(function(resolve){
-            function onSeeked(){ try{ wctx.drawImage(hv, 0, 0, w, h); var id=wctx.getImageData(0,0,w,h); frames.push(id.data.slice(0)); }catch(e){} hv.removeEventListener('seeked', onSeeked); resolve(); }
+            function onSeeked(){
+              try{
+                wctx.drawImage(hv, 0, 0, w, h);
+                var id=wctx.getImageData(0,0,w,h);
+                frames.push(id.data.slice(0));
+              }catch(e){}
+              hv.removeEventListener('seeked', onSeeked);
+              resolve();
+            }
             hv.addEventListener('seeked', onSeeked);
-            try{ hv.currentTime = Math.min(Math.max(0.05, times[i]), Math.max(0.05, (hv.duration||10)-0.05)); }catch(e){ hv.removeEventListener('seeked', onSeeked); resolve(); }
+            try{
+              hv.currentTime = Math.min(Math.max(0.05, times[i]), Math.max(0.05, (hv.duration||10)-0.05));
+            }catch(e){ hv.removeEventListener('seeked', onSeeked); resolve(); }
           });
-          // Show the sampled frame in the preview panel
+          // Show the sampled frame in the preview panel and wait until it renders
           try{
             if (v){
               var tShow = Math.min(Math.max(0.05, times[i]), Math.max(0.05, (v.duration||10)-0.05));
               v.pause();
-              v.currentTime = tShow;
+              await new Promise(function(resolve){
+                var done = function(){
+                  // Wait a couple of RAFs to ensure paint
+                  try{ requestAnimationFrame(function(){ requestAnimationFrame(resolve); }); }
+                  catch(e){ resolve(); }
+                };
+                var handler = function(){ v.removeEventListener('seeked', handler); done(); };
+                try{
+                  v.addEventListener('seeked', handler, { once:true });
+                  if (typeof v.fastSeek === 'function') { try{ v.fastSeek(tShow); }catch(e){ v.currentTime = tShow; } }
+                  else { v.currentTime = tShow; }
+                }catch(e){ resolve(); }
+              });
             }
           } catch(e){}
           setStatus('Sampling frames… ' + (i+1) + '/' + times.length + ' (showing)');

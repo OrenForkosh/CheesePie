@@ -79,8 +79,16 @@
           .then(d=>{
             if (!d || d.error) return;
             const meta = d.meta || {};
-            if (startEl && typeof meta.start_time === 'string') startEl.value = meta.start_time;
-            if (endEl && typeof meta.end_time === 'string') endEl.value = meta.end_time;
+            try{
+              if (startEl){
+                if (typeof meta.start_time === 'string'){ startEl.value = meta.start_time; }
+                else if (typeof meta.start_time === 'number' && isFinite(meta.start_time)) { startEl.value = formatMs(meta.start_time * 1000); }
+              }
+              if (endEl){
+                if (typeof meta.end_time === 'string'){ endEl.value = meta.end_time; }
+                else if (typeof meta.end_time === 'number' && isFinite(meta.end_time)) { endEl.value = formatMs(meta.end_time * 1000); }
+              }
+            }catch(e){}
           })
           .catch(()=>{});
       } catch(e){}

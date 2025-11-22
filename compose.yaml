@@ -15,5 +15,5 @@ services:
     volumes:
       - ./:/srv/cheesepie
       - /volume1/homes/MOUSE/surveillance:/mnt/MOUSE/surveillance:ro
-      - /lab/Datasets/Mice/HUJI/experiments:/mnt/MOUSE/experiments:rw
+      - /volume1/lab/Datasets/Mice/HUJI/experiments/:/mnt/MOUSE/experiments:rw
     restart: unless-stopped

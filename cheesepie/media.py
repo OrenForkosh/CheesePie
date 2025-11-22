@@ -91,6 +91,7 @@ def probe_media(path: Path) -> Dict[str, Any]:
                 "width": v.get('width'),
                 "height": v.get('height'),
                 "fps": fps,
+                "nb_frames": (int(v.get('nb_frames')) if (v.get('nb_frames') and str(v.get('nb_frames')).isdigit()) else None),
                 "pix_fmt": v.get('pix_fmt'),
             },
             "audio": {

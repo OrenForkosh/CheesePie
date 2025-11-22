@@ -476,6 +476,15 @@
               // Update gating for Regions/Save
               setTabsEnabled(!!(facilitySel && facilitySel.value));
             }
+            // Restore Timing fields if present in state
+            try{
+              if (d.meta && typeof d.meta === 'object'){
+                var stEl = U.$('#exp-start');
+                var enEl = U.$('#exp-end');
+                if (stEl && typeof d.meta.start_time === 'string' && d.meta.start_time){ stEl.value = d.meta.start_time; }
+                if (enEl && typeof d.meta.end_time === 'string' && d.meta.end_time){ enEl.value = d.meta.end_time; }
+              }
+            }catch(e){}
             if (d.background){
               try{
                 var bgCanvas = document.getElementById('bg-canvas');
