@@ -8,10 +8,6 @@
   </div>
   <div class="controls">
     <div class="control-group">
-      <label for="facility-select">Facility</label>
-      <select id="facility-select"></select>
-    </div>
-    <div class="control-group">
       <label for="source-dir">Source Folder</label>
       <div style="display: flex; gap: 8px; align-items: center">
         <input
@@ -51,10 +47,6 @@
         readonly
       />
     </div>
-    <div class="control-group">
-      <label>&nbsp;</label>
-      <div class="muted">Used in filename: expNNNN</div>
-    </div>
 
     <div class="control-group">
       <label for="start-date">Start Date</label>
@@ -77,14 +69,36 @@
     <div class="control-group" style="grid-column: 1 / -1">
       <label>Cameras</label>
       <div id="cameras-wrap">
-        <div id="cams-topline" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap">
+        <div
+          id="cams-topline"
+          style="
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+          "
+        >
           <div class="cam-toolbar" id="cams-toolbar" hidden>
             <button type="button" class="btn mini" id="cams-all">All</button>
             <button type="button" class="btn mini" id="cams-none">None</button>
             <div class="cam-row" id="cams-row"></div>
           </div>
-          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
-            <button class="btn primary" id="open-import" title="Open import dialog">Import</button>
+          <div
+            style="
+              display: flex;
+              align-items: center;
+              gap: 8px;
+              flex-wrap: wrap;
+            "
+          >
+            <button
+              class="btn primary"
+              id="open-import"
+              title="Open import dialog"
+            >
+              Import
+            </button>
           </div>
         </div>
       </div>
@@ -96,16 +110,70 @@
 </div>
 
 <!-- Import Modal -->
-<div id="import-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:1000; align-items:center; justify-content:center; padding: 24px;">
-  <div class="panel" style="margin:0; width: min(1100px, 96vw); max-height: 90vh; overflow:auto; box-shadow:0 10px 30px rgba(0,0,0,0.25); border-radius: 10px;">
-    <div class="panel-header" style="display:flex; align-items:center; justify-content:space-between">
-      <div style="display:flex; align-items:center; gap:8px">
-        <button class="btn" id="import-close" title="Close" style="font-weight:700; width:32px; height:32px; padding:0; display:inline-flex; align-items:center; justify-content:center">✕</button>
-        <h1 style="margin:0">Import</h1>
+<div
+  id="import-modal"
+  style="
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  "
+>
+  <div
+    class="panel"
+    style="
+      margin: 0;
+      width: min(1100px, 96vw);
+      max-height: 90vh;
+      overflow: auto;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+      border-radius: 10px;
+    "
+  >
+    <div
+      class="panel-header"
+      style="display: flex; align-items: center; justify-content: space-between"
+    >
+      <div style="display: flex; align-items: center; gap: 8px">
+        <button
+          class="btn"
+          id="import-close"
+          title="Close"
+          style="
+            font-weight: 700;
+            width: 32px;
+            height: 32px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+          "
+        >
+          ✕
+        </button>
+        <h1 style="margin: 0">Import</h1>
       </div>
-      <div style="display:flex; gap:8px; align-items:center">
-        <button class="btn primary" id="import-btn" disabled title="Complete selections to enable scan">Rescan</button>
-        <button class="btn" id="run-btn" disabled title="Run is available after a successful scan">Run</button>
+      <div style="display: flex; gap: 8px; align-items: center">
+        <button
+          class="btn primary"
+          id="import-btn"
+          disabled
+          title="Complete selections to enable scan"
+        >
+          Rescan
+        </button>
+        <button
+          class="btn"
+          id="run-btn"
+          disabled
+          title="Run is available after a successful scan"
+        >
+          Run
+        </button>
       </div>
     </div>
     <div id="import-modal-body" style="padding: 8px 12px"></div>
@@ -118,7 +186,7 @@
     const FACS = (CFG.importer && CFG.importer.facilities) || {};
 
     const $ = (s, el = document) => el.querySelector(s);
-    const facilitySel = $("#facility-select");
+    const facilitySel = document.getElementById("app-facility");
     const experimentSel = $("#experiment-select");
     const treatmentSel = $("#treatment-select");
     const srcDir = $("#source-dir");
@@ -134,12 +202,60 @@
     const batchInput = $("#batch-input");
     const listBtn = document.getElementById("list-btn");
     const camsHint = $("#cameras-hint");
-    const importBtn = $("#import-btn");
+    const importBtn = document.getElementById("import-btn");
+    const openImportBtn = document.getElementById('open-import');
     const runTopBtn = document.getElementById("run-btn");
     let scanController = null;
     let scanAnimTimer = null;
     let scanDotsTimer = null;
-    let scanDotsBase = '';
+    let scanDotsBase = "";
+    // Resume any in-progress scan/encode when returning to Importer
+    async function resumeJobs(){
+      try{
+        let jid = null;
+        try{ const cur = await fetch('/api/import/scan_prepare/current').then(r=>r.json()).catch(()=>null); if (cur && cur.ok && cur.job_id) jid = cur.job_id; }catch{}
+        if (!jid){ try{ jid = localStorage.getItem('cheesepie.scan_job') || ''; }catch{} }
+        if (jid){
+          window.__SCAN_JOB_ID__ = jid;
+          ensureScanPanel(); ensureDaysPanel();
+          try{ const btn=document.getElementById('open-import'); if (btn){ btn.disabled=false; btn.textContent='Cancel'; btn.style.background='#b71c1c'; btn.style.color='#fff'; btn.dataset.running='1'; } }catch{}
+          try{ if (scanPollTimer){ clearInterval(scanPollTimer); } }catch{}
+          // Make sure the Available Files panel is visible when resuming
+          try{
+            const content = document.getElementById('scan-content');
+            const btn = document.getElementById('scan-toggle-btn');
+            const panel = document.getElementById('import-scan');
+            if (content){ content.style.display = 'block'; }
+            if (btn){ btn.textContent = 'Hide'; }
+            if (panel){ panel.dataset.collapsed = '0'; }
+          }catch{}
+          scanPollTimer = setInterval(()=>{ pollScanStatus(jid); }, 1500);
+          // Trigger an immediate poll instead of waiting for the first interval
+          try{ await pollScanStatus(jid); }catch{}
+        }
+      }catch{}
+      try{
+        let ejid = null; try{ ejid = localStorage.getItem('cheesepie.encode_job') || ''; }catch{}
+        if (ejid){
+          encodeJobId = ejid; try{ window.__ENCODE_JOB_ID__ = ejid; }catch{};
+          // Reflect Stop/Cancel state on the top Import button
+          try{ const btn=document.getElementById('open-import'); if (btn){ btn.disabled=false; btn.textContent='Cancel'; btn.style.background='#b71c1c'; btn.style.color='#fff'; btn.dataset.running='1'; } }catch{}
+          pollEncode();
+        }
+      }catch{}
+    }
+
+    // Ensure panels exist immediately so resume shows something without clicks
+    try{ ensureScanPanel(); ensureDaysPanel(); }catch(e){}
+    // Default the scan panel to visible on load (can be toggled later)
+    try{
+      const content = document.getElementById('scan-content');
+      const btn = document.getElementById('scan-toggle-btn');
+      const panel = document.getElementById('import-scan');
+      if (content){ content.style.display = 'block'; }
+      if (btn){ btn.textContent = 'Hide'; }
+      if (panel){ panel.dataset.collapsed = '0'; }
+    }catch(e){}
 
     function pad2(n) {
       return String(n).padStart(2, "0");
@@ -221,7 +337,6 @@
 
     function updateUrl() {
       const params = new URLSearchParams();
-      if (facilitySel.value) params.set("facility", facilitySel.value);
       if (experimentSel.value) params.set("experiment", experimentSel.value);
       if (treatmentSel.value) params.set("treatment", treatmentSel.value);
       const b = (batchInput.value || "").trim();
@@ -247,7 +362,8 @@
 
     async function initFromUrl() {
       const params = new URLSearchParams(location.search);
-      const fac = (params.get("facility") || "").toLowerCase();
+      const fac =
+        params.get("facility") || (facilitySel && facilitySel.value) || "";
       const exp = (params.get("experiment") || "").toUpperCase();
       const trt = (params.get("treatment") || "").toLowerCase();
       const b = params.get("batch") || "";
@@ -292,9 +408,57 @@
         validate();
       } else {
         ensureDefaultDates();
+        // If header already selected a facility, apply it now (without emitting 'change')
+        if (facilitySel && facilitySel.value) {
+          try {
+            refreshFacility();
+          } catch (e) {}
+        }
         updateUrl();
       }
     }
+
+    // React to global facility changes from header
+    function refreshFacility() {
+      try {
+        const fac = facilitySel && facilitySel.value;
+        if (!fac || !FACS[fac]) return;
+        srcDir.value = combinedSourcePattern(fac);
+        populateExperiments(fac);
+        populateCameras(fac);
+        const exps = Object.keys((FACS[fac] || {}).experiments || {}).sort();
+        if (exps.length > 0) {
+          experimentSel.value = exps[0];
+          populateTreatments(fac, experimentSel.value);
+          const trts =
+            ((FACS[fac] || {}).experiments || {})[experimentSel.value] || [];
+          if (trts.length > 0) {
+            treatmentSel.value = trts[0];
+            applyTreatmentDefaults(
+              fac,
+              experimentSel.value,
+              treatmentSel.value
+            );
+          } else {
+            startTime.value = "";
+            endTime.value = "";
+          }
+        } else {
+          experimentSel.value = "";
+          treatmentSel.value = "";
+          startTime.value = "";
+          endTime.value = "";
+        }
+        validate();
+        updateUrl();
+      } catch (e) {}
+    }
+    document.addEventListener("app:facility-changed", function () {
+      try {
+        updateUrl();
+        refreshFacility();
+      } catch (e) {}
+    });
 
     function setDisabled(el, dis) {
       el.disabled = !!dis;
@@ -302,15 +466,23 @@
     }
 
     function populateFacilities() {
-      facilitySel.innerHTML = '<option value="">Select facility…</option>';
-      Object.keys(FACS)
-        .sort()
-        .forEach((k) => {
-          const opt = document.createElement("option");
-          opt.value = k;
-          opt.textContent = k;
-          facilitySel.appendChild(opt);
-        });
+      if (!facilitySel) return;
+      const cur = (facilitySel && facilitySel.value) || "";
+      const keys = Object.keys(FACS).sort();
+      // Rebuild options but preserve current selection if present
+      const hasCur = cur && keys.indexOf(cur) !== -1;
+      facilitySel.innerHTML = hasCur
+        ? ""
+        : '<option value="">Select facility…</option>';
+      keys.forEach((k) => {
+        const opt = document.createElement("option");
+        opt.value = k;
+        opt.textContent = k;
+        facilitySel.appendChild(opt);
+      });
+      if (hasCur) {
+        facilitySel.value = cur;
+      }
     }
 
     function populateExperiments(fac) {
@@ -420,18 +592,25 @@
         anyCam
       );
       // Scan tooltip
-      let reason = '';
-      if (!hasFac) reason = 'Select a facility';
-      else if (!hasExp || !hasTrt) reason = 'Pick experiment and treatment';
-      else if (!hasDates) reason = 'Set start/end dates';
-      else if (!hasTimes) reason = 'Set start/end times';
-      else if (!anyCam) reason = 'Pick at least one camera';
-      importBtn.title = importBtn.disabled ? (reason || 'Complete selections to enable scan') : '';
+      let reason = "";
+      if (!hasFac) reason = "Select a facility";
+      else if (!hasExp || !hasTrt) reason = "Pick experiment and treatment";
+      else if (!hasDates) reason = "Set start/end dates";
+      else if (!hasTimes) reason = "Set start/end times";
+      else if (!anyCam) reason = "Pick at least one camera";
+      importBtn.title = importBtn.disabled
+        ? reason || "Complete selections to enable scan"
+        : "";
       // If no plan yet, keep Run disabled with tooltip
-      if (runTopBtn && (!window.__DAYS_PLAN__ || !Array.isArray(window.__DAYS_PLAN__) || window.__DAYS_PLAN__.length === 0)) {
+      if (
+        runTopBtn &&
+        (!window.__DAYS_PLAN__ ||
+          !Array.isArray(window.__DAYS_PLAN__) ||
+          window.__DAYS_PLAN__.length === 0)
+      ) {
         runTopBtn.disabled = true;
-        runTopBtn.classList.remove('primary');
-        runTopBtn.title = 'Run is available after a successful scan';
+        runTopBtn.classList.remove("primary");
+        runTopBtn.title = "Run is available after a successful scan";
       }
     }
 
@@ -523,8 +702,10 @@
             throw new Error((d && d.error) || "Source folder not accessible");
           }
           ensureScanPanel();
-          ensureScanPanel();
-          startScanProgress(`Full scan in ${combinedSourcePattern(fac)} …`, true);
+          startScanProgress(
+            `Full scan in ${combinedSourcePattern(fac)} …`,
+            true
+          );
           const cams = getSelectedCameras();
           const pattern =
             (FACS[fac] &&
@@ -596,6 +777,9 @@
             stopScanProgress();
             scanController = null;
             listBtn.disabled = false;
+            try {
+              listBtn.removeAttribute("disabled");
+            } catch {}
             listBtn.textContent = "List";
           });
           es.onerror = () => {
@@ -604,6 +788,9 @@
             stopScanProgress();
             scanController = null;
             listBtn.disabled = false;
+            try {
+              listBtn.removeAttribute("disabled");
+            } catch {}
             listBtn.textContent = "List";
           };
         } catch (e) {
@@ -642,14 +829,14 @@
         );
         return;
       }
-      importBtn.disabled = true;
-      importBtn.textContent = "Scanning…";
+      const trigBtn = document.getElementById('import-btn') || document.getElementById('open-import');
+      if (trigBtn){ trigBtn.disabled = true; trigBtn.textContent = "Scanning…"; }
       try {
-        const rb = document.getElementById('run-btn');
+        const rb = document.getElementById("run-btn");
         if (rb) {
           rb.disabled = true;
-          rb.classList.remove('primary');
-          rb.title = 'Run available after scan completes';
+          rb.classList.remove("primary");
+          rb.title = "Run available after scan completes";
         }
       } catch {}
       try {
@@ -725,7 +912,9 @@
             stopScanProgress();
             scanController = null;
             // Update collapsed header with total files found
-            try { setScanHeaderMeta(formatCount(files.length)); } catch {}
+            try {
+              setScanHeaderMeta(formatCount(files.length));
+            } catch {}
             ensureDaysPanel();
             const res = await fetch("/api/import/prepare_from_manifest", {
               method: "POST",
@@ -748,17 +937,34 @@
               throw new Error((data && data.error) || res.statusText);
             }
             renderDaysPlan(data);
+            // Start encoding automatically after preparing the plan
+            await onRunEncode();
             // Bring Day Preparation into focus
             try {
-              const dp = document.getElementById('days-status');
-              if (dp) dp.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              const dp = document.getElementById("days-status");
+              if (dp) dp.scrollIntoView({ behavior: "smooth", block: "start" });
             } catch {}
           } catch (e) {
             showError("Prepare error", e);
-            expandScanPanelOnError(String((e && e.message) || e || ''));
+            expandScanPanelOnError(String((e && e.message) || e || ""));
           } finally {
-            importBtn.disabled = false;
-            importBtn.textContent = "Rescan";
+            if (trigBtn){
+              try{
+                if (isEncoding && isEncoding()){
+                  trigBtn.disabled = false;
+                  trigBtn.textContent = 'Cancel';
+                  trigBtn.style.background = '#b71c1c';
+                  trigBtn.style.color = '#fff';
+                  trigBtn.dataset.running = '1';
+                } else {
+                  trigBtn.disabled = false;
+                  trigBtn.textContent = 'Rescan';
+                  trigBtn.style.background = '';
+                  trigBtn.style.color = '';
+                  trigBtn.dataset.running = '0';
+                }
+              }catch(e){}
+            }
           }
         });
         es.onerror = () => {
@@ -766,18 +972,120 @@
           stopScanDots();
           stopScanProgress();
           scanController = null;
-          importBtn.disabled = false;
-          importBtn.textContent = "Rescan";
-          expandScanPanelOnError('Scan error');
+          if (trigBtn){ trigBtn.disabled = false; trigBtn.textContent = "Rescan"; }
+          expandScanPanelOnError("Scan error");
         };
       } catch (e) {
         showError("Scan error", e);
-        expandScanPanelOnError(String((e && e.message) || e || ''));
-        importBtn.disabled = false;
-        importBtn.textContent = "Rescan";
+        expandScanPanelOnError(String((e && e.message) || e || ""));
+        if (trigBtn){ trigBtn.disabled = false; trigBtn.textContent = "Rescan"; }
       }
     }
     if (importBtn) importBtn.addEventListener("click", onStartScan);
+    function setImportBtnStateRunning(running){
+      try{
+        const btn = document.getElementById('open-import');
+        if (!btn) return;
+        if (running){
+          btn.disabled = false;
+          btn.textContent = 'Cancel';
+          btn.style.background = '#b71c1c';
+          btn.style.color = '#fff';
+          btn.dataset.running = '1';
+        } else {
+          btn.disabled = false;
+          btn.textContent = 'Import';
+          btn.style.background = '';
+          btn.style.color = '';
+          btn.dataset.running = '0';
+        }
+      }catch(e){}
+    }
+
+    function isEncoding(){ try{ return !!window.__ENCODE_JOB_ID__; } catch { return false; } }
+
+    let scanPollTimer = null;
+    function stopScanPolling(){ if (scanPollTimer){ clearInterval(scanPollTimer); scanPollTimer=null; } }
+    async function pollScanStatus(jobId){
+      try{
+        const r = await fetch(`/api/import/scan_prepare/status?job=${encodeURIComponent(jobId)}`);
+        const d = await r.json();
+        if (!r.ok || d.error){ throw new Error(d && d.error || r.statusText); }
+        // Update Available Files table
+        ensureScanPanel();
+        try{ renderScanResults({ total: d.total||0, source_dir: '', camera_pattern: '', files: d.files||[] }); } catch{}
+        // If plan present, render Day Preparation
+        if (d.plan && d.plan.plan){ try{ renderDaysPlan(d.plan); } catch{} }
+        // Handle terminal states
+        if (d.status === 'DONE'){
+          // Scan finished: stop progress and polling
+          stopScanPolling();
+          try{ stopScanProgress(); setScanMeta('Scan complete.'); }catch{}
+          // Auto start encode when plan is ready
+          try{ await onRunEncode(); } catch{}
+          try{ localStorage.removeItem('cheesepie.scan_job'); } catch{}
+        } else if (d.status === 'CANCELLED' || d.status === 'ERROR'){
+          stopScanPolling();
+          setScanMeta(d.status === 'ERROR' ? 'Scan error' : 'Scan canceled.');
+          stopScanProgress();
+          try{ localStorage.removeItem('cheesepie.scan_job'); } catch{}
+        }
+      }catch(e){ stopScanPolling(); try{ showError('Scan status', e); }catch{} }
+    }
+    async function startScanAndRun(){
+      ensureScanPanel(); ensureDaysPanel();
+      // Kick background Scan/Prepare job
+      const fac = facilitySel.value;
+      const exp = experimentSel.value;
+      const trt = treatmentSel.value;
+      const sDate = startDate.value;
+      const eDate = endDate.value;
+      const sTime = startTime.value;
+      const eTime = endTime.value;
+      const cams = getSelectedCameras();
+      const batch = Math.max(0, Number(batchInput.value || 0));
+      // Show progress UI
+      startScanProgress(`Scanning in ${combinedSourcePattern(fac)} …`, true);
+      try{
+        const res = await fetch('/api/import/scan_prepare/start', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ facility: fac, experiment: exp, treatment: trt, batch, start_date: sDate, end_date: eDate, start_time: sTime, end_time: eTime, cameras: cams, camera_pattern: (FACS[fac] && (FACS[fac].camera_pattern || FACS[fac].camera_glob)) || '' }) });
+        const d = await res.json();
+        if (!res.ok || !d || d.error || !d.job_id){ throw new Error((d && d.error) || res.statusText); }
+        window.__SCAN_JOB_ID__ = d.job_id;
+        try{ localStorage.setItem('cheesepie.scan_job', d.job_id); }catch{}
+        stopScanPolling();
+        scanPollTimer = setInterval(()=>{ pollScanStatus(d.job_id); }, 1500);
+      }catch(e){
+        stopScanProgress();
+        try{ showError('Scan start', e); }catch{}
+        // Reset Import button state
+        try{ const btn=document.getElementById('open-import'); if (btn){ btn.disabled=false; btn.textContent='Import'; btn.style.background=''; btn.style.color=''; btn.dataset.running='0'; } }catch{}
+      }
+    }
+
+  if (openImportBtn) openImportBtn.addEventListener('click', async () => {
+      try{
+        ensureScanPanel(); ensureDaysPanel();
+        // If encoding is running → cancel encode
+        try{
+          const ejid = (window.__ENCODE_JOB_ID__ || localStorage.getItem('cheesepie.encode_job') || '').trim();
+          if (ejid){ await onStopEncode(); setImportBtnStateRunning(false); return; }
+        }catch{}
+        // If scan is running → cancel scan
+        try{
+          const sjid = (window.__SCAN_JOB_ID__ || localStorage.getItem('cheesepie.scan_job') || '').trim();
+          if (sjid){ if (scanPollTimer){ clearInterval(scanPollTimer); scanPollTimer=null; } await fetch(`/api/import/scan_prepare/cancel?job=${encodeURIComponent(sjid)}`, { method:'POST' }); try{ localStorage.removeItem('cheesepie.scan_job'); }catch{}; stopScanProgress(); setScanMeta('Scan canceled.'); setImportBtnStateRunning(false); return; }
+        }catch{}
+        // Otherwise, start scan+prepare
+        const ready = !!(facilitySel && facilitySel.value) && !!experimentSel.value && !!treatmentSel.value && !!startDate.value && !!endDate.value && !!startTime.value && !!endTime.value && getSelectedCameras().length > 0;
+        validate();
+        if (!ready){ showError('Import', new Error('Complete selections first.')); return; }
+        openImportBtn.disabled = true; openImportBtn.textContent = 'Scanning…';
+        await startScanAndRun();
+      }catch(e){ try{ showError('Import start error', e); } catch{} }
+    });
+
+    // Kick resume once UI is ready
+    resumeJobs();
 
     // Day Preparation panel
     function ensureDaysPanel() {
@@ -788,7 +1096,7 @@
         panel.className = "panel";
         panel.style.marginTop = "16px";
         panel.innerHTML = `
-        <div class=\"panel-header\" style=\"display:flex; align-items:center; justify-content:space-between\">\n          <h1>Day Preparation</h1>\n          <div style=\"display:flex; gap:8px; align-items:center\">\n            <button class=\"btn mini\" id=\"show-details\">Show details</button>\n+            <button class=\"btn mini\" id=\"retry-failed\" disabled>Retry failed</button>\n            <button class=\"btn\" id=\"stop-btn\" disabled>Stop</button>\n          </div>\n        </div>
+        <div class=\"panel-header\" style=\"display:flex; align-items:center; justify-content:space-between; padding:8px 16px;\">\n          <h1>Day Preparation</h1>\n          <div style=\"display:flex; gap:8px; align-items:center\">\n            <button class=\"btn\" id=\"stop-btn\" disabled>Stop</button>\n          </div>\n        </div>
         <div class="table-wrap">
           <div id="encode-progress" style="display:none; margin:8px 0">
             <div id="encode-text" class="muted">Idle</div>
@@ -799,10 +1107,10 @@
               <tr>
                 <th style="text-align:left; padding:6px 4px">Camera</th>
                 <th style="text-align:left; padding:6px 4px">Day</th>
-                <th style="text-align:left; padding:6px 4px">Segments</th>
-                <th style="text-align:left; padding:6px 4px">Status</th>
+                <th style="text-align:left; padding:6px 4px">Segs</th>
                 <th style="text-align:left; padding:6px 4px">Path</th>
                 <th style="text-align:left; padding:6px 4px">Duration</th>
+                <th style="text-align:left; padding:6px 4px">Status</th>
                 <th style="text-align:left; padding:6px 4px">Health</th>
               </tr>
             </thead>
@@ -817,19 +1125,9 @@
         const stopBtn = document.getElementById("stop-btn");
         if (stopBtn) {
           // Hide legacy Stop button; Run button toggles to Stop in dialog header
-          stopBtn.style.display = 'none';
+          stopBtn.style.display = "none";
         }
-        const detailsBtn = document.getElementById("show-details");
-        if (detailsBtn) {
-          detailsBtn.addEventListener('click', () => {
-            const collapsed = isScanPanelCollapsed();
-            setScanPanelCollapsed(collapsed, true);
-            const nowCollapsed = isScanPanelCollapsed();
-            detailsBtn.textContent = nowCollapsed ? 'Show details' : 'Hide details';
-          });
-        }
-        const retryBtn = document.getElementById("retry-failed");
-        if (retryBtn) retryBtn.addEventListener('click', onRetryFailed);
+        // Details/Retry controls removed
       }
     }
 
@@ -857,10 +1155,10 @@
         </div>`;
         document.querySelector(".panel .controls").after(panel);
         try {
-          const hdr = panel.querySelector('.panel-header');
+          const hdr = panel.querySelector(".panel-header");
           if (hdr) {
-            hdr.style.padding = '8px 12px';
-            hdr.style.alignItems = 'center';
+            hdr.style.padding = "8px 12px";
+            hdr.style.alignItems = "center";
           }
         } catch {}
       }
@@ -873,9 +1171,9 @@
         panel = document.createElement("div");
         panel.id = "import-scan";
         panel.className = "panel";
-        panel.style.marginTop = "16px";
+        panel.style.margin = "16px 8px";
         panel.innerHTML = `
-        <div class=\"panel-header\" style=\"display:flex; align-items:center; justify-content:space-between\">
+        <div class=\"panel-header\" style=\"display:flex; align-items:center; justify-content:space-between; padding:8px 16px;\">
           <h1 id=\"scan-header\" style=\"cursor:pointer; margin:0; display:flex; align-items:center; gap:8px\">Available Files <span id=\"scan-header-meta\" class=\"muted\" style=\"font-size:12px\"></span></h1>
           <div style=\"display:flex; align-items:center\"><button type=\"button\" id=\"scan-toggle-btn\" class=\"btn mini\">Show</button></div>
         </div>
@@ -901,31 +1199,29 @@
           scanToggleBtn.textContent = collapsed ? "Show" : "Hide";
           panel.dataset.collapsed = collapsed ? "1" : "0";
         }
-        panel.setAttribute('data-collapsed', '1');
+        panel.setAttribute("data-collapsed", "1");
         setScanCollapsed(true);
         function toggleCollapsed() {
-          const isCollapsed = panel.dataset.collapsed !== '0';
+          const isCollapsed = panel.dataset.collapsed !== "0";
           setScanCollapsed(!isCollapsed);
         }
-        if (scanToggleBtn) scanToggleBtn.addEventListener('click', toggleCollapsed);
-        if (scanHeader) scanHeader.addEventListener('click', toggleCollapsed);
+        if (scanToggleBtn)
+          scanToggleBtn.addEventListener("click", toggleCollapsed);
+        if (scanHeader) scanHeader.addEventListener("click", toggleCollapsed);
         const cancelBtn = document.getElementById("scan-cancel");
-        cancelBtn.addEventListener("click", () => {
-          try {
-            if (scanController && scanController.close) {
-              scanController.close();
-            }
-          } catch {}
-          // Reset shared scan state and buttons
+        cancelBtn.addEventListener("click", async () => {
+          try { if (scanPollTimer){ clearInterval(scanPollTimer); scanPollTimer=null; } } catch{}
+          try{
+            const jid = (window.__SCAN_JOB_ID__ || '').trim();
+            if (jid){ await fetch(`/api/import/scan_prepare/cancel?job=${encodeURIComponent(jid)}`, { method:'POST' }); }
+          }catch{}
           scanController = null;
           stopScanProgress();
           setScanMeta("Scan canceled.");
-          if (typeof scanBtn !== "undefined" && scanBtn) {
-            scanBtn.disabled = false;
-            scanBtn.textContent = "Scan";
-          }
+          try{ localStorage.removeItem('cheesepie.scan_job'); }catch{}
           if (typeof listBtn !== "undefined" && listBtn) {
             listBtn.disabled = false;
+            try { listBtn.removeAttribute('disabled'); } catch {}
             listBtn.textContent = "List";
           }
         });
@@ -938,18 +1234,20 @@
     }
 
     function setScanHeaderMeta(text) {
-      const m = document.getElementById('scan-header-meta');
-      if (m) m.textContent = text || '';
+      const m = document.getElementById("scan-header-meta");
+      if (m) m.textContent = text || "";
     }
 
     function startScanDots(base) {
-      try { stopScanDots(); } catch {}
-      scanDotsBase = (base && String(base)) || 'Scanning';
+      try {
+        stopScanDots();
+      } catch {}
+      scanDotsBase = (base && String(base)) || "Scanning";
       let i = 0;
       setScanHeaderMeta(scanDotsBase);
       scanDotsTimer = setInterval(() => {
         i = (i + 1) % 4;
-        setScanHeaderMeta(scanDotsBase + '.'.repeat(i));
+        setScanHeaderMeta(scanDotsBase + ".".repeat(i));
       }, 400);
     }
 
@@ -970,23 +1268,23 @@
     }
 
     function isScanPanelCollapsed() {
-      const panel = document.getElementById('import-scan');
+      const panel = document.getElementById("import-scan");
       if (!panel) return true;
-      return panel.dataset.collapsed !== '0';
+      return panel.dataset.collapsed !== "0";
     }
 
     function setScanPanelCollapsed(collapsed, scrollIntoView) {
       try {
-        const panel = document.getElementById('import-scan');
-        const content = document.getElementById('scan-content');
-        const btn = document.getElementById('scan-toggle-btn');
+        const panel = document.getElementById("import-scan");
+        const content = document.getElementById("scan-content");
+        const btn = document.getElementById("scan-toggle-btn");
         if (panel && content && btn) {
           const wantCollapsed = !!collapsed;
-          content.style.display = wantCollapsed ? 'none' : 'block';
-          btn.textContent = wantCollapsed ? 'Show' : 'Hide';
-          panel.dataset.collapsed = wantCollapsed ? '1' : '0';
+          content.style.display = wantCollapsed ? "none" : "block";
+          btn.textContent = wantCollapsed ? "Show" : "Hide";
+          panel.dataset.collapsed = wantCollapsed ? "1" : "0";
           if (!wantCollapsed && scrollIntoView) {
-            panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            panel.scrollIntoView({ behavior: "smooth", block: "start" });
           }
         }
       } catch {}
@@ -997,17 +1295,17 @@
       const bar = document.getElementById("scan-bar");
       const running = document.getElementById("scan-running-meta");
       try {
-        const panel = document.getElementById('import-scan');
-        const content = document.getElementById('scan-content');
-        const btn = document.getElementById('scan-toggle-btn');
+        const panel = document.getElementById("import-scan");
+        const content = document.getElementById("scan-content");
+        const btn = document.getElementById("scan-toggle-btn");
         if (panel && content && btn) {
           const wantExpand = !!expand;
-          content.style.display = wantExpand ? 'block' : 'none';
-          btn.textContent = wantExpand ? 'Hide' : 'Show';
-          panel.dataset.collapsed = wantExpand ? '0' : '1';
+          content.style.display = wantExpand ? "block" : "none";
+          btn.textContent = wantExpand ? "Hide" : "Show";
+          panel.dataset.collapsed = wantExpand ? "0" : "1";
         }
       } catch {}
-      startScanDots('Scanning');
+      startScanDots("Scanning");
       if (box) {
         box.style.display = "flex";
       }
@@ -1018,18 +1316,7 @@
       const wrap = document.getElementById("scan-list");
       if (wrap) {
         wrap.innerHTML = `
-        <table id="scan-table" style="width:100%; border-collapse:collapse; font-size:13px">
-          <thead>
-            <tr>
-              <th style="text-align:left; padding:6px 4px">Camera</th>
-              <th style="text-align:left; padding:6px 4px">Day</th>
-              <th style="text-align:left; padding:6px 4px">Start</th>
-              <th style="text-align:left; padding:6px 4px">End</th>
-              <th style="text-align:left; padding:6px 4px">Filename</th>
-            </tr>
-          </thead>
-          <tbody id="scan-tbody"></tbody>
-        </table>`;
+        <table id=\"scan-table\" style=\"width:100%; border-collapse:collapse; font-size:13px\">\n          <thead>\n            <tr>\n              <th style=\"text-align:left; padding:6px 4px\">Camera</th>\n              <th style=\"text-align:left; padding:6px 4px\">Date</th>\n              <th style=\"text-align:left; padding:6px 4px\">Start</th>\n              <th style=\"text-align:left; padding:6px 4px\">Filename</th>\n            </tr>\n          </thead>\n          <tbody id=\"scan-tbody\"></tbody>\n        </table>`;
       }
       if (bar) {
         let pct = 5;
@@ -1047,7 +1334,7 @@
         box.style.display = "none";
       }
       stopScanDots();
-      setScanHeaderMeta('');
+      setScanHeaderMeta("");
       if (scanAnimTimer) {
         clearInterval(scanAnimTimer);
         scanAnimTimer = null;
@@ -1060,16 +1347,16 @@
 
     function expandScanPanelOnError(message) {
       try {
-        const panel = document.getElementById('import-scan');
-        const content = document.getElementById('scan-content');
-        const btn = document.getElementById('scan-toggle-btn');
-        const meta = document.getElementById('scan-meta');
+        const panel = document.getElementById("import-scan");
+        const content = document.getElementById("scan-content");
+        const btn = document.getElementById("scan-toggle-btn");
+        const meta = document.getElementById("scan-meta");
         if (panel && content && btn) {
-          content.style.display = 'block';
-          btn.textContent = 'Hide';
-          panel.dataset.collapsed = '0';
+          content.style.display = "block";
+          btn.textContent = "Hide";
+          panel.dataset.collapsed = "0";
         }
-        setScanHeaderMeta('Error');
+        setScanHeaderMeta("Error");
         if (meta && message) meta.textContent = message;
       } catch {}
     }
@@ -1117,13 +1404,9 @@
       const tbody = document.getElementById("scan-tbody");
       if (!tbody) return;
       const camStr =
-        f.camera != null ? `cam${String(f.camera).padStart(2, "0")}` : "—";
-      const dayStr =
-        f.in_range && typeof f.day === "number" && f.day > 0
-          ? `d${String(f.day).padStart(2, "0")}`
-          : "";
+        f.camera != null ? String(f.camera).padStart(2, "0") : "—";
+      const dateStr = (f.start || '').split(' ')[0] || '';
       const startStr = f.start_hms || "";
-      const endStr = f.in_range ? f.end_hms || "" : "";
       const tr = document.createElement("tr");
       if (f.in_range) {
         tr.style.color = "#2e7d32";
@@ -1131,9 +1414,8 @@
       }
       tr.innerHTML = `
       <td style="padding:6px 4px">${camStr}</td>
-      <td style="padding:6px 4px">${dayStr}</td>
+      <td style="padding:6px 4px">${dateStr}</td>
       <td style="padding:6px 4px">${startStr}</td>
-      <td style="padding:6px 4px">${endStr}</td>
       <td style="padding:6px 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${f.path}</td>`;
       tbody.appendChild(tr);
     }
@@ -1198,67 +1480,84 @@
     populateFacilities();
     initFromUrl();
     validate();
-    if (runTopBtn) runTopBtn.addEventListener('click', () => {
-      const rb = document.getElementById('run-btn');
-      if (rb && rb.dataset && rb.dataset.running === '1') {
-        onStopEncode();
-      } else {
-        onRunEncode();
-      }
-    });
+    if (runTopBtn)
+      runTopBtn.addEventListener("click", () => {
+        const rb = document.getElementById("run-btn");
+        if (rb && rb.dataset && rb.dataset.running === "1") {
+          onStopEncode();
+        } else {
+          onRunEncode();
+        }
+      });
 
     // Modal open/close
-    const openImport = document.getElementById('open-import');
-    const modal = document.getElementById('import-modal');
-    const modalBody = document.getElementById('import-modal-body');
-    const modalClose = document.getElementById('import-close');
-    function openImportDialog() {
+    const openImport = document.getElementById("open-import");
+    const modal = document.getElementById("import-modal");
+    const modalBody = document.getElementById("import-modal-body");
+    const modalClose = document.getElementById("import-close");
+    function __unused_openImportDialog() {
       try {
         ensureScanPanel();
         ensureDaysPanel();
-        const scanPanel = document.getElementById('import-scan');
-        const daysPanel = document.getElementById('days-status');
+        const scanPanel = document.getElementById("import-scan");
+        const daysPanel = document.getElementById("days-status");
         if (scanPanel && modalBody && scanPanel.parentElement !== modalBody) {
           modalBody.appendChild(scanPanel);
         }
         if (daysPanel && modalBody && daysPanel.parentElement !== modalBody) {
           modalBody.appendChild(daysPanel);
         }
-        modal.style.display = 'flex';
+        modal.style.display = "flex";
         // Add Escape-to-close
         try {
-          document.addEventListener('keydown', onImportKeydown);
+          document.addEventListener("keydown", __unused_onImportKeydown);
         } catch {}
-        // auto-start scan if valid
-        const canScan = !importBtn.disabled;
-        if (canScan) {
+        // Auto-start scan if selections are complete (do not rely on stale disabled state)
+        const ready =
+          !!(facilitySel && facilitySel.value) &&
+          !!experimentSel.value &&
+          !!treatmentSel.value &&
+          !!startDate.value &&
+          !!endDate.value &&
+          !!startTime.value &&
+          !!endTime.value &&
+          getSelectedCameras().length > 0;
+        try {
+          validate();
+        } catch {}
+        if (ready) {
           onStartScan();
         }
+        // Otherwise, keep dialog open showing last scan (if any) and hint user to close and complete selections
       } catch (e) {
-        try { showError('Open import dialog error', e); } catch {}
+        try {
+          showError("Open import dialog error", e);
+        } catch {}
       }
     }
-    function closeImportDialog() {
-      if (modal) modal.style.display = 'none';
-      try { document.removeEventListener('keydown', onImportKeydown); } catch {}
+    function __unused_closeImportDialog() {
+      if (modal) modal.style.display = "none";
+      try {
+        document.removeEventListener("keydown", __unused_onImportKeydown);
+      } catch {}
     }
-    if (openImport) openImport.addEventListener('click', openImportDialog);
-    if (modalClose) modalClose.addEventListener('click', closeImportDialog);
+    // modal handler removed
+    // modal handler removed
     // click outside panel closes dialog
     if (modal) {
-      modal.addEventListener('click', (e) => {
+      modal.addEventListener("click", (e) => {
         try {
-          if (e.target === modal) closeImportDialog();
+          // modal removed
         } catch {}
       });
     }
 
-    function onImportKeydown(e) {
+    function __unused_onImportKeydown(e) {
       try {
-        if (!modal || modal.style.display === 'none') return;
-        if (e.key === 'Escape') {
+        if (!modal || modal.style.display === "none") return;
+        if (e.key === "Escape") {
           e.preventDefault();
-          closeImportDialog();
+          // modal removed
         }
       } catch {}
     }
@@ -1296,8 +1595,9 @@
       const exp = experimentSel.value;
       const trt = treatmentSel.value;
       const batch = Math.max(0, Number(batchInput.value || 0));
-      const plan = currentRunPlan || (window.__DAYS_PLAN__ || []);
+      const plan = currentRunPlan || window.__DAYS_PLAN__ || [];
       const runBtn = document.getElementById("run-btn");
+      const importBtnTop = document.getElementById('open-import');
       if (runBtn) {
         runBtn.disabled = true;
         runBtn.textContent = "Running…";
@@ -1319,10 +1619,10 @@
             treatment: trt,
             batch,
             plan,
-            start_date: startDate.value || '',
-            end_date: endDate.value || '',
-            start_time: startTime.value || '',
-            end_time: endTime.value || '',
+            start_date: startDate.value || "",
+            end_date: endDate.value || "",
+            start_time: startTime.value || "",
+            end_time: endTime.value || "",
           }),
         });
         const data = await res.json();
@@ -1332,34 +1632,50 @@
         // If server returned a background job id, poll status.
         if (data.job_id) {
           encodeJobId = data.job_id;
-          try { window.__ENCODE_JOB_ID__ = encodeJobId; } catch {}
+          try {
+            window.__ENCODE_JOB_ID__ = encodeJobId;
+          } catch {}
+          try{ localStorage.setItem('cheesepie.encode_job', encodeJobId); } catch{}
           const rb = document.getElementById("run-btn");
           if (rb) {
             rb.disabled = false;
-            rb.textContent = 'Stop';
-            rb.style.background = '#b71c1c';
-            rb.style.color = '#fff';
-            rb.title = 'Cancel encoding';
-            rb.dataset.running = '1';
+            rb.textContent = "Stop";
+            rb.style.background = "#b71c1c";
+            rb.style.color = "#fff";
+            rb.title = "Cancel encoding";
+            rb.dataset.running = "1";
           }
+          if (importBtnTop){ importBtnTop.disabled = false; importBtnTop.textContent = 'Cancel'; importBtnTop.style.background = '#b71c1c'; importBtnTop.style.color = '#fff'; importBtnTop.dataset.running = '1'; }
           // Optimistically flag first runnable item as RUNNING
           try {
-            const planArr = Array.isArray(window.__DAYS_PLAN__) ? window.__DAYS_PLAN__ : [];
+            const planArr = Array.isArray(window.__DAYS_PLAN__)
+              ? window.__DAYS_PLAN__
+              : [];
             let marked = false;
             for (const cam of planArr) {
               const days = Array.isArray(cam.days) ? cam.days : [];
               for (const d of days) {
-                const st = String(d.status || '').toUpperCase();
-                const segs = typeof d.segments === 'number' ? d.segments : (st === 'MISSING' ? 0 : 1);
-                if (segs > 0 && st !== 'DONE' && st !== 'FAIL' && st !== 'FAILED') {
-                  d.status = 'RUNNING';
+                const st = String(d.status || "").toUpperCase();
+                const segs =
+                  typeof d.segments === "number"
+                    ? d.segments
+                    : st === "MISSING"
+                    ? 0
+                    : 1;
+                if (
+                  segs > 0 &&
+                  st !== "DONE" &&
+                  st !== "FAIL" &&
+                  st !== "FAILED"
+                ) {
+                  d.status = "RUNNING";
                   marked = true;
                   break;
                 }
               }
               if (marked) break;
             }
-            if (marked) renderDaysPlan({ plan: planArr, status: 'RUNNING' });
+            if (marked) renderDaysPlan({ plan: planArr, status: "RUNNING" });
           } catch {}
           pollEncode();
         } else {
@@ -1375,6 +1691,7 @@
             runBtn.disabled = false;
             runBtn.textContent = "Run";
           }
+          if (importBtnTop){ importBtnTop.disabled = false; importBtnTop.textContent = "Import"; importBtnTop.style.background = ""; importBtnTop.style.color = ""; importBtnTop.dataset.running = "0"; }
         }
       } catch (e) {
         showError("Run error", e);
@@ -1382,13 +1699,21 @@
           runBtn.disabled = false;
           runBtn.textContent = "Run";
         }
-        if (runBtn) runBtn.title = String((e && e.message) || 'Error');
+        if (runBtn) runBtn.title = String((e && e.message) || "Error");
+        // Reset Import button and clear any encode state
+        try{
+          const ib = document.getElementById('open-import');
+          if (ib){ ib.disabled = false; ib.textContent = 'Import'; ib.style.background = ''; ib.style.color = ''; ib.dataset.running = '0'; }
+        }catch{}
+        try{ window.__ENCODE_JOB_ID__ = null; }catch{}
+        try{ localStorage.removeItem('cheesepie.encode_job'); }catch{}
       }
     }
 
     async function pollEncode() {
       if (!encodeJobId) return;
       const runBtn = document.getElementById("run-btn");
+      const importBtnTop = document.getElementById('open-import');
       encodeTimer = setInterval(async () => {
         try {
           const r = await fetch(
@@ -1401,86 +1726,82 @@
           if (s && s.plan) {
             renderDaysPlan(s);
           }
+          // While encoding is active, ensure Import button is in Cancel state
+          try{
+            const st = String(s.status||'').toUpperCase();
+            const ib = document.getElementById('open-import');
+            if (ib){
+              if (st === 'RUNNING' || st === 'QUEUED'){
+                ib.disabled = false; ib.textContent = 'Cancel'; ib.style.background = '#b71c1c'; ib.style.color = '#fff'; ib.dataset.running = '1';
+              }
+            }
+          }catch{}
           if (s.status === "DONE" || s.status === "CANCELLED") {
             clearInterval(encodeTimer);
             if (runBtn) {
               runBtn.disabled = false;
               runBtn.textContent = "Run";
-              runBtn.style.background = '';
-              runBtn.style.color = '';
-              runBtn.dataset.running = '0';
-              runBtn.title = '';
+              runBtn.style.background = "";
+              runBtn.style.color = "";
+              runBtn.dataset.running = "0";
+              runBtn.title = "";
             }
+            if (importBtnTop){ importBtnTop.disabled = false; importBtnTop.textContent = "Import"; importBtnTop.style.background=""; importBtnTop.style.color=""; importBtnTop.dataset.running="0"; importBtnTop.title=""; }
             currentRunPlan = null;
-            try { window.__ENCODE_JOB_ID__ = null; } catch {}
+            try {
+              window.__ENCODE_JOB_ID__ = null;
+            } catch {}
+            try{ localStorage.removeItem('cheesepie.encode_job'); }catch{}
           }
         } catch (err) {
           clearInterval(encodeTimer);
           if (runBtn) {
             runBtn.disabled = false;
             runBtn.textContent = "Run";
-            runBtn.style.background = '';
-            runBtn.style.color = '';
-            runBtn.dataset.running = '0';
-            runBtn.title = '';
+            runBtn.style.background = "";
+            runBtn.style.color = "";
+            runBtn.dataset.running = "0";
+            runBtn.title = "";
           }
-          try { window.__ENCODE_JOB_ID__ = null; } catch {}
+          if (importBtnTop){ importBtnTop.disabled = false; importBtnTop.textContent = "Import"; importBtnTop.style.background=""; importBtnTop.style.color=""; importBtnTop.dataset.running="0"; importBtnTop.title=""; }
+          try {
+            window.__ENCODE_JOB_ID__ = null;
+          } catch {}
+          try{ localStorage.removeItem('cheesepie.encode_job'); }catch{}
         }
       }, 2000);
     }
 
     async function onStopEncode() {
       if (!encodeJobId) return;
-      const rb = document.getElementById('run-btn');
+      const rb = document.getElementById("run-btn");
       if (rb) {
         rb.disabled = true;
-        rb.textContent = 'Stopping…';
-        rb.style.background = '#b71c1c';
-        rb.style.color = '#fff';
+        rb.textContent = "Stopping…";
+        rb.style.background = "#b71c1c";
+        rb.style.color = "#fff";
       }
       try {
-        const r = await fetch(`/api/import/encode_cancel?job=${encodeURIComponent(encodeJobId)}`, { method: 'POST' });
+        const r = await fetch(
+          `/api/import/encode_cancel?job=${encodeURIComponent(encodeJobId)}`,
+          { method: "POST" }
+        );
         const s = await r.json();
-        if (!r.ok || !s || s.error) throw new Error((s && s.error) || r.statusText);
+        if (!r.ok || !s || s.error)
+          throw new Error((s && s.error) || r.statusText);
       } catch (e) {
-        showError('Cancel error', e);
+        showError("Cancel error", e);
         if (rb) {
           rb.disabled = false;
-          rb.textContent = 'Stop';
-          rb.style.background = '#b71c1c';
-          rb.style.color = '#fff';
-          rb.title = 'Cancel encoding';
+          rb.textContent = "Stop";
+          rb.style.background = "#b71c1c";
+          rb.style.color = "#fff";
+          rb.title = "Cancel encoding";
         }
       }
     }
 
-    function buildRetryPlan() {
-      const base = Array.isArray(window.__DAYS_PLAN__) ? window.__DAYS_PLAN__ : [];
-      const out = [];
-      for (const cam of base) {
-        const days = Array.isArray(cam.days) ? cam.days : [];
-        const retryDays = [];
-        for (const d of days) {
-          const st = String(d.status || '').toUpperCase();
-          if (st === 'FAILED') {
-            const lp = d.list_path || d.list_path;
-            const segs = typeof d.segments === 'number' ? d.segments : 0;
-            retryDays.push({ day: d.day, status: 'PENDING', segments: segs, list_path: lp });
-          }
-        }
-        if (retryDays.length) out.push({ camera: cam.camera, days: retryDays });
-      }
-      return out;
-    }
-
-    async function onRetryFailed() {
-      try {
-        const sub = buildRetryPlan();
-        if (!sub.length) return;
-        currentRunPlan = sub;
-        await onRunEncode();
-      } catch {}
-    }
+    // Retry-failed functionality removed
 
     //
   });
@@ -1503,41 +1824,60 @@
       let rows = "";
       let anyWait = false;
       for (const cam of plan) {
-        const camStr = cam && cam.camera != null ? `cam${String(cam.camera).padStart(2, "0")}` : "cam??";
+        const camStr =
+          cam && cam.camera != null
+            ? String(cam.camera).padStart(2, "0")
+            : "??";
         const days = Array.isArray(cam && cam.days) ? cam.days : [];
         for (const d of days) {
-          const dayStr = d && d.day != null ? String(d.day).padStart(2, "0") : "??";
+          const dayStr =
+            d && d.day != null ? String(d.day).padStart(2, "0") : "??";
           const statusRaw = String((d && d.status) || "");
           const status = statusRaw.toUpperCase();
-          const segs = typeof d.segments === "number" ? d.segments : (status === "MISSING" ? 0 : 1);
-          if (status === "WAITING" || status === "PLANNED" || status === "PENDING") anyWait = anyWait || segs > 0;
+          const segs =
+            typeof d.segments === "number"
+              ? d.segments
+              : status === "MISSING"
+              ? 0
+              : 1;
+          if (
+            status === "WAITING" ||
+            status === "PLANNED" ||
+            status === "PENDING"
+          )
+            anyWait = anyWait || segs > 0;
           // Status with color badges
           let statusHtml = status;
-          if (status === 'RUNNING') {
-            statusHtml = `<span style=\"background:#fff3cd;color:#8a6d3b;padding:2px 6px;border-radius:10px;font-weight:600\">RUNNING</span>`;
-          } else if (status === 'DONE') {
-            statusHtml = `<span style=\"background:#e6f4ea;color:#2e7d32;padding:2px 6px;border-radius:10px;font-weight:600\">DONE</span>`;
-          } else if (status === 'FAIL' || status === 'FAILED') {
-            statusHtml = `<span style=\"background:#ffebee;color:#b71c1c;padding:2px 6px;border-radius:10px;font-weight:600\">FAILED</span>`;
-          } else if (status === 'CANCELLED') {
-            statusHtml = `<span style=\"background:#eee;color:#555;padding:2px 6px;border-radius:10px;font-weight:600\">CANCELLED</span>`;
-          } else if (status === 'MISSING' || status === 'WAITING' || status === 'PLANNED' || status === 'PENDING') {
-            statusHtml = `<span style=\"background:#eee;color:#666;padding:2px 6px;border-radius:10px;font-weight:600\">${status}</span>`;
+          if (status === "RUNNING") {
+            statusHtml = `<span style="background:#00A0B0;color:#D8F9FF;padding:2px 6px;border-radius:10px;font-weight:600">RUNNING</span>`;
+          } else if (status === "DONE") {
+            statusHtml = `<span style="background:#A2D15C;color:#335500;padding:2px 6px;border-radius:10px;font-weight:600">DONE</span>`;
+          } else if (status === "FAIL" || status === "FAILED") {
+            statusHtml = `<span style="background:#CC333F;color:#FFD6D9;padding:2px 6px;border-radius:10px;font-weight:600">FAILED</span>`;
+          } else if (status === "CANCELLED") {
+            statusHtml = `<span style="background:#CC333F;color:#FFD6D9;padding:2px 6px;border-radius:10px;font-weight:600">CANCELLED</span>`;
+          } else if (status === "PENDING") {
+            statusHtml = `<span style="background:#EDC951;color:#7A5F00;padding:2px 6px;border-radius:10px;font-weight:600">PENDING</span>`;
+          } else if (status === "MISSING") {
+            statusHtml = `<span style="background:#CC333F;color:#FFD6D9;padding:2px 6px;border-radius:10px;font-weight:600">MISSING</span>`;
+          } else if (status === "WAITING" || status === "PLANNED") {
+            statusHtml = `<span style="background:#A19381;color:#3F2D18;padding:2px 6px;border-radius:10px;font-weight:600">${status}</span>`;
           }
           // Duration cell
           let durTxt = "";
           const toHMS = (secs) => {
-            if (typeof secs !== 'number' || !isFinite(secs) || secs <= 0) return '';
+            if (typeof secs !== "number" || !isFinite(secs) || secs <= 0)
+              return "";
             const s = Math.floor(secs);
             const h = Math.floor(s / 3600);
             const m = Math.floor((s % 3600) / 60);
             const sec = s % 60;
-            const pad = (n) => String(n).padStart(2, '0');
+            const pad = (n) => String(n).padStart(2, "0");
             return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
           };
           if (d && d.duration != null) {
             durTxt = toHMS(Number(d.duration));
-          } else if (d && d.health && typeof d.health.actual === 'number') {
+          } else if (d && d.health && typeof d.health.actual === "number") {
             durTxt = toHMS(Number(d.health.actual));
           }
 
@@ -1545,77 +1885,118 @@
           if (d && d.health && typeof d.health === "object") {
             const ok = !!d.health.ok;
             healthTxt = ok
-              ? `<span style=\"background:#e6f4ea;color:#2e7d32;padding:2px 6px;border-radius:10px;font-weight:600\">GOOD</span>`
-              : `<span style=\"background:#ffebee;color:#b71c1c;padding:2px 6px;border-radius:10px;font-weight:600\">POOR</span>`;
+              ? `<span style=\"background:#A2D15C;color:#ffffff;padding:2px 6px;border-radius:10px;font-weight:600\">GOOD</span>`
+              : `<span style=\"background:#CC333F;color:#ffffff;padding:2px 6px;border-radius:10px;font-weight:600\">POOR</span>`;
           }
           const path = (d && (d.output || d.list_path)) || "";
           rows += `<tr>
-            <td style="padding:6px 4px">${camStr}</td>
-            <td style="padding:6px 4px">${dayStr}</td>
-            <td style="padding:6px 4px">${segs}</td>
-            <td style="padding:6px 4px">${statusHtml}</td>
-            <td style="padding:6px 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${path}</td>
-            <td style="padding:6px 4px">${durTxt}</td>
-            <td style="padding:6px 4px">${healthTxt}</td>
+            <td style=\"padding:6px 4px\">${camStr}</td>
+            <td style=\"padding:6px 4px\">${dayStr}</td>
+            <td style=\"padding:6px 4px\">${segs}</td>
+            <td style=\"padding:6px 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis\">${(path && !/\.txt$/i.test(path)) ? `<a href=\"#\" class=\"dp-preview\" data-path=\"${encodeURIComponent(path)}\" title=\"Preview video\">${path}</a>` : (path||'')}</td>
+            <td style=\"padding:6px 4px\">${durTxt}</td>
+            <td style=\"padding:6px 4px\">${statusHtml}</td>
+            <td style=\"padding:6px 4px\">${healthTxt}</td>
           </tr>`;
         }
       }
-      body.innerHTML = rows || '<tr><td colspan="6" class="muted" style="padding:6px">No days.</td></tr>';
+      body.innerHTML =
+        rows ||
+        '<tr><td colspan="6" class="muted" style="padding:6px">No days.</td></tr>';
 
       // No separate overall progress UI; status is reflected per row
 
       // Enable/disable Run + Retry buttons
       if (runBtn) {
-        const st = String(data && data.status || "").toUpperCase();
-        const jobId = (typeof window !== 'undefined' && window.__ENCODE_JOB_ID__) ? window.__ENCODE_JOB_ID__ : null;
+        const st = String((data && data.status) || "").toUpperCase();
+        const jobId =
+          typeof window !== "undefined" && window.__ENCODE_JOB_ID__
+            ? window.__ENCODE_JOB_ID__
+            : null;
         if (st === "RUNNING" || st === "QUEUED") {
           // If a job is active, allow stopping via the Run button
           if (jobId) {
             runBtn.disabled = false;
-            runBtn.textContent = 'Stop';
-            runBtn.style.background = '#b71c1c';
-            runBtn.style.color = '#fff';
-            runBtn.dataset.running = '1';
-            runBtn.classList.remove('primary');
-            runBtn.title = 'Cancel encoding';
+            runBtn.textContent = "Stop";
+            runBtn.style.background = "#b71c1c";
+            runBtn.style.color = "#fff";
+            runBtn.dataset.running = "1";
+            runBtn.classList.remove("primary");
+            runBtn.title = "Cancel encoding";
           } else {
             runBtn.disabled = true;
-            runBtn.textContent = st === 'RUNNING' ? 'Running…' : 'Queued…';
-            runBtn.classList.remove('primary');
-            runBtn.title = 'Encoding in progress';
+            runBtn.textContent = st === "RUNNING" ? "Running…" : "Queued…";
+            runBtn.classList.remove("primary");
+            runBtn.title = "Encoding in progress";
           }
         } else {
           runBtn.disabled = !anyWait;
-          runBtn.textContent = 'Run';
-          runBtn.style.background = '';
-          runBtn.style.color = '';
-          runBtn.dataset.running = '0';
+          runBtn.textContent = "Run";
+          runBtn.style.background = "";
+          runBtn.style.color = "";
+          runBtn.dataset.running = "0";
           if (!anyWait) {
-            runBtn.classList.remove('primary');
-            runBtn.title = 'No runnable days (pending segments)';
+            runBtn.classList.remove("primary");
+            runBtn.title = "No runnable days (pending segments)";
           } else {
-            runBtn.classList.add('primary');
-            runBtn.title = '';
+            runBtn.classList.add("primary");
+            runBtn.title = "";
           }
         }
       }
-      const retryBtn = document.getElementById('retry-failed');
-      if (retryBtn) {
-        let hasFailed = false;
-        for (const cam of plan) {
-          const days = Array.isArray(cam.days) ? cam.days : [];
-          for (const d of days) {
-            const st = String(d.status || '').toUpperCase();
-            if (st === 'FAILED') { hasFailed = true; break; }
-          }
-          if (hasFailed) break;
-        }
-        retryBtn.disabled = !hasFailed;
-      }
+      // Retry failed button removed
     } catch (err) {
-      try { showError("Render plan error", err); } catch {}
+      try {
+        showError("Render plan error", err);
+      } catch {}
     }
   }
+
+  // Lightweight video preview overlay for Day Preparation paths
+  (function setupDayPreview(){
+    function closeOverlay(){
+      try{ const ov=document.getElementById('dp-video-preview'); if (ov) ov.remove(); }catch(e){}
+      try{ document.removeEventListener('keydown', onKey); } catch(e){}
+    }
+    function onKey(ev){ if (ev.key==='Escape'){ ev.preventDefault(); closeOverlay(); } }
+    function openPreview(path){
+      try{
+        const decPath = decodeURIComponent(path||'');
+        if (/\.txt$/i.test(decPath)) return; // ignore text lists
+        // Build overlay
+        const ov = document.createElement('div'); ov.id='dp-video-preview';
+        ov.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:2000; display:flex; align-items:center; justify-content:center; padding:20px;';
+        const panel = document.createElement('div');
+        panel.style.cssText = 'background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:10px; box-shadow:0 10px 30px var(--shadow); width:min(1000px,96vw); max-width:96vw;';
+        const header = document.createElement('div'); header.style.cssText='display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border-bottom:1px solid var(--border,#ddd)';
+        const title = document.createElement('div'); title.textContent = (decPath.split('/').pop()||decPath); title.style.cssText='font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+        const actions = document.createElement('div'); actions.style.cssText='display:flex; gap:8px; align-items:center';
+        const analyze = document.createElement('a'); analyze.className='btn mini'; analyze.textContent='Open in Analyze'; analyze.href = '/analyze?video=' + encodeURIComponent(decPath);
+        const close = document.createElement('button'); close.className='btn'; close.textContent='✕'; close.title='Close'; close.style.cssText='font-weight:700; width:32px; height:32px; padding:0; display:inline-flex; align-items:center; justify-content:center';
+        close.addEventListener('click', closeOverlay);
+        actions.appendChild(analyze); actions.appendChild(close);
+        header.appendChild(title); header.appendChild(actions);
+        const body = document.createElement('div'); body.style.cssText='padding:8px 12px;';
+        const video = document.createElement('video');
+        video.controls = true; video.preload='metadata'; video.style.cssText='width:100%; height:auto; background:var(--surface);';
+        const src = document.createElement('source'); src.src = '/media?path=' + encodeURIComponent(decPath);
+        video.appendChild(src);
+        body.appendChild(video);
+        panel.appendChild(header); panel.appendChild(body); ov.appendChild(panel);
+        ov.addEventListener('click', (e)=>{ if (e.target === ov) closeOverlay(); });
+        document.body.appendChild(ov);
+        document.addEventListener('keydown', onKey);
+        try{ video.load(); }catch(e){}
+      }catch(e){ try{ showError('Preview error', e); }catch(_){} }
+    }
+    document.addEventListener('click', function(ev){
+      const a = ev.target && (ev.target.closest ? ev.target.closest('a.dp-preview') : null);
+      if (!a) return;
+      ev.preventDefault();
+      const p = a.getAttribute('data-path') || a.textContent || '';
+      openPreview(p);
+    });
+  })();
 
   function appendDirRow(d) {
     const wrap = document.getElementById("scan-list");

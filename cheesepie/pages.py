@@ -43,6 +43,11 @@ def annotator():
         keyboard=cfg_keyboard(),
     )
 
+@bp.route('/analyze')
+def analyze():
+    video = request.args.get('video')
+    return render_template('analyze.html', active_tab='analyze', video=video)
+
 
 @bp.route('/importer')
 def importer():
@@ -56,4 +61,3 @@ def settings():
 
 
 __all__ = ['bp']
-

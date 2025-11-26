@@ -143,8 +143,11 @@
     videoEl.load();
   }
 
+  // Helper to read current facility from header
+  function curFacility(){ try{ const sel=document.getElementById('app-facility'); return (sel && sel.value) || ''; }catch(e){ return ''; } }
+
   // Try to set correct MIME via fileinfo (helps some browsers)
-  fetch(`/api/fileinfo?path=${encodeURIComponent(videoPath)}`).then(r=>r.json()).then(info => {
+  fetch(`/api/fileinfo?path=${encodeURIComponent(videoPath)}&facility=${encodeURIComponent(curFacility())}`).then(r=>r.json()).then(info => {
     if (info && info.mime){
       const src = document.createElement('source');
       src.src = `/media?path=${encodeURIComponent(videoPath)}`;

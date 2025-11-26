@@ -24,6 +24,17 @@
         <button id="apply-theme" class="btn primary">Apply</button>
       </div>
     </div>
+    <div class="control-group">
+      <label for="cfg-select">Config file</label>
+      <div class="inline" style="gap:8px; flex-wrap: wrap">
+        <select id="cfg-select" style="flex:1; min-width: 280px"></select>
+        <div style="display:flex; gap:8px">
+          <button id="apply-config" class="btn themed-settings">Apply</button>
+          <button id="reset-config" class="btn">Reset to default</button>
+        </div>
+      </div>
+      <div class="muted" id="cfg-status" style="margin-top:6px"></div>
+    </div>
   </div>
 </section>
 {% endblock %}

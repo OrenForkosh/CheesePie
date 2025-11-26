@@ -24,10 +24,11 @@ def create_app() -> Flask:
         pass
 
     # Deferred imports to avoid circulars
-    from .config import inject_public_config
+    from .config import inject_public_config, bp as config_bp
     from .preproc import bp as preproc_bp
     from .browser import bp as browser_bp
     from .media import bp as media_bp
+    from .analyze import bp as analyze_bp
     from .importer import bp as importer_bp
     from .pages import bp as pages_bp
     from .filters import register_filters
@@ -41,6 +42,8 @@ def create_app() -> Flask:
     app.register_blueprint(preproc_bp, url_prefix='/api/preproc')
     app.register_blueprint(browser_bp, url_prefix='/api')
     app.register_blueprint(media_bp)
+    app.register_blueprint(analyze_bp)
+    app.register_blueprint(config_bp, url_prefix='/api/config')
     app.register_blueprint(importer_bp, url_prefix='/api/import')
     app.register_blueprint(pages_bp)
     app.register_blueprint(auth_bp)

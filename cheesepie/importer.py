@@ -135,16 +135,53 @@ def _ensure_dir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
 
 
+def _format_hhmmss(seconds: float) -> str:
+    try:
+        if seconds is None or seconds < 0:
+            seconds = 0.0
+        ms = int(round((seconds - int(seconds)) * 1000))
+        s = int(seconds) % 60
+        m = (int(seconds) // 60) % 60
+        h = int(seconds) // 3600
+        return f"{h:02d}:{m:02d}:{s:02d}.{ms:03d}"
+    except Exception:
+        return "00:00:00.000"
+
+
+def _parse_dur_to_seconds(val: str | int | float | None) -> int:
+    """Parse duration like '4:00' (HH:MM) or seconds into integer seconds.
+    Module-level helper so background workers can reuse it.
+    """
+    try:
+        if isinstance(val, (int, float)):
+            return max(0, int(val))
+        s = str(val or '').strip()
+        if not s:
+            return 4 * 3600
+        if ':' in s:
+            hh, mm = s.split(':', 1)
+            return max(0, int(hh) * 3600 + int(mm) * 60)
+        return max(0, int(s))
+    except Exception:
+        return 4 * 3600
+
+
 def _write_concat_list(list_path: Path, items: List[Dict[str, Any]]) -> None:
+    """Write an ffmpeg concat demuxer list with file/inpoint/outpoint per item.
+
+    - file 'path'
+    - inpoint HH:MM:SS.mmm (if present)
+    - outpoint HH:MM:SS.mmm (if present)
+    """
     with list_path.open('w', encoding='utf-8') as f:
         for it in items:
             fn = it['path']
             q = "'" + str(fn).replace("'", "'\\''") + "'"
             f.write(f"file {q}\n")
             if it.get('inpoint') is not None:
-                f.write(f"inpoint {it['inpoint']:.3f}\n")
+                f.write(f"inpoint {_format_hhmmss(float(it['inpoint']))}\n")
             if it.get('outpoint') is not None:
-                f.write(f"outpoint {it['outpoint']:.3f}\n")
+                f.write(f"outpoint {_format_hhmmss(float(it['outpoint']))}\n")
 
 
 def _run_ffmpeg_concat(list_file: Path, out_path: Path) -> tuple[int, str]:
@@ -174,6 +211,10 @@ def _set_job_proc(job_id: str, proc: Optional[subprocess.Popen]) -> None:
             ENCODE_PROCS.pop(job_id, None)
         else:
             ENCODE_PROCS[job_id] = proc
+
+# Background Scan/Prepare jobs (navigation-resumable)
+SCAN_JOBS: Dict[str, Dict[str, Any]] = {}
+SCAN_LOCK = threading.Lock()
 
 def _job_cancelled(job_id: str) -> bool:
     with ENCODE_LOCK:
@@ -241,6 +282,307 @@ def _run_ffmpeg_concat_monitored(list_file: Path, out_path: Path, job_id: str) -
 def _parse_time_from_path(p: Path, regex: str) -> Optional[datetime]:
     if not regex:
         return None
+    try:
+        s = p.as_posix()
+        m = re.search(regex, s)
+        if not m:
+            return None
+        gd = m.groupdict() if hasattr(m, 'groupdict') else {}
+        year = int(gd.get('year')) if gd.get('year') else None
+        month = int(gd.get('month')) if gd.get('month') else None
+        day = int(gd.get('day')) if gd.get('day') else None
+        hour = int(gd.get('hour')) if gd.get('hour') else 0
+        minute = int(gd.get('minute')) if gd.get('minute') else 0
+        second = int(gd.get('second')) if gd.get('second') else 0
+        if year and month and day:
+            return datetime(year, month, day, hour, minute, second)
+        return None
+    except Exception:
+        return None
+
+# -- Scan/Prepare background support --
+def _scan_prepare_worker(job_id: str) -> None:
+    with SCAN_LOCK:
+        job = SCAN_JOBS.get(job_id)
+    if not job:
+        return
+    try:
+        params = job.get('params', {})
+        facility = str(params.get('facility', '')).strip().lower()
+        cameras = list(params.get('cameras') or [])
+        camera_pattern_override = str(params.get('camera_pattern') or '').strip()
+        start_date = str(params.get('start_date') or '').strip()
+        end_date = str(params.get('end_date') or '').strip()
+        start_time = str(params.get('start_time') or '').strip()
+        end_time = str(params.get('end_time') or '').strip()
+        experiment = str(params.get('experiment') or '').strip()
+        treatment = str(params.get('treatment') or '').strip()
+        batch = int(params.get('batch') or 1)
+
+        facs = cfg_importer_facilities()
+        fac = facs.get(facility) or {}
+        source_dir = Path(fac.get('source_dir', '')).expanduser()
+        exts = set(cfg_importer_source_exts())
+        ig_pat = str(fac.get('ignore_dir_regex') or cfg_importer_ignore_dir_regex() or '')
+        try:
+            ig_re = re.compile(ig_pat) if ig_pat else None
+        except re.error:
+            ig_re = None
+        ptre = str(fac.get('path_time_regex') or '')
+        try:
+            rx = re.compile(ptre) if ptre else None
+        except re.error:
+            rx = None
+
+        win_start = _combine_date_time(start_date, start_time)
+        win_end = _combine_date_time(end_date, end_time)
+        ws = win_start.timestamp() if win_start else None
+        we = win_end.timestamp() if win_end else None
+
+        if not cameras:
+            try:
+                cameras = list(fac.get('camera_list') or [])
+                cameras = [int(c) for c in cameras] if cameras else []
+            except Exception:
+                cameras = []
+            if not cameras:
+                try:
+                    n = int(fac.get('cameras') or 0)
+                except Exception:
+                    n = 0
+                cameras = list(range(1, max(0, n) + 1)) if n > 0 else []
+
+        cam_pat = camera_pattern_override or fac.get('camera_pattern', '')
+
+        def cancelled() -> bool:
+            with SCAN_LOCK:
+                return bool(SCAN_JOBS.get(job_id, {}).get('cancel', False))
+
+        files: List[Dict[str, Any]] = []
+        total = 0
+        if source_dir.exists() and source_dir.is_dir():
+            for cam in cameras:
+                if cancelled(): break
+                sub = _format_cam_glob(cam_pat or '{cam}', cam)
+                root = source_dir.joinpath(sub)
+                if not (root.exists() and root.is_dir()):
+                    continue
+                for cur, dirnames, filenames in os.walk(root):
+                    if cancelled(): break
+                    if ig_re:
+                        try:
+                            dirnames[:] = [d for d in dirnames if not ig_re.search(d)]
+                        except Exception:
+                            pass
+                    for fn in filenames:
+                        if cancelled(): break
+                        try:
+                            if Path(fn).suffix.lower() not in exts:
+                                continue
+                            fp = os.path.join(cur, fn)
+                            mr = False
+                            if rx:
+                                try:
+                                    mr = bool(rx.search(Path(fp).as_posix()))
+                                except Exception:
+                                    mr = False
+                            in_range = False
+                            day_idx = None
+                            start_iso = None
+                            start_hms = None
+                            try:
+                                ts_name = _parse_start_from_stem(Path(fp).stem)
+                                ts = ts_name or (_parse_time_from_path(Path(fp), ptre) if rx else None)
+                                if ts and ws is not None and we is not None:
+                                    f_start = ts.timestamp()
+                                    max_dur_sec = _parse_dur_to_seconds(fac.get('max_file_duration'))
+                                    f_end = f_start + max_dur_sec
+                                    in_range = _overlaps(f_start, f_end, ws, we)
+                                    start_iso = ts.isoformat(sep=' ')
+                                    start_hms = ts.strftime('%H:%M:%S')
+                            except Exception:
+                                pass
+                            total += 1
+                            files.append({'camera': cam, 'path': fp, 'match_regex': mr, 'in_range': in_range, 'day': day_idx, 'start': start_iso, 'start_hms': start_hms})
+                            with SCAN_LOCK:
+                                j = SCAN_JOBS.get(job_id)
+                                if j:
+                                    j['files'] = files[-2000:] if len(files) > 2000 else list(files)
+                                    j['total'] = total
+                        except Exception:
+                            continue
+        if cancelled():
+            with SCAN_LOCK:
+                j = SCAN_JOBS.get(job_id)
+                if j:
+                    j['status'] = 'CANCELLED'
+            return
+        try:
+            plan = _prepare_plan_from_manifest(facility, experiment, treatment, batch, start_date, end_date, start_time, end_time, cameras, files)
+            with SCAN_LOCK:
+                j = SCAN_JOBS.get(job_id)
+                if j:
+                    j['plan'] = plan
+                    j['status'] = 'DONE'
+        except Exception as e:
+            with SCAN_LOCK:
+                j = SCAN_JOBS.get(job_id)
+                if j:
+                    j['status'] = 'ERROR'
+                    j['error'] = str(e)
+    except Exception as e:
+        with SCAN_LOCK:
+            j = SCAN_JOBS.get(job_id)
+            if j:
+                j['status'] = 'ERROR'
+                j['error'] = str(e)
+
+def _prepare_plan_from_manifest(facility: str, experiment: str, treatment: str, batch: int, start_date: str, end_date: str, start_time: str, end_time: str, cameras: List[int], files: List[Dict[str, Any]]):
+    facs = cfg_importer_facilities()
+    fac = facs[facility]
+    day_windows = _day_windows(start_date, end_date, start_time, end_time)
+    tmp_dir = Path(tempfile.gettempdir())
+    def _parse_dur_to_seconds(val: str | int | float | None) -> int:
+        try:
+            if isinstance(val, (int, float)):
+                return max(0, int(val))
+            s = str(val or '').strip()
+            if not s:
+                return 4 * 3600
+            if ':' in s:
+                hh, mm = s.split(':', 1)
+                return max(0, int(hh) * 3600 + int(mm) * 60)
+            return max(0, int(s))
+        except Exception:
+            return 4 * 3600
+    max_dur_sec = _parse_dur_to_seconds(fac.get('max_file_duration'))
+    by_cam: Dict[int, List[Dict[str, Any]]] = {c: [] for c in cameras}
+    for f in files:
+        try:
+            cam = int(f.get('camera'))
+        except Exception:
+            continue
+        if cam not in by_cam:
+            continue
+        p = Path(str(f.get('path') or '')).expanduser()
+        ts = _parse_start_from_stem(p.stem) or _parse_time_from_path(p, str(fac.get('path_time_regex') or ''))
+        if not ts:
+            continue
+        by_cam[cam].append({'path': p, 'start': ts.timestamp(), 'end': ts.timestamp() + float(max_dur_sec)})
+    out: List[Dict[str, Any]] = []
+    for cam in cameras:
+        segs = by_cam.get(cam) or []
+        if not segs:
+            out.append({'camera': cam, 'days': [{'day': di, 'status': 'MISSING', 'segments': 0, 'list_path': str(tmp_dir.joinpath(f"{experiment}-{treatment}.exp{batch:03d}{cam}.day{di:02d}.cam{cam:02d}.txt"))} for di, _ in enumerate(day_windows, start=1)]})
+            continue
+        segs.sort(key=lambda s: s['start'])
+        for i in range(len(segs)):
+            if i+1 < len(segs):
+                ns = segs[i+1]['start']
+                if ns > segs[i]['start']:
+                    segs[i]['end'] = min(segs[i]['end'], ns)
+        cam_days: List[Dict[str, Any]] = []
+        for di, win in enumerate(day_windows, start=1):
+            ws = win['start'].timestamp()
+            we = win['end'].timestamp()
+            items: List[Dict[str, Any]] = []
+            cover = ws
+            for s in segs:
+                if not _overlaps(s['start'], s['end'], ws, we):
+                    continue
+                eff_start = max(s['start'], ws, cover)
+                eff_end = min(s['end'], we)
+                if eff_start >= eff_end:
+                    continue
+                inpoint = max(0.0, eff_start - s['start'])
+                outpoint = None
+                if eff_end < s['end']:
+                    outpoint = max(0.0, eff_end - s['start'])
+                items.append({'path': str(s['path']).replace('\\', '/'), 'inpoint': inpoint, 'outpoint': outpoint})
+                cover = eff_end
+            list_name = f"{experiment}-{treatment}.exp{batch:03d}{cam}.day{di:02d}.cam{cam:02d}.txt"
+            list_path = tmp_dir.joinpath(list_name)
+            if items:
+                _write_concat_list(list_path, items)
+                cam_days.append({'day': di, 'status': 'PENDING', 'segments': len(items), 'list_path': str(list_path)})
+            else:
+                try:
+                    with list_path.open('w', encoding='utf-8') as f:
+                        pass
+                except Exception:
+                    pass
+                cam_days.append({'day': di, 'status': 'MISSING', 'segments': 0, 'list_path': str(list_path)})
+        out.append({'camera': cam, 'days': cam_days})
+    return {'ok': True, 'tmp_dir': str(tmp_dir), 'plan': out}
+
+@bp.route('/scan_prepare/start', methods=['POST'])
+def api_scan_prepare_start():
+    payload = request.json or {}
+    facility = str(payload.get('facility', '')).strip().lower()
+    experiment = str(payload.get('experiment', '')).strip()
+    treatment = str(payload.get('treatment', '')).strip()
+    start_date = str(payload.get('start_date', '')).strip()
+    end_date = str(payload.get('end_date', '')).strip()
+    start_time = str(payload.get('start_time', '')).strip()
+    end_time = str(payload.get('end_time', '')).strip()
+    cameras = payload.get('cameras') or []
+    try:
+        cams = sorted({int(c) for c in cameras})
+    except Exception:
+        cams = []
+    if not facility or not experiment or not treatment:
+        return jsonify({'error': 'Missing required params'}), 400
+    job_id = uuid.uuid4().hex
+    with SCAN_LOCK:
+        SCAN_JOBS[job_id] = {
+            'id': job_id,
+            'status': 'QUEUED',
+            'params': {
+                'facility': facility, 'experiment': experiment, 'treatment': treatment,
+                'start_date': start_date, 'end_date': end_date, 'start_time': start_time, 'end_time': end_time,
+                'cameras': cams, 'camera_pattern': str(payload.get('camera_pattern') or ''), 'batch': int(payload.get('batch') or 1),
+            },
+            'files': [], 'total': 0, 'cancel': False,
+        }
+    t = threading.Thread(target=_scan_prepare_worker, args=(job_id,), daemon=True)
+    t.start()
+    with SCAN_LOCK:
+        SCAN_JOBS[job_id]['status'] = 'RUNNING'
+    return jsonify({'ok': True, 'job_id': job_id})
+
+@bp.route('/scan_prepare/status')
+def api_scan_prepare_status():
+    job_id = (request.args.get('job') or '').strip()
+    if not job_id:
+        return jsonify({'error': 'Missing job'}), 400
+    with SCAN_LOCK:
+        job = SCAN_JOBS.get(job_id)
+        if not job:
+            return jsonify({'error': 'Not found'}), 404
+        out = {k: job.get(k) for k in ('id','status','total','files','error') if k in job}
+        if 'plan' in job:
+            out['plan'] = job['plan']
+    return jsonify(out)
+
+@bp.route('/scan_prepare/cancel', methods=['POST'])
+def api_scan_prepare_cancel():
+    job_id = (request.args.get('job') or '').strip()
+    if not job_id:
+        return jsonify({'error': 'Missing job'}), 400
+    with SCAN_LOCK:
+        job = SCAN_JOBS.get(job_id)
+        if not job:
+            return jsonify({'error': 'Not found'}), 404
+        job['cancel'] = True
+    return jsonify({'ok': True})
+
+@bp.route('/scan_prepare/current')
+def api_scan_prepare_current():
+    with SCAN_LOCK:
+        for jid, job in SCAN_JOBS.items():
+            if job.get('status') in ('QUEUED','RUNNING'):
+                return jsonify({'ok': True, 'job_id': jid})
+    return jsonify({'ok': True, 'job_id': None})
     try:
         m = re.search(regex, p.as_posix())
         if not m:
@@ -423,7 +765,8 @@ def api_import_start():
                     items.append({'path': str(s['path']).replace('\\\\', '/'), 'inpoint': inpoint, 'outpoint': outpoint})
             out_name = f"{exp_name}-{treatment}.exp{batch:04d}.day{di:02d}.cam{cam:02d}{exts[0]}"
             out_path = work_base.joinpath(out_name)
-            list_path = work_base.joinpath(f"{exp_name}-{treatment}.day{di:02d}.cam{cam:02d}.src")
+            # Write concat list next to the output, appending .src (keep original extension)
+            list_path = Path(str(out_path) + '.src')
             if items:
                 try:
                     _write_concat_list(list_path, items)

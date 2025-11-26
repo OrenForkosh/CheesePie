@@ -52,6 +52,8 @@
   const applyThemeBtn = document.querySelector('#apply-theme');
 
   let currentDir = '';
+  let currentFacility = '';
+  let facilityBaseDir = '';
   let currentSelection = null; // last focused row for range
   let selectedSet = new Set(); // of row DOM nodes
   let lastAnchorIndex = -1; // for shift range
@@ -153,7 +155,12 @@
       });
       row.addEventListener('dblclick', () => {
         if (row.dataset.isdir === '1') {
-          currentDir = row.dataset.path;
+          const next = row.dataset.path;
+          if (facilityBaseDir && !isUnderBase(next, facilityBaseDir)){
+            currentDir = facilityBaseDir;
+          } else {
+            currentDir = next;
+          }
           if (dirInput) dirInput.value = currentDir;
           try { localStorage.setItem(LS_KEY, currentDir); } catch {}
           loadList();
@@ -174,7 +181,8 @@
     }
     if (rows.length === 1){
       const path = rows[0].dataset.path;
-      fetch(`/api/fileinfo?path=${encodeURIComponent(path)}`)
+      const fac = String(currentFacility||'');
+      fetch(`/api/fileinfo?path=${encodeURIComponent(path)}&facility=${encodeURIComponent(fac)}`)
         .then(r => r.json())
         .then(info => { try { localStorage.setItem('cheesepie.lastVideo', info.path); } catch {} renderDetails(info); updateActionsPanel(info); })
         .catch(() => { detailsEl.innerHTML = '<div class="muted">Failed to load details.</div>'; updateActionsPanel(); });
@@ -196,6 +204,29 @@
     if (placeholder) placeholder.style.display = 'none';
     updateActionsPanel();
   }
+
+  // When facility changes, set Browser folder to facility.output_dir
+  (function hookBrowserToFacility(){
+    try{
+      if (!listEl) return; // only on Browser page
+      document.addEventListener('app:facility-changed', function(ev){
+        try{
+          const cfg = window.CHEESEPIE || {};
+          const facs = (cfg.importer && cfg.importer.facilities) || {};
+          const name = ev && ev.detail && ev.detail.name;
+          const fc = name ? facs[name] : null;
+          const out = (fc && fc.output_dir) || '';
+          if (!out) return;
+          currentFacility = String(name||'');
+          facilityBaseDir = out;
+          currentDir = out;
+          if (dirInput) dirInput.value = out;
+          try { localStorage.setItem(LS_KEY, out); } catch {}
+          loadList();
+        }catch(e){}
+      });
+    }catch(e){}
+  })();
 
   function renderDetails(info){
     if (!info || info.error){
@@ -302,6 +333,14 @@
           let step = '';
           try { step = localStorage.getItem('cheesepie.preproc.step') || ''; } catch {}
           const url = `/preproc?video=${encodeURIComponent(currentInfo.path)}${step?`&step=${encodeURIComponent(step)}`:''}`;
+          window.location.href = url;
+        });
+      }
+      const analyzeBtn = document.getElementById('act-analyze');
+      if (analyzeBtn){
+        analyzeBtn.addEventListener('click', () => {
+          try { localStorage.setItem('cheesepie.lastVideo', currentInfo.path); } catch {}
+          const url = `/analyze?video=${encodeURIComponent(currentInfo.path)}`;
           window.location.href = url;
         });
       }
@@ -445,7 +484,8 @@
       return;
     }
     listEl.innerHTML = '<div class="placeholder muted">Loading…</div>';
-    fetch(`/api/list?dir=${encodeURIComponent(currentDir)}&q=${encodeURIComponent(q)}`)
+    const fac = String(currentFacility||'');
+    fetch(`/api/list?dir=${encodeURIComponent(currentDir)}&q=${encodeURIComponent(q)}&facility=${encodeURIComponent(fac)}`)
       .then(r => r.json())
       .then(data => {
         renderList(data.items);
@@ -485,13 +525,32 @@
     }
   }
 
+  function isUnderBase(p, base){
+    try{
+      const norm = (s)=>{
+        const t = String(s||'').trim();
+        return t.replace(/\\/g,'/');
+      };
+      const P = norm(p), B = norm(base);
+      if (!P || !B) return false;
+      if (P === B) return true;
+      return P.startsWith(B.endsWith('/')?B:(B+'/'));
+    }catch(e){ return false; }
+  }
+
   function setDirAndLoad(dir){
     const d = (dir || '').trim();
     if (!d){
       listEl.innerHTML = '<div class="placeholder muted">Please enter a valid folder path.</div>';
       return;
     }
-    currentDir = d;
+    if (facilityBaseDir && !isUnderBase(d, facilityBaseDir)){
+      currentDir = facilityBaseDir;
+      if (dirInput) dirInput.value = facilityBaseDir;
+    } else {
+      currentDir = d;
+      if (dirInput) dirInput.value = currentDir;
+    }
     try { localStorage.setItem(LS_KEY, currentDir); } catch {}
     loadList();
   }
@@ -529,8 +588,9 @@
     if (!current) return;
     const parent = parentDir(current);
     if (!parent || parent === current) return;
-    currentDir = parent;
-    if (dirInput) dirInput.value = parent;
+    const next = (facilityBaseDir && !isUnderBase(parent, facilityBaseDir)) ? facilityBaseDir : parent;
+    currentDir = next;
+    if (dirInput) dirInput.value = next;
     try { localStorage.setItem(LS_KEY, currentDir); } catch {}
     loadList();
   });
@@ -538,23 +598,32 @@
   // load last context (prefer last selected video)
   try {
     if (listEl){
-      const lastVideo = localStorage.getItem('cheesepie.lastVideo');
-      if (lastVideo){
-        const pdir = parentDir(lastVideo);
-        if (pdir){ currentDir = pdir; if (dirInput) dirInput.value = pdir; try { localStorage.setItem(LS_KEY, pdir); } catch {} }
-        desiredSelectPath = lastVideo;
-        loadList();
-      } else {
-        const last = localStorage.getItem(LS_KEY);
-        if (last){ currentDir = last; if (dirInput) dirInput.value = currentDir; loadList(); }
-        else {
-          try{
-            const cfg = window.CHEESEPIE || {};
-            const def = (cfg.browser && cfg.browser.default_dir) || '';
-            if (def){ currentDir = def; if (dirInput) dirInput.value = def; loadList(); }
-          }catch(e){}
-        }
-      }
+      // Defer initial load until facility event sets base/currentDir
+      document.addEventListener('app:facility-changed', function onFirst(ev){
+        document.removeEventListener('app:facility-changed', onFirst);
+        try{
+          const lastVideo = localStorage.getItem('cheesepie.lastVideo');
+          if (lastVideo){
+            const pdir = parentDir(lastVideo);
+            if (pdir && (!facilityBaseDir || isUnderBase(pdir, facilityBaseDir))){
+              currentDir = pdir; if (dirInput) dirInput.value = pdir; try { localStorage.setItem(LS_KEY, pdir); } catch {}
+            } else if (facilityBaseDir){ currentDir = facilityBaseDir; if (dirInput) dirInput.value = facilityBaseDir; }
+            desiredSelectPath = lastVideo;
+            loadList();
+            return;
+          }
+          const last = localStorage.getItem(LS_KEY);
+          if (last && (!facilityBaseDir || isUnderBase(last, facilityBaseDir))){ currentDir = last; if (dirInput) dirInput.value = currentDir; loadList(); }
+          else if (facilityBaseDir){ currentDir = facilityBaseDir; if (dirInput) dirInput.value = facilityBaseDir; loadList(); }
+          else {
+            try{
+              const cfg = window.CHEESEPIE || {};
+              const def = (cfg.browser && cfg.browser.default_dir) || '';
+              if (def){ currentDir = def; if (dirInput) dirInput.value = def; loadList(); }
+            }catch(e){}
+          }
+        }catch(e){}
+      });
     }
   } catch {}
 
@@ -589,6 +658,68 @@
   applyThemeBtn?.addEventListener('click', () => {
     applyTheme(themeSelect?.value || 'dark');
   });
+
+  // Settings page: config file handling
+  (function setupConfigSwitcher(){
+    try{
+      const select = document.getElementById('cfg-select');
+      const btn = document.getElementById('apply-config');
+      const resetBtn = document.getElementById('reset-config');
+      const status = document.getElementById('cfg-status');
+      if (!select || !btn) return;
+      let cfgList = { items: [], current: '', origin: 'default' };
+      // Load available configs and current selection
+      fetch('/api/config/list')
+        .then(r=>r.json())
+        .then(d=>{
+          if (!d || d.error) return;
+          cfgList = d;
+          const items = d.items || [];
+          const cur = d.current || '';
+          const origin = d.origin || 'default';
+          select.innerHTML = '';
+          items.forEach(it=>{
+            const opt = document.createElement('option');
+            opt.value = String(it.path||'');
+            opt.textContent = String(it.label||it.path||'');
+            select.appendChild(opt);
+          });
+          // If current path is not in the list, append a custom option
+          if (cur && !Array.from(select.options).some(o=>o.value===cur)){
+            const opt = document.createElement('option');
+            opt.value = cur; opt.textContent = (cur.split('/').pop()||cur) + ' (custom)';
+            select.insertBefore(opt, select.firstChild);
+          }
+          if (cur){ select.value = cur; }
+          if (status){ status.textContent = `Using ${origin === 'env' ? 'override' : 'default'} config`; }
+        })
+        .catch(()=>{});
+      btn.addEventListener('click', ()=>{
+        const path = (select.value||'').trim();
+        if (!path){ status.textContent = 'Enter a config path.'; return; }
+        status.textContent = 'Applying…';
+        fetch('/api/config/switch', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ path }) })
+          .then(r=>r.json().then(d=>({ok:r.ok && d && !d.error, d, status:r.statusText})))
+          .then(res=>{ if (!res.ok){ status.textContent = 'Error: ' + (res.d && res.d.error || res.status); return; } status.textContent = 'Applied. Reloading…'; setTimeout(()=>{ location.reload(); }, 600); })
+          .catch(e=>{ status.textContent = 'Error: ' + e; });
+      });
+
+      // Reset to default config.json
+      if (resetBtn){
+        resetBtn.addEventListener('click', ()=>{
+          try{
+            const def = (cfgList.items||[]).find(it => it && it.default);
+            if (!def || !def.path){ status.textContent = 'Default config not found.'; return; }
+            status.textContent = 'Resetting…';
+            fetch('/api/config/switch', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ path: def.path }) })
+              .then(r=>r.json().then(d=>({ok:r.ok && d && !d.error, d, status:r.statusText})))
+              .then(res=>{ if (!res.ok){ status.textContent = 'Error: ' + (res.d && res.d.error || res.status); return; } status.textContent = 'Reset to default. Reloading…'; setTimeout(()=>{ location.reload(); }, 600); })
+              .catch(e=>{ status.textContent = 'Error: ' + e; });
+          }catch(e){ status.textContent = 'Error: ' + e; }
+        });
+      }
+    }catch(e){}
+  })();
 
   // MATLAB status polling removed
 })();
@@ -683,3 +814,31 @@
     if (v.readyState >= 1) { updateMax(); updatePlayUI(); }
   } catch{}
 })();
+  // Header Facility selector: populate and broadcast changes
+  (function headerFacility(){
+    try{
+      const sel = document.getElementById('app-facility');
+      if (!sel) return;
+      const cfg = window.CHEESEPIE || {};
+      const facs = (cfg.importer && cfg.importer.facilities) || {};
+      const keys = Object.keys(facs);
+      sel.innerHTML = '';
+      keys.forEach(k => { const o=document.createElement('option'); o.value=k; o.textContent=k; sel.appendChild(o); });
+      // Prefer URL param, then localStorage, then config default, then first
+      let cur = '';
+      try{ const usp=new URLSearchParams(location.search); cur=usp.get('facility')||''; }catch(e){}
+      if (!cur){ try{ cur = localStorage.getItem('cheesepie.facility')||''; }catch(e){} }
+      if (!cur || keys.indexOf(cur)===-1){
+        try{
+          const def = (cfg.importer && cfg.importer.default_facility) || '';
+          if (def && keys.indexOf(def)!==-1) cur = def;
+        }catch(e){}
+      }
+      if (!cur || keys.indexOf(cur)===-1) cur = keys[0] || '';
+      if (cur) sel.value = cur;
+      function emit(){ try{ const name = sel.value; try{ localStorage.setItem('cheesepie.facility', name); }catch(e){} const detail = { name, config: facs[name]||{} }; document.dispatchEvent(new CustomEvent('app:facility-changed', { detail })); }catch(e){} }
+      sel.addEventListener('change', function(){ emit(); });
+      // Emit on load to initialize dependents
+      emit();
+    }catch(e){}
+  })();

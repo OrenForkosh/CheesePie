@@ -16,16 +16,20 @@
     } catch(e){ return null; }
   }
 
+  function curFacility(){ try{ const sel=document.getElementById('app-facility'); return (sel && sel.value) || ''; }catch(e){ return ''; } }
+
   async function listSiblings(dir){
     try{
-      const r = await fetch('/api/list?dir=' + encodeURIComponent(dir));
+      const fac = curFacility();
+      const r = await fetch('/api/list?dir=' + encodeURIComponent(dir) + '&facility=' + encodeURIComponent(fac));
       const d = await r.json();
       return Array.isArray(d.items) ? d.items : [];
     }catch(e){ return []; }
   }
   async function fileInfo(path){
     try{
-      const r = await fetch('/api/fileinfo?path=' + encodeURIComponent(path));
+      const fac = curFacility();
+      const r = await fetch('/api/fileinfo?path=' + encodeURIComponent(path) + '&facility=' + encodeURIComponent(fac));
       const d = await r.json();
       return d || {};
     }catch(e){ return {}; }

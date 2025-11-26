@@ -3,3 +3,4 @@ numpy>=1.23
 Pillow>=9.0
 scikit-image>=0.19
 pydantic>=2.0
+h5py>=3.8

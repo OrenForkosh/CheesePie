@@ -4,6 +4,7 @@ import json
 import os
 import re
 from pathlib import Path
+from flask import Blueprint, jsonify, request
 from typing import Any, Dict, List, Optional
 
 
@@ -262,6 +263,23 @@ def cfg_importer_facilities() -> Dict[str, Any]:
     return out
 
 
+def cfg_default_facility() -> str:
+    """Return configured default facility name (lowercased) if valid.
+
+    Looks for `facilities.default` in CONFIG and ensures it exists among
+    the normalized facilities keys. Returns empty string if not set/valid.
+    """
+    try:
+        raw = CONFIG.get('facilities', {}) if isinstance(CONFIG.get('facilities', {}), dict) else {}
+        name = str(raw.get('default', '')).strip().lower()
+    except Exception:
+        name = ''
+    facs = cfg_importer_facilities()
+    if name and name in facs:
+        return name
+    return ''
+
+
 def cfg_importer_working_dir() -> Path:
     base = CONFIG.get('importer', {}).get('working_dir', './working')
     try:
@@ -368,6 +386,7 @@ def inject_public_config():
             },
             'importer': {
                 'facilities': cfg_importer_facilities(),
+                'default_facility': cfg_default_facility(),
             },
             'colors': {
                 'mice': mice_out,
@@ -381,6 +400,66 @@ __all__ = [
     'CONFIG', 'load_config', '_config_path',
     'cfg_default_animals', 'cfg_default_fps', 'cfg_default_types', 'cfg_keyboard',
     'cfg_preview_thumbnails', 'cfg_browser_visible_extensions', 'cfg_browser_required_filename_regex',
-    'cfg_importer_facilities', 'cfg_importer_working_dir', 'cfg_importer_source_exts', 'cfg_importer_ignore_dir_regex', 'cfg_importer_health_tolerance_seconds',
+    'cfg_importer_facilities', 'cfg_default_facility', 'cfg_importer_working_dir', 'cfg_importer_source_exts', 'cfg_importer_ignore_dir_regex', 'cfg_importer_health_tolerance_seconds',
     'inject_public_config',
 ]
+bp = Blueprint('config_api', __name__)
+
+@bp.route('/info')
+def api_config_info():
+    try:
+        p = _config_path()
+        origin = 'env' if os.getenv('CHEESEPIE_CONFIG') else 'default'
+        return jsonify({'ok': True, 'path': str(p), 'origin': origin})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/switch', methods=['POST'])
+def api_config_switch():
+    global CONFIG
+    payload = request.json or {}
+    path = str(payload.get('path', '')).strip()
+    if not path:
+        return jsonify({'error': 'Missing path'}), 400
+    p = Path(path).expanduser()
+    if not p.exists() or not p.is_file():
+        return jsonify({'error': 'File not found', 'path': str(p)}), 404
+    try:
+        os.environ['CHEESEPIE_CONFIG'] = str(p)
+        CONFIG = load_config()
+        return jsonify({'ok': True, 'path': str(p)})
+    except Exception as e:
+        return jsonify({'error': f'Failed to switch config: {e}'}), 500
+
+
+@bp.route('/list')
+def api_config_list():
+    """List available config files in the project root.
+
+    Includes:
+      - config.json (default)
+      - config.<name>.json (any string for <name>)
+    """
+    try:
+        root = Path(__file__).resolve().parent.parent
+        items = []
+        # Default config.json
+        def_cfg = root.joinpath('config.json')
+        if def_cfg.exists() and def_cfg.is_file():
+            items.append({'label': 'config.json (default)', 'path': str(def_cfg), 'default': True})
+        # Pattern config.*.json
+        for p in sorted(root.glob('config.*.json')):
+            try:
+                # Skip config.json itself
+                if p.name == 'config.json':
+                    continue
+                items.append({'label': p.name, 'path': str(p), 'default': False})
+            except Exception:
+                continue
+        # Current selection
+        cur = _config_path()
+        origin = 'env' if os.getenv('CHEESEPIE_CONFIG') else 'default'
+        return jsonify({'ok': True, 'items': items, 'current': str(cur), 'origin': origin})
+    except Exception as e:
+        return jsonify({'error': f'Failed to list configs: {e}'}), 500

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, jsonify, request
+from .config import cfg_importer_facilities
 
 from .config import cfg_browser_visible_extensions, cfg_browser_required_filename_regex
 
@@ -67,23 +68,45 @@ def file_info(path: Path) -> Dict[str, Any]:
 
 @bp.route('/list')
 def api_list():
+    facility = (request.args.get('facility') or '').strip().lower()
+    facs = cfg_importer_facilities()
+    if not facility or facility not in facs:
+        return jsonify({"items": [], "error": "Invalid or missing facility"}), 400
+    base = Path(facs[facility].get('output_dir') or '').expanduser().resolve()
+    if not base.exists() or not base.is_dir():
+        return jsonify({"items": [], "error": "Facility output_dir not available"}), 400
     directory = request.args.get('dir', '').strip()
     query = request.args.get('q', '').strip()
     if not directory:
-        return jsonify({"items": [], "error": "No directory provided"})
-    path = Path(directory).expanduser()
+        return jsonify({"items": [], "error": "No directory provided"}), 400
+    path = Path(directory).expanduser().resolve()
+    try:
+        path.relative_to(base)
+    except Exception:
+        return jsonify({"items": [], "error": "Path outside facility scope"}), 403
     items = list_dir_contents(path, query)
     return jsonify({"items": items})
 
 
 @bp.route('/fileinfo')
 def api_fileinfo():
-    path = request.args.get('path', '').strip()
-    if not path:
+    facility = (request.args.get('facility') or '').strip().lower()
+    facs = cfg_importer_facilities()
+    if not facility or facility not in facs:
+        return jsonify({"error": "Invalid or missing facility"}), 400
+    base = Path(facs[facility].get('output_dir') or '').expanduser().resolve()
+    if not base.exists() or not base.is_dir():
+        return jsonify({"error": "Facility output_dir not available"}), 400
+    path_str = request.args.get('path', '').strip()
+    if not path_str:
         return jsonify({"error": "No path provided"}), 400
-    info = file_info(Path(path).expanduser())
+    p = Path(path_str).expanduser().resolve()
+    try:
+        p.relative_to(base)
+    except Exception:
+        return jsonify({"error": "Path outside facility scope"}), 403
+    info = file_info(p)
     return jsonify(info)
 
 
 __all__ = ['bp', 'list_dir_contents', 'file_info']
-

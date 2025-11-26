@@ -28,11 +28,16 @@
         <a class="tab tab-browser {{ 'active' if active_tab == 'browser' else '' }}" href="/browser">Browser</a>
         <a class="tab tab-preproc {{ 'active' if active_tab == 'preproc' else '' }}" href="/preproc">Preproc</a>
         <a class="tab tab-annotator {{ 'active' if active_tab == 'annotator' else '' }}" href="/annotator">Annotator</a>
+        <a class="tab tab-analyze {{ 'active' if active_tab == 'analyze' else '' }}" href="/analyze">Analyze</a>
         <a class="tab tab-importer {{ 'active' if active_tab == 'importer' else '' }}" href="/importer">Importer</a>
         <a class="tab tab-settings {{ 'active' if active_tab == 'settings' else '' }}" href="/settings" title="Settings" aria-label="Settings">
           <span class="nav-icon icon-settings" aria-hidden="true"></span>
         </a>
         <span style="flex:1"></span>
+        <div class="header-facility" style="display:flex; align-items:center; gap:6px">
+          <span class="muted" style="font-size:12px">Facility:</span>
+          <select id="app-facility" style="min-width: 140px"></select>
+        </div>
         <a class="tab" href="/auth/logout" title="Logout" aria-label="Logout">
           <span class="nav-icon icon-logout" aria-hidden="true"></span>
         </a>

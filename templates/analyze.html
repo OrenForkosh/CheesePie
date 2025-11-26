@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel panel--nochrome">
+  <div class="controls" style="grid-template-columns: 4fr 1fr">
+    <div class="subpanel">
+      <div class="control-group" style="margin-bottom: 8px">
+        <h1 style="margin: 0 0 4px 0">Analyze</h1>
+        <p class="muted" style="margin: 0">Preview a video with superimposed tracking.</p>
+      </div>
+
+      <div class="control-group">
+        <label>Video</label>
+        <input type="text" id="an-name" value="{{ video or '' }}" readonly style="width:100%" />
+      </div>
+
+      <div class="control-group" style="margin-top: 12px">
+        <div class="video-wrap">
+          <div class="video-preview">
+            <div id="an-vwrap" style="position: relative">
+              <video id="an-video" preload="metadata" style="display:block; width:100%; height:auto; background: var(--surface)"></video>
+              <canvas id="an-overlay" style="position:absolute; inset:0; width:100%; height:100%; pointer-events:none"></canvas>
+            </div>
+            <div class="controls-row" style="margin-top: 8px">
+              <button class="icon-btn" id="an-play" title="Play" aria-label="Play" style="margin-left:6px">▶</button>
+              <div class="fill">
+                <input type="range" id="an-seek" min="0" value="0" step="0.01" style="width:100%" />
+              </div>
+              <div class="muted" style="display:flex; align-items:center; gap:4px; margin-right:6px">
+                <input type="text" id="an-time-cur" value="00:00.000" placeholder="HH:MM:SS.mmm" title="Edit and press Enter to jump"
+                  style="width:110px; padding:2px 6px; font-family:inherit; font-size:inherit; border:1px solid transparent; border-radius:6px; background:transparent; color:inherit; text-align:right;" />
+                <span>/</span>
+                <span id="an-time-dur">00:00.000</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subpanel" style="min-width:200px">
+      <div class="control-group" style="margin-bottom:8px">
+        <h2 style="margin:0 0 4px 0">Details</h2>
+        <p id="an-msg" class="muted" style="margin:0"></p>
+      </div>
+      <div class="detail-grid">
+        <div class="key">FPS</div><div id="an-fps">—</div>
+        <div class="key">Mice</div><div id="an-mice">—</div>
+        <div class="key">Track file</div><div id="an-track">—</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  (function(){
+    const videoPath = {{ (video or '')|tojson }};
+    const v = document.getElementById('an-video');
+    const c = document.getElementById('an-overlay');
+    const ctx = c.getContext('2d');
+    const fpsEl = document.getElementById('an-fps');
+    const miceEl = document.getElementById('an-mice');
+    const trackEl = document.getElementById('an-track');
+    const msgEl = document.getElementById('an-msg');
+
+    if (!videoPath){ msgEl.textContent = 'No video provided. Open from Browser → Analyze.'; return; }
+
+    function curFacility(){ try{ const sel=document.getElementById('app-facility'); return (sel && sel.value) || ''; }catch(e){ return ''; } }
+
+    function resizeCanvas(){ try{ const r=v.getBoundingClientRect(); c.width = Math.floor(r.width); c.height = Math.floor(r.height); }catch(e){} }
+    window.addEventListener('resize', resizeCanvas);
+
+    // Load video
+    (function loadVideo(){ try{ const s=document.createElement('source'); s.src = '/media?path=' + encodeURIComponent(videoPath); v.appendChild(s); v.load(); }catch(e){} })();
+
+    // Discover fps and track info
+    let fps = 30;
+    let miceCount = 0;
+    let chunkSize = 240; // frames per fetch
+    let cache = new Map(); // key: chunkStart -> { x: number[][], y: number[][] }
+    let trackOk = false;
+
+    fetch('/api/media_meta?path=' + encodeURIComponent(videoPath))
+      .then(r=>r.json()).then(meta=>{ if(meta && meta.streams && meta.streams.video && meta.streams.video.fps){ fps = Math.max(1, Math.round(meta.streams.video.fps)); fpsEl.textContent = String(fps); } })
+      .catch(()=>{ fpsEl.textContent = String(fps); });
+
+    const fac = curFacility();
+    fetch('/api/analyze/info?video=' + encodeURIComponent(videoPath) + (fac?('&facility='+encodeURIComponent(fac)):'') )
+      .then(r=>r.json()).then(d=>{
+        if (!d || d.error){ msgEl.textContent = d && d.error ? d.error : 'No tracking file found.'; trackEl.textContent='—'; return; }
+        trackOk = !!d.ok;
+        miceCount = d.mice || 0; miceEl.textContent = String(miceCount||'—');
+        trackEl.textContent = d.track || '—';
+      }).catch(()=>{ msgEl.textContent='No tracking file found.'; });
+
+    function drawPositions(frame, x, y){
+      resizeCanvas();
+      const W = c.width, H = c.height;
+      ctx.clearRect(0,0,W,H);
+      if (!x || !y || !x.length) return;
+      // Assume coordinates are in pixel space of original video; scale to current display
+      const vw = v.videoWidth || W, vh = v.videoHeight || H;
+      const sx = W / vw, sy = H / vh;
+      for (let i=0;i<x.length;i++){
+        const xi = x[i][frame] ?? null;
+        const yi = y[i][frame] ?? null;
+        if (xi==null || yi==null) continue;
+        const px = xi * sx, py = yi * sy;
+        ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI*2);
+        ctx.fillStyle = ['#ff4f4f','#34c759','#4f8cff','#ffd166','#ff66cc','#00d2ff'][i % 6];
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth=2; ctx.stroke();
+      }
+    }
+
+    let lastChunkStart = -1;
+    function ensureChunk(start){
+      if (cache.has(start)) return Promise.resolve(cache.get(start));
+      const fac = curFacility();
+      const url = '/api/analyze/positions?video=' + encodeURIComponent(videoPath) + '&start=' + start + '&count=' + chunkSize + (fac?('&facility='+encodeURIComponent(fac)):'');
+      return fetch(url).then(r=>r.json()).then(d=>{ if (!d || d.error) throw new Error(d && d.error || 'load failed'); cache.set(start, { x: d.x||[], y: d.y||[] }); return cache.get(start); });
+    }
+
+    function onFrame(){
+      if (!trackOk) { requestAnimationFrame(onFrame); return; }
+      const t = v.currentTime || 0;
+      const fi = Math.max(0, Math.floor(t * fps));
+      const chunkStart = Math.floor(fi / chunkSize) * chunkSize;
+      ensureChunk(chunkStart).then(({x,y})=>{
+        const local = fi - chunkStart;
+        drawPositions(local, x, y);
+      }).catch(()=>{}).finally(()=>{ requestAnimationFrame(onFrame); });
+    }
+    v.addEventListener('play', ()=>{ requestAnimationFrame(onFrame); });
+    v.addEventListener('seeking', ()=>{ /* kick next frame paint */ });
+    v.addEventListener('loadedmetadata', resizeCanvas, {once:true});
+    // Start loop even if paused to keep overlay synced when scrubbing
+    requestAnimationFrame(onFrame);
+
+    // Simple controls (play/seek/format) to match Preproc feel
+    const playBtn = document.getElementById('an-play');
+    const seek = document.getElementById('an-seek');
+    const timeCur = document.getElementById('an-time-cur');
+    const timeDur = document.getElementById('an-time-dur');
+    function fmt(sec){
+      if (!isFinite(sec)) return '00:00.000';
+      const h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), s=Math.floor(sec%60), ms=Math.floor((sec-Math.floor(sec))*1000);
+      const pad2=n=>String(n).padStart(2,'0'); const pad3=n=>String(n).padStart(3,'0');
+      return h?`${h}:${pad2(m)}:${pad2(s)}.${pad3(ms)}`:`${pad2(m)}:${pad2(s)}.${pad3(ms)}`;
+    }
+    function parseTime(str){ try{ const s=String(str||'').trim(); if(!s) return null; const m=s.match(/^(\d+)(?::(\d+))?(?::(\d+))?(?:\.(\d{1,3}))?$/); if(!m) return null; let h=0,mi=0,se=0,ms=0; if(m[3]!=null){h=parseInt(m[1],10)||0;mi=parseInt(m[2],10)||0;se=parseInt(m[3],10)||0;} else if(m[2]!=null){mi=parseInt(m[1],10)||0;se=parseInt(m[2],10)||0;} else {se=parseFloat(m[1])||0;} if(m[4]!=null){ ms=parseInt(String(m[4]).padEnd(3,'0'),10)||0;} return h*3600+mi*60+se+(ms/1000);}catch(e){return null;} }
+    function updateTime(){ const cur=Number(v.currentTime||0), dur=Number(v.duration||0); if(timeCur) timeCur.value = fmt(cur); if(timeDur) timeDur.textContent = fmt(dur); if (seek && !seek.dragging) seek.value = String(cur); }
+    function updateMax(){ try{ if(seek) seek.max = String(Math.max(0, Number(v.duration||0))); updateTime(); }catch(e){} }
+    function updatePlayUI(){ const paused=!!v.paused; if(playBtn){ playBtn.textContent = paused? '▶':'⏸'; playBtn.title = paused? 'Play':'Pause'; playBtn.setAttribute('aria-label', paused? 'Play':'Pause'); } }
+    v.addEventListener('loadedmetadata', updateMax);
+    v.addEventListener('durationchange', updateMax);
+    v.addEventListener('timeupdate', updateTime);
+    v.addEventListener('play', updatePlayUI);
+    v.addEventListener('pause', updatePlayUI);
+    if (playBtn) playBtn.addEventListener('click', ()=>{ try{ v.paused? v.play(): v.pause(); }catch(e){} });
+    if (seek){
+      seek.addEventListener('input', ()=>{ seek.dragging=true; try{ v.currentTime = Number(seek.value||0); }catch(e){} });
+      seek.addEventListener('change', ()=>{ seek.dragging=false; });
+    }
+    if (timeCur){
+      const jump=()=>{ try{ const t=parseTime(timeCur.value); if(t==null) return; const target=Math.min(Math.max(0,t), Math.max(0, Number(v.duration||0)-1e-6)); try{ v.pause(); }catch(e){} v.currentTime = target; updateTime(); }catch(e){} };
+      timeCur.addEventListener('keydown', (ev)=>{ if(ev.key==='Enter'){ ev.preventDefault(); jump(); } });
+      timeCur.addEventListener('blur', jump);
+    }
+    if (v.readyState >= 1) { updateMax(); updatePlayUI(); }
+  })();
+</script>
+{% endblock %}

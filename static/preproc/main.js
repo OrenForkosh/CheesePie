@@ -117,8 +117,8 @@
       });
     })();
 
-    // Facility select handling
-    var facilitySel = U.$('#pp-facility');
+    // Facility is selected in header
+    var facilitySel = document.getElementById('app-facility');
     function getFacilities(){
       try{
         var cfg = window.CHEESEPIE || {};
@@ -220,32 +220,15 @@
         history.replaceState(null, '', url.toString());
       } catch(e){}
     }
-    function populateFacility(){
-      if (!facilitySel) return;
-      var facs = getFacilities();
-      var keys = Object.keys(facs);
-      facilitySel.innerHTML = '';
-      // placeholder option
-      var opt0 = document.createElement('option'); opt0.value=''; opt0.textContent='Select facility'; facilitySel.appendChild(opt0);
-      keys.forEach(function(k){ var o = document.createElement('option'); o.value=k; o.textContent=k; facilitySel.appendChild(o); });
-      // pick from URL or storage
-      var fromUrl = currentFacilityFromUrl();
-      var fromStore = '';
-      try{ fromStore = localStorage.getItem('cheesepie.preproc.facility') || ''; } catch(e){}
-      var chosen = fromUrl || fromStore;
-      if (chosen && keys.indexOf(chosen) !== -1){ facilitySel.value = chosen; setTabsEnabled(true); }
-      else { facilitySel.value = ''; setTabsEnabled(false); }
-    }
-    populateFacility();
-    if (facilitySel){
-      facilitySel.addEventListener('change', function(){
-        var fac = facilitySel.value || '';
-        try{ localStorage.setItem('cheesepie.preproc.facility', fac); } catch(e){}
+    // Respond to global facility changes
+    document.addEventListener('app:facility-changed', function(ev){
+      try{
+        var fac = (ev && ev.detail && ev.detail.name) || (facilitySel && facilitySel.value) || '';
         updateUrlWithFacility(fac);
         setTabsEnabled(!!fac);
         if (fac){ populateSetupsForFacility(fac); }
-      });
-    }
+      }catch(e){}
+    });
 
     // Setup dropdown and Save handling
     var setupSel = U.$('#pp-setup');

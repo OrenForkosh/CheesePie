@@ -125,14 +125,32 @@
                   style="width: 100%"
                 />
               </div>
-              <div class="muted" style="display:flex; align-items:center; gap:4px; margin-right:6px; font-family: 'Chivo Mono', ui-monospace, Menlo, Monaco, Consolas, monospace;">
+              <div
+                class="muted"
+                style="
+                  display: flex;
+                  align-items: center;
+                  gap: 4px;
+                  margin-right: 6px;
+                "
+              >
                 <input
                   type="text"
                   id="pp-time-cur"
                   value="00:00.000"
                   placeholder="HH:MM:SS.mmm"
                   title="Edit and press Enter to jump"
-                  style="width: 110px; padding:2px 6px; font-family: inherit; font-size: inherit; border:1px solid transparent; border-radius:6px; background:transparent; color:inherit; text-align:right"
+                  style="
+                    width: 110px;
+                    padding: 2px 6px;
+                    font-family: inherit;
+                    font-size: inherit;
+                    border: 1px solid transparent;
+                    border-radius: 6px;
+                    background: transparent;
+                    color: inherit;
+                    text-align: right;
+                  "
                 />
                 <span>/</span>
                 <span id="pp-time-dur">00:00.000</span>
@@ -194,10 +212,8 @@
     <!-- end left subpanel -->
 
     <div class="subpanel">
-      <div class="control-group">
+      <div class="control-wizard">
         <div class="kv" style="margin-bottom: 8px">
-          <div class="k">Facility</div>
-          <select id="pp-facility"></select>
           <div class="k">Setup</div>
           <div style="display: flex; gap: 6px; align-items: center">
             <select id="pp-setup" style="flex: 1"></select>
@@ -242,15 +258,50 @@
           <div id="pane-info">
             <div class="kv">
               <div class="k">Width</div>
-              <div class="v"><input type="text" id="meta-width" readonly class="input readonly" /></div>
+              <div class="v">
+                <input
+                  type="text"
+                  id="meta-width"
+                  readonly
+                  class="input readonly"
+                />
+              </div>
               <div class="k">Height</div>
-              <div class="v"><input type="text" id="meta-height" readonly class="input readonly" /></div>
+              <div class="v">
+                <input
+                  type="text"
+                  id="meta-height"
+                  readonly
+                  class="input readonly"
+                />
+              </div>
               <div class="k">Frame rate</div>
-              <div class="v"><input type="text" id="meta-fps" readonly class="input readonly" /></div>
+              <div class="v">
+                <input
+                  type="text"
+                  id="meta-fps"
+                  readonly
+                  class="input readonly"
+                />
+              </div>
               <div class="k">Duration</div>
-              <div class="v"><input type="text" id="meta-duration" readonly class="input readonly" /></div>
+              <div class="v">
+                <input
+                  type="text"
+                  id="meta-duration"
+                  readonly
+                  class="input readonly"
+                />
+              </div>
               <div class="k">Frames</div>
-              <div class="v"><input type="text" id="meta-frames" readonly class="input readonly" /></div>
+              <div class="v">
+                <input
+                  type="text"
+                  id="meta-frames"
+                  readonly
+                  class="input readonly"
+                />
+              </div>
             </div>
           </div>
           <div id="pane-arena" style="display: none">
@@ -271,6 +322,7 @@
               <span class="muted" id="arena-status" style="flex: 1"></span>
               <button class="btn" id="arena-mark">Mark</button>
             </div>
+            <div class="vert-spacer"></div>
             <div class="pane-footer">
               <div class="muted">
                 Arena is axis-aligned rectangle within the frame. Click Mark to
@@ -333,6 +385,7 @@
               <span class="muted" id="bg-status" style="flex: 1"></span>
               <button class="btn" id="bg-run">Run</button>
             </div>
+            <div class="vert-spacer"></div>
             <div id="bg-canvas-wrap" style="position: relative; width: 100%">
               <canvas
                 id="bg-canvas"
@@ -397,6 +450,7 @@
               ></span>
               <button class="btn" id="roi-add">Add</button>
             </div>
+            <div class="vert-spacer"></div>
             <div class="pane-footer">
               Tip: Click "Edit" for a region, then click grid cells in the
               overlay to toggle. Press Esc or click Edit again to finish.
@@ -440,11 +494,19 @@
                   height="20"
                 />
               </button>
-              <span class="muted" id="pp-colors-segcount" style="min-width: 80px"></span>
+              <span
+                class="muted"
+                id="pp-colors-segcount"
+                style="min-width: 80px"
+              ></span>
               <span
                 class="muted"
                 id="pp-colors-status"
-                style="min-width: 200px; min-height: 1.4em; display: inline-block"
+                style="
+                  min-width: 200px;
+                  min-height: 1.4em;
+                  display: inline-block;
+                "
               ></span>
             </div>
             <div id="pp-colors-hist" style="margin-top: 8px"></div>
@@ -458,7 +520,13 @@
                 justify-content: flex-end;
               "
             >
-              <button class="btn mini" id="pp-colors-clear" title="Clear marks for this frame">Clear</button>
+              <button
+                class="btn mini"
+                id="pp-colors-clear"
+                title="Clear marks for this frame"
+              >
+                Clear
+              </button>
               <button
                 class="btn mini"
                 id="pp-colors-clear-all"
@@ -467,7 +535,10 @@
                 Clear all
               </button>
             </div>
-            <div id="pp-zoom-wrap" style="margin-top:8px; display:flex; justify-content:flex-end">
+            <div
+              id="pp-zoom-wrap"
+              style="margin-top: 8px; display: flex; justify-content: flex-end"
+            >
               <canvas
                 id="pp-zoom"
                 style="
@@ -480,6 +551,7 @@
                 "
               ></canvas>
             </div>
+            <div class="vert-spacer"></div>
             <div class="pane-footer">
               Drag a marker (R/G/B/Y/BG) from the top-left dock onto a segment
               to assign it, or click a segment to assign the current mouse (use
@@ -488,14 +560,16 @@
           </div>
           <div id="pane-timing" style="display: none">
             <div class="kv">
-          <div class="k">Current</div>
-          <div class="v"><span id="exp-current" style="font-family: 'Chivo Mono', ui-monospace, Menlo, Monaco, Consolas, monospace">00:00:00.000</span></div>
+              <div class="k">Current</div>
+              <div class="v">
+                <span id="exp-current">00:00:00.000</span>
+              </div>
               <div class="k">Start</div>
               <div
                 class="v"
                 style="display: flex; gap: 8px; align-items: center"
               >
-                <input type="text" id="exp-start" placeholder="HH:MM:SS.mmm" style="font-family: 'Chivo Mono', ui-monospace, Menlo, Monaco, Consolas, monospace" />
+                <input type="text" id="exp-start" placeholder="HH:MM:SS.mmm" />
                 <button class="btn mini" id="exp-set-start">Set</button>
                 <button
                   class="btn mini"
@@ -510,7 +584,7 @@
                 class="v"
                 style="display: flex; gap: 8px; align-items: center"
               >
-                <input type="text" id="exp-end" placeholder="HH:MM:SS.mmm" style="font-family: 'Chivo Mono', ui-monospace, Menlo, Monaco, Consolas, monospace" />
+                <input type="text" id="exp-end" placeholder="HH:MM:SS.mmm" />
                 <button class="btn mini" id="exp-set-end">Set</button>
                 <button
                   class="btn mini"
@@ -534,6 +608,7 @@
               <span class="muted" style="flex: 1" id="exp-status"></span>
               <button class="btn" id="exp-reset">Reset</button>
             </div>
+            <div class="vert-spacer"></div>
             <div class="pane-footer">
               <div class="muted">
                 Set precise experiment start/end using the fields above.
