@@ -274,6 +274,12 @@
       }
       return eb;
     }
+    function hideErrorBanner() {
+      try {
+        const eb = document.getElementById("error-banner");
+        if (eb) { eb.style.display = 'none'; eb.textContent = ''; }
+      } catch {}
+    }
     function parseStackLoc(err) {
       try {
         const st = String((err && err.stack) || "").split("");
@@ -686,125 +692,31 @@
     // List button: stream full scan with date/time for in-range and day assignment
     if (listBtn) {
       listBtn.addEventListener("click", async () => {
+        hideErrorBanner();
         const fac = facilitySel.value;
-        if (!fac) {
-          alert("Please select a facility first.");
-          return;
-        }
-        listBtn.disabled = true;
-        listBtn.textContent = "Listing…";
+        if (!fac) { alert("Please select a facility first."); return; }
+        listBtn.disabled = true; listBtn.textContent = "Listing…";
         try {
-          const chk = await fetch(
-            `/api/import/check_source?facility=${encodeURIComponent(fac)}`
-          );
+          const chk = await fetch(`/api/import/check_source?facility=${encodeURIComponent(fac)}`);
           if (!chk.ok) {
             const d = await chk.json().catch(() => ({}));
             throw new Error((d && d.error) || "Source folder not accessible");
           }
-          ensureScanPanel();
-          startScanProgress(
-            `Full scan in ${combinedSourcePattern(fac)} …`,
-            true
-          );
-          const cams = getSelectedCameras();
-          const pattern =
-            (FACS[fac] &&
-              (FACS[fac].camera_pattern || FACS[fac].camera_glob)) ||
-            "";
-          const qs = new URLSearchParams({
-            facility: fac,
-            cameras: cams.join(","),
-            camera_pattern: pattern,
-            start_date: startDate.value || "",
-            end_date: endDate.value || "",
-            start_time: startTime.value || "",
-            end_time: endTime.value || "",
-          });
-          const es = new EventSource(
-            `/api/import/scan_full_stream?${qs.toString()}`
-          );
-          scanController = { close: () => es.close() };
-          const files = [];
-          es.addEventListener("camera", (ev) => {
-            try {
-              const d = JSON.parse(ev.data);
-              if (d && d.camera) {
-                setScanMeta(
-                  `Camera cam${String(d.camera).padStart(2, "0")} — ${d.root}${
-                    d.exists ? "" : " (missing)"
-                  }`
-                );
-                appendDirRow({
-                  camera: d.camera,
-                  path: d.root,
-                  header: true,
-                  exists: d.exists,
-                });
-              }
-            } catch {}
-          });
-          es.addEventListener("dir", (ev) => {
-            try {
-              const d = JSON.parse(ev.data);
-              if (d && d.path) {
-                const run = document.getElementById("scan-running-meta");
-                if (run) run.textContent = `Scanning: ${d.path}`;
-                appendDirRow(d);
-              }
-            } catch {}
-          });
-          es.addEventListener("file", (ev) => {
-            try {
-              const d = JSON.parse(ev.data);
-              if (d && d.path) {
-                files.push(d);
-                appendScanRow(d);
-              }
-            } catch {}
-          });
-          es.addEventListener("done", (ev) => {
-            try {
-              const d = JSON.parse(ev.data);
-              const count = (d && d.total) || files.length;
-              setScanMeta(`${count} file(s) found`);
-              setScanHeaderMeta(formatCount(count));
-            } catch {
-              setScanMeta(`${files.length} file(s) found`);
-              setScanHeaderMeta(formatCount(files.length));
-            }
-            stopScanDots();
-            es.close();
-            stopScanProgress();
-            scanController = null;
-            listBtn.disabled = false;
-            try {
-              listBtn.removeAttribute("disabled");
-            } catch {}
-            listBtn.textContent = "List";
-          });
-          es.onerror = () => {
-            es.close();
-            stopScanDots();
-            stopScanProgress();
-            scanController = null;
-            listBtn.disabled = false;
-            try {
-              listBtn.removeAttribute("disabled");
-            } catch {}
-            listBtn.textContent = "List";
-          };
+          // Use background scan/prepare job but do not auto-run encode
+          scanTriggerBtn = listBtn; scanAutoRun = false;
+          startScanProgress(`Full scan in ${combinedSourcePattern(fac)} …`, true);
+          await startScanAndRun(false);
         } catch (e) {
           showError("List error", e);
           stopScanProgress();
-          scanController = null;
-          listBtn.disabled = false;
-          listBtn.textContent = "List";
+          listBtn.disabled = false; listBtn.textContent = "List";
         }
       });
     }
 
     // Import button: stream scan then prepare per-day lists
     async function onStartScan() {
+      hideErrorBanner();
       const fac = facilitySel.value;
       const exp = experimentSel.value;
       const trt = treatmentSel.value;
@@ -1032,7 +944,8 @@
         }
       }catch(e){ stopScanPolling(); try{ showError('Scan status', e); }catch{} }
     }
-    async function startScanAndRun(){
+    async function startScanAndRun(autoRun=true){
+      scanAutoRun = !!autoRun;
       ensureScanPanel(); ensureDaysPanel();
       // Kick background Scan/Prepare job
       const fac = facilitySel.value;
@@ -1045,7 +958,7 @@
       const cams = getSelectedCameras();
       const batch = Math.max(0, Number(batchInput.value || 0));
       // Show progress UI
-      startScanProgress(`Scanning in ${combinedSourcePattern(fac)} …`, true);
+      startScanProgress(`${scanAutoRun? 'Import prep – scanning in' : 'Full scan in'} ${combinedSourcePattern(fac)} …`, true);
       try{
         const res = await fetch('/api/import/scan_prepare/start', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ facility: fac, experiment: exp, treatment: trt, batch, start_date: sDate, end_date: eDate, start_time: sTime, end_time: eTime, cameras: cams, camera_pattern: (FACS[fac] && (FACS[fac].camera_pattern || FACS[fac].camera_glob)) || '' }) });
         const d = await res.json();
@@ -1064,6 +977,7 @@
 
   if (openImportBtn) openImportBtn.addEventListener('click', async () => {
       try{
+        hideErrorBanner();
         ensureScanPanel(); ensureDaysPanel();
         // If encoding is running → cancel encode
         try{
