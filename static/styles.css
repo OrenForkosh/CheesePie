@@ -673,6 +673,12 @@ body {
   color: var(--muted);
 }
 
+.tab-explainer {
+  color: var(--muted);
+  margin-bottom: 12px;
+  margin-top: 6px;
+}
+
 /* Simple forms and alerts */
 .form .control-group {
   margin-bottom: 12px;
@@ -1554,6 +1560,25 @@ input[type="range"]::-moz-range-track {
   justify-content: space-between;
   margin-bottom: 10px;
 }
+.shortcut-table {
+  border-collapse: collapse;
+  margin-top: 6px;
+}
+
+.shortcut-table td {
+  padding: 4px 8px;
+  vertical-align: middle;
+}
+
+.shortcut-table .shortcut {
+  text-align: right; /* align keys to the right */
+  white-space: nowrap; /* keep keys together */
+}
+
+.shortcut-table .description {
+  text-align: left; /* explanations to the left */
+}
+
 .shortcut-list {
   display: grid;
   grid-template-columns: 1fr;
@@ -1565,6 +1590,7 @@ input[type="range"]::-moz-range-track {
   align-items: center;
   gap: 10px;
 }
+
 .kbd {
   display: inline-block;
   padding: 2px 6px;

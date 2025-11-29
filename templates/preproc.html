@@ -305,6 +305,12 @@
             </div>
           </div>
           <div id="pane-arena" style="display: none">
+            <div class="tab-explainer">
+              Arena is axis-aligned rectangle within the frame. Click Mark to
+              define: top-left then bottom-right. Drag handles to refine while
+              marking.
+            </div>
+
             <div class="kv">
               <div class="k">Grid cols</div>
               <input type="number" id="grid-cols" min="1" value="6" />
@@ -315,45 +321,61 @@
               <div class="k">Height (cm)</div>
               <input type="number" id="arena-hcm" min="1" value="30" />
             </div>
+            <div class="vert-spacer"></div>
             <div
               class="controls-row pane-next"
               style="border-top: none; padding-top: 0"
             >
               <span class="muted" id="arena-status" style="flex: 1"></span>
-              <button class="btn" id="arena-mark">Mark</button>
+              <button class="btn" id="arena-mark" style="min-width: 10ch">
+                Mark
+              </button>
             </div>
-            <div class="vert-spacer"></div>
-            <div class="pane-footer">
-              <div class="muted">
-                Arena is axis-aligned rectangle within the frame. Click Mark to
-                define: top-left then bottom-right. Drag handles to refine while
-                marking.
-              </div>
+            <div class="pane-footer" style="min-height: 200px">
               <div class="muted" style="font-weight: 600; margin-top: 6px">
                 Keyboard Shortcuts
               </div>
-              <div class="shortcut-list" style="margin-top: 6px">
-                <div class="shortcut-item">
-                  <span class="kbd">Esc</span><span>Stop marking</span>
-                </div>
-                <div class="shortcut-item">
-                  <span class="kbd">Enter</span> / <span class="kbd">Space</span
-                  ><span>Finish marking</span>
-                </div>
-                <div class="shortcut-item">
-                  <span class="kbd">↑</span><span class="kbd">↓</span
-                  ><span class="kbd">←</span><span class="kbd">→</span
-                  ><span>Nudge active handle by 1px</span>
-                </div>
-                <div class="shortcut-item">
-                  <span class="kbd">Shift</span> + <span class="kbd">↑</span
-                  ><span class="kbd">↓</span><span class="kbd">←</span
-                  ><span class="kbd">→</span><span>Nudge by 10px</span>
-                </div>
-              </div>
+              <table class="shortcut-table" style="margin-top: 6px">
+                <tr>
+                  <td class="shortcut">
+                    <span class="kbd">Esc</span>
+                  </td>
+                  <td class="description">Stop marking</td>
+                </tr>
+
+                <tr>
+                  <td class="shortcut">
+                    <span class="kbd">Enter</span> /
+                    <span class="kbd">Space</span>
+                  </td>
+                  <td class="description">Finish marking</td>
+                </tr>
+
+                <tr>
+                  <td class="shortcut">
+                    <span class="kbd">↑</span><span class="kbd">↓</span
+                    ><span class="kbd">←</span><span class="kbd">→</span>
+                  </td>
+                  <td class="description">Nudge active handle by 1px</td>
+                </tr>
+
+                <tr>
+                  <td class="shortcut">
+                    <span class="kbd">Shift</span> + <span class="kbd">↑</span
+                    ><span class="kbd">↓</span><span class="kbd">←</span
+                    ><span class="kbd">→</span>
+                  </td>
+                  <td class="description">Nudge by 10px</td>
+                </tr>
+              </table>
             </div>
           </div>
           <div id="pane-background" style="display: none">
+            <div class="tab-explainer">
+              Compute background image as per-pixel quantile over a number of
+              frames sampled across the video. The background will be used to
+              compute foreground masks during tracking.
+            </div>
             <div class="kv">
               <div class="k">Frames</div>
               <input
@@ -373,6 +395,7 @@
                 value="50"
               />
             </div>
+            <div class="vert-spacer"></div>
             <div
               class="controls-row pane-next"
               style="
@@ -383,10 +406,15 @@
               "
             >
               <span class="muted" id="bg-status" style="flex: 1"></span>
-              <button class="btn" id="bg-run">Run</button>
+              <button class="btn" id="bg-run" style="min-width: 10ch">
+                Run
+              </button>
             </div>
-            <div class="vert-spacer"></div>
-            <div id="bg-canvas-wrap" style="position: relative; width: 100%">
+            <div
+              id="bg-canvas-wrap"
+              class="pane-footer"
+              style="position: relative; width: 100%"
+            >
               <canvas
                 id="bg-canvas"
                 style="
@@ -422,6 +450,10 @@
             </div>
           </div>
           <div id="pane-regions" style="display: none">
+            <div class="tab-explainer">
+              Define regions of interest (ROIs) within the arena.
+            </div>
+
             <div class="table-wrap" style="padding: 0; margin-top: 8px">
               <table
                 id="roi-table"
@@ -439,22 +471,22 @@
                 <tbody></tbody>
               </table>
             </div>
-            <div
-              class="pane-next"
-              style="margin-top: 8px; border-top: none; padding-top: 0"
-            >
-              <span
-                class="muted"
-                id="roi-status"
-                style="margin-right: auto"
-              ></span>
-              <button class="btn" id="roi-add">Add</button>
-            </div>
             <div class="vert-spacer"></div>
-            <div class="pane-footer">
-              Tip: Click "Edit" for a region, then click grid cells in the
-              overlay to toggle. Press Esc or click Edit again to finish.
+            <div
+              class="controls-row pane-next"
+              style="
+                margin: 8px 0;
+                border-top: none;
+                padding-top: 0;
+                align-items: center;
+              "
+            >
+              <span class="muted" id="roi-status" style="flex: 1"></span>
+              <button class="btn" id="roi-add" style="min-width: 10ch">
+                Add
+              </button>
             </div>
+            <div class="pane-footer" style="min-height: 200px"></div>
           </div>
           <div id="pane-colors" style="display: none">
             <div
@@ -559,6 +591,10 @@
             </div>
           </div>
           <div id="pane-timing" style="display: none">
+            <div class="tab-explainer">
+              Set precise experiment start/end using the fields above.
+            </div>
+
             <div class="kv">
               <div class="k">Current</div>
               <div class="v">
@@ -595,6 +631,7 @@
                 </button>
               </div>
             </div>
+            <div class="vert-spacer"></div>
             <div
               class="controls-row pane-next"
               style="
@@ -606,31 +643,37 @@
               "
             >
               <span class="muted" style="flex: 1" id="exp-status"></span>
-              <button class="btn" id="exp-reset">Reset</button>
+              <button class="btn" id="exp-reset" style="min-width: 10ch">
+                Reset
+              </button>
             </div>
-            <div class="vert-spacer"></div>
-            <div class="pane-footer">
-              <div class="muted">
-                Set precise experiment start/end using the fields above.
-              </div>
+            <div class="pane-footer" style="min-height: 200px">
               <div class="muted" style="font-weight: 600; margin-top: 6px">
                 Keyboard Shortcuts
               </div>
-              <div class="shortcut-list" style="margin-top: 6px">
-                <div class="shortcut-item">
-                  <span class="kbd">[</span><span class="kbd">]</span
-                  ><span>Step 1 frame backward / forward</span>
-                </div>
-                <div class="shortcut-item">
-                  <span class="kbd">←</span><span class="kbd">→</span
-                  ><span>Jump 1 second backward / forward</span>
-                </div>
-                <div class="shortcut-item">
-                  <span class="kbd">Shift</span> + <span class="kbd">←</span
-                  ><span class="kbd">→</span
-                  ><span>Jump 5 seconds backward / forward</span>
-                </div>
-              </div>
+              <table class="shortcut-table">
+                <tr>
+                  <td class="shortcut">
+                    <span class="kbd">[</span><span class="kbd">]</span>
+                  </td>
+                  <td class="description">Step 1 frame backward / forward</td>
+                </tr>
+
+                <tr>
+                  <td class="shortcut">
+                    <span class="kbd">←</span><span class="kbd">→</span>
+                  </td>
+                  <td class="description">Jump 1 second backward / forward</td>
+                </tr>
+
+                <tr>
+                  <td class="shortcut">
+                    <span class="kbd">Shift</span> + <span class="kbd">←</span
+                    ><span class="kbd">→</span>
+                  </td>
+                  <td class="description">Jump 5 seconds backward / forward</td>
+                </tr>
+              </table>
             </div>
           </div>
           <!-- Save pane removed; replaced by Save dialog button above -->
