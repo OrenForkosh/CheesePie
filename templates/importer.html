@@ -247,14 +247,14 @@
 
     // Ensure panels exist immediately so resume shows something without clicks
     try{ ensureScanPanel(); ensureDaysPanel(); }catch(e){}
-    // Default the scan panel to visible on load (can be toggled later)
+    // Default the scan panel to hidden on load (user can expand with "Show")
     try{
       const content = document.getElementById('scan-content');
       const btn = document.getElementById('scan-toggle-btn');
       const panel = document.getElementById('import-scan');
-      if (content){ content.style.display = 'block'; }
-      if (btn){ btn.textContent = 'Hide'; }
-      if (panel){ panel.dataset.collapsed = '0'; }
+      if (content){ content.style.display = 'none'; }
+      if (btn){ btn.textContent = 'Show'; }
+      if (panel){ panel.dataset.collapsed = '1'; }
     }catch(e){}
 
     function pad2(n) {
@@ -1009,6 +1009,8 @@
         panel.id = "days-status";
         panel.className = "panel";
         panel.style.marginTop = "16px";
+        // Hidden by default; shown when there are rows in days-table
+        panel.style.display = "none";
         panel.innerHTML = `
         <div class=\"panel-header\" style=\"display:flex; align-items:center; justify-content:space-between; padding:8px 16px;\">\n          <h1>Day Preparation</h1>\n          <div style=\"display:flex; gap:8px; align-items:center\">\n            <button class=\"btn\" id=\"stop-btn\" disabled>Stop</button>\n          </div>\n        </div>
         <div class="table-wrap">
@@ -1814,9 +1816,13 @@
           </tr>`;
         }
       }
-      body.innerHTML =
-        rows ||
-        '<tr><td colspan="6" class="muted" style="padding:6px">No days.</td></tr>';
+      // Update table body
+      body.innerHTML = rows || '';
+      // Toggle panel visibility based on presence of rows
+      try {
+        const panel = document.getElementById('days-status');
+        if (panel) panel.style.display = rows ? '' : 'none';
+      } catch {}
 
       // No separate overall progress UI; status is reflected per row
 
