@@ -13,11 +13,11 @@ from skimage.segmentation import find_boundaries
 
 @dataclass
 class Options:
-    height: int = 120
-    width: int = 160
+    height: int = 480
+    width: int = 640
     noiseThresh: int = 10
-    maxNumObjects: int = 20
-    minNumPixels: int = 25
+    maxNumObjects: int = 30
+    minNumPixels: int = 200
     outline_color: Tuple[int, int, int] = (255, 255, 255)  # white by default
     outline_thickness: int = 2
     outline_pattern: str = "solid"  # "solid" or "striped"

@@ -1,36 +1,39 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>CheesePie – Login</title>
-    <link rel="stylesheet" href="/static/styles.css">
-  </head>
-  <body>
-    <main class="container" style="max-width:520px; margin-top:64px;">
-      <section class="panel">
-        <div class="panel-header">
-          <div>
-            <h1>Login</h1>
-            <p class="muted">Enter your password to continue.</p>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CheesePie – Login</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+
+<body>
+  <main class="container" style="max-width:520px; margin-top:64px;">
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <h1>Login</h1>
+          <p class="muted">Enter your password to continue.</p>
+        </div>
+      </div>
+      <div class="panel-body">
+        {% if error %}
+        <div class="alert error" role="alert">{{ error }}</div>
+        {% endif %}
+        <form method="post" class="form">
+          <input type="hidden" name="next" value="{{ request.args.get('next', '') }}">
+          <div class="control-group">
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" required autofocus>
           </div>
-        </div>
-        <div class="panel-body">
-          {% if error %}
-          <div class="alert error" role="alert">{{ error }}</div>
-          {% endif %}
-          <form method="post" class="form">
-            <input type="hidden" name="next" value="{{ request.args.get('next', '') }}">
-            <div class="control-group">
-              <label for="password">Password</label>
-              <input id="password" name="password" type="password" required autofocus>
-            </div>
-            <div class="control-group" style="margin-top:6px;">
-              <button class="btn primary" type="submit">Login</button>
-            </div>
-          </form>
-        </div>
-      </section>
-    </main>
-  </body>
-  </html>
+          <div class="control-group" style="margin-top:6px;">
+            <button class="btn primary" type="submit">Login</button>
+          </div>
+        </form>
+      </div>
+    </section>
+  </main>
+</body>
+
+</html>

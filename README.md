@@ -118,6 +118,7 @@ Common issues:
 ## Development Notes
 
 - Preproc saves sidecars next to the video: `.preproc.json`, `.arena.json`, `.background.png`.
+- The structure of `.preproc.json` files is documented in `preproc.schema.json` (JSON Schema 2020-12).
 - Regions defaults (including cells) and Preproc defaults (grid, cm, background params) are stored in `config.json` under your Facility → Setup entries.
 - The Preproc “Save…” drawer lets you persist the current settings back into `config.json` as a Setup.
 

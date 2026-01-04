@@ -1,24 +1,26 @@
 {% extends 'base.html' %}
 {% block content %}
-<section class="panel" id="annotator"
-         data-video="{{ video|default('') }}"
-         data-default-mice='{{ default_mice|tojson }}'
-         data-default-fps='{{ default_fps|tojson }}'
-         data-default-types='{{ default_types|tojson }}'
-         data-keyboard='{{ keyboard|tojson }}'>
+<section class="panel" id="annotator" data-video="{{ video|default('') }}" data-default-mice='{{ default_mice|tojson }}'
+  data-default-fps='{{ default_fps|tojson }}' data-default-types='{{ default_types|tojson }}'
+  data-keyboard='{{ keyboard|tojson }}'>
   <div class="panel-header">
-    <div>
+    <div class="header-left">
       <h1>Annotator</h1>
       <p class="muted">Annotate behaviors by type with precise timing.</p>
     </div>
   </div>
 
-  <div class="controls" style="grid-template-columns: 1fr">
-    <div class="control-group">
+  <!-- <div class="controls" style="grid-template-columns: 1fr"> -->
+  <div class="control-group" style="padding: 8px 12px">
+    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
       <label for="annotator-video-path">Video</label>
-      <input type="text" id="annotator-video-path" value="{{ video or '' }}" readonly />
+
+      <input type="text" id="annotator-video-path" value="{{ video or '' }}" readonly style="flex: 1" />
+
+      <!-- <input type="text" id="annotator-video-path" value="{{ video or '' }}" readonly /> -->
     </div>
   </div>
+  <!-- </div> -->
 
   <div class="annotator-layout">
     <div class="viewer-column">
@@ -59,7 +61,8 @@
       </div>
       <div class="side-section">
         <h3>Animals</h3>
-        <div class="muted" style="margin-bottom:6px">Comma-separated names (e.g., {{ (default_mice or [])|join(',') }})</div>
+        <div class="muted" style="margin-bottom:6px">Comma-separated names (e.g., {{ (default_mice or [])|join(',') }})
+        </div>
         <input type="text" id="mice-input" placeholder="{{ (default_mice or [])|join(',') }}">
       </div>
       <div class="side-section">
@@ -96,7 +99,7 @@
     </div>
     <div id="shortcuts-content" class="shortcut-list"></div>
   </div>
-  </div>
+</div>
 <div id="type-overlay" class="overlay" hidden>
   <div class="overlay-panel">
     <div class="overlay-header">
@@ -107,7 +110,11 @@
       <label for="type-name-modal" class="muted">Name</label>
       <input type="text" id="type-name-modal" placeholder="e.g., Grooming">
       <label for="type-mode-modal" class="muted">Mode</label>
-      <select id="type-mode-modal"><option value="single">Single</option><option value="dyadic">Dyadic</option><option value="agonistic">Agonistic</option></select>
+      <select id="type-mode-modal">
+        <option value="single">Single</option>
+        <option value="dyadic">Dyadic</option>
+        <option value="agonistic">Agonistic</option>
+      </select>
       <label for="type-key-modal" class="muted">Key</label>
       <input type="text" id="type-key-modal" placeholder="g" maxlength="1" style="width:80px">
       <label for="type-color-modal" class="muted">Color</label>

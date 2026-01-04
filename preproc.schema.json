@@ -1,0 +1,344 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cheesepie.local/preproc.schema.json",
+  "title": "CheesePie Preproc Sidecar",
+  "description": "Schema for *.preproc.json files produced by the preprocessing workflow.",
+  "type": "object",
+  "required": [
+    "type",
+    "video"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "preproc"
+      ],
+      "description": "Marker indicating this file contains preprocessing data."
+    },
+    "video": {
+      "$ref": "#/$defs/videoMeta"
+    },
+    "arena": {
+      "$ref": "#/$defs/arena"
+    },
+    "roi": {
+      "$ref": "#/$defs/roiMap"
+    },
+    "colors": {
+      "type": "object",
+      "description": "Color assignments and per-frame segmentation overlays.",
+      "additionalProperties": true,
+      "properties": {
+        "mice": {
+          "description": "List or string of mouse identifiers (default 'RGBY').",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": [
+                  "string",
+                  "integer"
+                ]
+              }
+            }
+          ]
+        },
+        "marks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/colorMark"
+          },
+          "description": "Global color marks; each uses 'label' as mouse id."
+        },
+        "frames": {
+          "type": "array",
+          "description": "Per-frame overlays with encoded segmentations and marks.",
+          "items": {
+            "$ref": "#/$defs/colorFrame"
+          }
+        }
+      }
+    },
+    "background": {
+      "description": "Background reference used for segmentation (data URL or file path).",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/backgroundData"
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "meta": {
+      "$ref": "#/$defs/metaTimes"
+    },
+    "facility": {
+      "type": "string",
+      "description": "Facility identifier when saved from a configured setup."
+    },
+    "setup": {
+      "type": "string",
+      "description": "Setup name within the facility configuration."
+    }
+  },
+  "$defs": {
+    "bbox": {
+      "type": "object",
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "type": "integer"
+        },
+        "y": {
+          "type": "integer"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "arena": {
+      "type": "object",
+      "required": [
+        "bbox"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "bbox": {
+          "$ref": "#/$defs/bbox"
+        },
+        "grid_cols": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "grid_rows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "width_in_cm": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "height_in_cm": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "roiEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cells": {
+          "description": "List of [row, col] grid cells for the region.",
+          "type": "array",
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "integer"
+            }
+          }
+        },
+        "sheltered": {
+          "type": "boolean"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "roiMap": {
+      "type": "object",
+      "description": "Mapping of region name to ROI configuration.",
+      "additionalProperties": {
+        "$ref": "#/$defs/roiEntry"
+      }
+    },
+    "colorMark": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "label": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Mouse identifier; derived from 'mouse' when saving."
+        },
+        "pos": {
+          "description": "Optional [x, y] position in image coordinates.",
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "time": {
+          "type": [
+            "number",
+            "string",
+            "null"
+          ]
+        },
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hist": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Optional histogram or color profile."}
+      }
+    },
+    "colorFrame": {
+      "type": "object",
+      "required": [
+        "timestamp"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "timestamp": {
+          "type": [
+            "number",
+            "string"
+          ],
+          "description": "Frame timestamp in seconds (number) or string."
+        },
+        "image_b64": {
+          "type": "string",
+          "description": "Data URL for the video frame."
+        },
+        "segms_b64": {
+          "type": "string",
+          "description": "Data URL PNG of segmentation labels (previously labels_b64)."
+        },
+        "marks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/colorMark"
+          }
+        }
+      }
+    },
+    "backgroundData": {
+      "type": "object",
+      "required": [
+        "image_b64"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "image_b64": {
+          "type": "string",
+          "description": "Background image encoded as data URL."
+        },
+        "nframes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of frames used to build the background."
+        },
+        "quantile": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Quantile used during background computation."
+        }
+      }
+    },
+    "videoMeta": {
+      "type": "object",
+      "required": [
+        "name",
+        "path"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "width": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "height": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "frame_rate": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "format": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "duration": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "num_frames": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      }
+    },
+    "metaTimes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "start_time": {
+          "type": "string",
+          "description": "Start time offset string (e.g., HH:MM:SS.mmm)."
+        },
+        "end_time": {
+          "type": "string",
+          "description": "End time offset string (e.g., HH:MM:SS.mmm)."
+        }
+      }
+    }
+  }
+}

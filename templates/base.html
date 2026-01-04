@@ -1,58 +1,64 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>CheesePie Lab Tools</title>
-    <script>
-      (function(){
-        try {
-          var t = localStorage.getItem('cheesepie.theme') || 'dark';
-          document.documentElement.setAttribute('data-theme', t);
-        } catch (e) { /* ignore */ }
-      })();
-    </script>
-    <link rel="stylesheet" href="/static/styles.css">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@400;600&display=swap" rel="stylesheet">
-    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-    <meta name="theme-color" content="#f5c12e">
-  </head>
-  <body>
-    <header class="app-header">
-      <div class="brand">
-        <div class="logo">🧀</div>
-        <div class="title">CheesePie</div>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CheesePie Lab Tools</title>
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('cheesepie.theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', t);
+      } catch (e) { /* ignore */ }
+    })();
+  </script>
+  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@400;600&family=Roboto+Mono:wght@400;600&display=swap"
+    rel="stylesheet">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <meta name="theme-color" content="#f5c12e">
+</head>
+
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <div class="logo">🧀</div>
+      <div class="title">CheesePie</div>
+    </div>
+    <nav class="tabs">
+      <a class="tab tab-browser {{ 'active' if active_tab == 'browser' else '' }}" href="/browser">Browser</a>
+      <a class="tab tab-preproc {{ 'active' if active_tab == 'preproc' else '' }}" href="/preproc">Preproc</a>
+      <a class="tab tab-annotator {{ 'active' if active_tab == 'annotator' else '' }}" href="/annotator">Annotator</a>
+      <a class="tab tab-preview {{ 'active' if active_tab == 'preview' else '' }}" href="/preview">Preview</a>
+      <a class="tab tab-importer {{ 'active' if active_tab == 'importer' else '' }}" href="/importer">Importer</a>
+      <a class="tab tab-settings {{ 'active' if active_tab == 'settings' else '' }}" href="/settings" title="Settings"
+        aria-label="Settings">
+        <span class="nav-icon icon-settings" aria-hidden="true"></span>
+      </a>
+      <span style="flex:1"></span>
+      <div class="header-facility" style="display:flex; align-items:center; gap:6px">
+        <span class="muted" style="font-size:12px">Facility:</span>
+        <select id="app-facility" style="min-width: 140px"></select>
       </div>
-      <nav class="tabs">
-        <a class="tab tab-browser {{ 'active' if active_tab == 'browser' else '' }}" href="/browser">Browser</a>
-        <a class="tab tab-preproc {{ 'active' if active_tab == 'preproc' else '' }}" href="/preproc">Preproc</a>
-        <a class="tab tab-annotator {{ 'active' if active_tab == 'annotator' else '' }}" href="/annotator">Annotator</a>
-        <a class="tab tab-analyze {{ 'active' if active_tab == 'analyze' else '' }}" href="/analyze">Analyze</a>
-        <a class="tab tab-importer {{ 'active' if active_tab == 'importer' else '' }}" href="/importer">Importer</a>
-        <a class="tab tab-settings {{ 'active' if active_tab == 'settings' else '' }}" href="/settings" title="Settings" aria-label="Settings">
-          <span class="nav-icon icon-settings" aria-hidden="true"></span>
-        </a>
-        <span style="flex:1"></span>
-        <div class="header-facility" style="display:flex; align-items:center; gap:6px">
-          <span class="muted" style="font-size:12px">Facility:</span>
-          <select id="app-facility" style="min-width: 140px"></select>
-        </div>
-        <a class="tab" href="/auth/logout" title="Logout" aria-label="Logout">
-          <span class="nav-icon icon-logout" aria-hidden="true"></span>
-        </a>
-      </nav>
-    </header>
+      <a class="tab" href="/auth/logout" title="Logout" aria-label="Logout">
+        <span class="nav-icon icon-logout" aria-hidden="true"></span>
+      </a>
+    </nav>
+  </header>
 
-    <main class="container">
-      {% block content %}{% endblock %}
-    </main>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
 
-    <footer class="footer muted"></footer>
+  <footer class="footer muted"></footer>
 
-    <script>
-      window.CHEESEPIE = {{ public_config|tojson }};
-    </script>
-    <script src="/static/app.js"></script>
-  </body>
+  <script>
+    window.CHEESEPIE = {{ public_config | tojson }};
+  </script>
+  <script src="/static/app.js"></script>
+</body>
+
 </html>

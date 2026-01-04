@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from flask import Blueprint, render_template, request
+from flask import Blueprint, render_template, request, redirect, url_for
 
 from .config import (
     cfg_default_animals,
@@ -43,10 +43,10 @@ def annotator():
         keyboard=cfg_keyboard(),
     )
 
-@bp.route('/analyze')
-def analyze():
+@bp.route('/preview')
+def preview():
     video = request.args.get('video')
-    return render_template('analyze.html', active_tab='analyze', video=video)
+    return render_template('preview.html', active_tab='preview', video=video)
 
 
 @bp.route('/importer')
@@ -58,6 +58,12 @@ def importer():
 @bp.route('/settings')
 def settings():
     return render_template('settings.html', active_tab='settings')
+
+# Temporary compatibility: redirect old Analyze URL to Preview
+@bp.route('/analyze')
+def analyze_compat():
+    video = request.args.get('video', '')
+    return redirect(url_for('.preview', video=video))
 
 
 __all__ = ['bp']

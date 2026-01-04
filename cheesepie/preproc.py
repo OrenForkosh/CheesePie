@@ -353,12 +353,18 @@ def _normalize_for_final(st: Dict[str, Any]) -> Dict[str, Any]:
                         obj: Dict[str, Any] = {'timestamp': ts}
                         if 'image_b64' in v:
                             obj['image_b64'] = v.get('image_b64')
+                        # Always include segms_b64 field (fallback to labels_b64, or null)
+                        segms_val = None
                         if 'labels_b64' in v:
-                            obj['segms_b64'] = v.get('labels_b64')
-                        if 'segms_b64' in v and 'segms_b64' not in obj:
-                            obj['segms_b64'] = v.get('segms_b64')
+                            segms_val = v.get('labels_b64')
+                        if 'segms_b64' in v and segms_val is None:
+                            segms_val = v.get('segms_b64')
+                        obj['segms_b64'] = segms_val
+                        # Always include marks as a list
                         if 'marks' in v and isinstance(v.get('marks'), list):
                             obj['marks'] = v.get('marks')
+                        else:
+                            obj['marks'] = []
                         items.append(obj)
                     try:
                         items.sort(key=lambda it: float(it.get('timestamp')))
@@ -373,6 +379,10 @@ def _normalize_for_final(st: Dict[str, Any]) -> Dict[str, Any]:
                         obj = dict(v)
                         if 'labels_b64' in obj and 'segms_b64' not in obj:
                             obj['segms_b64'] = obj.pop('labels_b64')
+                        if 'segms_b64' not in obj:
+                            obj['segms_b64'] = None
+                        if 'marks' not in obj or not isinstance(obj.get('marks'), list):
+                            obj['marks'] = []
                         items.append(obj)
                     st.setdefault('colors', {})['frames'] = items
             except Exception:
@@ -944,14 +954,21 @@ def api_preproc_save_final():
         return jsonify({'error': 'Video file not found'}), 404
     # Load temp state
     s_path = _preproc_state_path_for(vpath)
+    final_path = vpath.parent / f"{vpath.name}.preproc.json"
     try:
         st = json.loads(s_path.read_text(encoding='utf-8')) if s_path.exists() else {}
     except Exception:
         st = {}
+    # Preserve background if it exists only in the existing sidecar
+    try:
+        existing_final = _read_json(final_path)
+        if 'background' not in st and existing_final.get('background') is not None:
+            st['background'] = existing_final.get('background')
+    except Exception:
+        pass
     # Ensure schema alignment: arena only bbox, roi mapping exists, colors marks w/o mouse
     st = _normalize_for_final(st)
     # Final file next to video: append suffix without replacing original extension
-    final_path = vpath.parent / f"{vpath.name}.preproc.json"
     try:
         # Persist facility/setup if provided
         try:

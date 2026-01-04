@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+  <div class="panel-header" style="display:flex; align-items:center; justify-content:space-between">
+    <div class="header-left">
+      <h1>Preview</h1>
+      <p class="muted">Preview a video with superimposed tracking.</p>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center">
+      <button class="btn mini" id="preview-help-shortcuts" title="Show keyboard shortcuts">?</button>
+    </div>
+  </div>
+  <div style="padding: 8px 12px">
+    <div style="display:grid; grid-template-columns: 1fr; gap: 12px">
+      <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
+        <label for="an-name">Video</label>
+        <input type="text" id="an-name" value="{{ video or '' }}" readonly style="flex: 1" />
+      </div>
+      <div class="video-wrap" style="max-height: calc(78vh);">
+        <div class="video-preview">
+          <div style="position:relative">
+            <video id="an-video" preload="metadata" controls
+              style="display:block; width:100%; height:auto; max-height: calc(78vh); object-fit:contain; background: var(--surface)"></video>
+            <canvas id="an-canvas"
+              style="position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="muted" id="an-msg"></div>
+      <div class="detail-grid" style="grid-template-columns: auto 1fr auto 1fr;">
+        <div class="key">Time</div>
+        <div id="an-time">0:00.000</div>
+        <div class="key">FPS</div>
+        <div id="an-fps">—</div>
+        <div class="key">Frames</div>
+        <div id="an-frames">—</div>
+      </div>
+    </div>
+  </div>
+</section>
+<div id="preview-shortcuts-overlay" class="overlay" hidden>
+  <div class="overlay-panel">
+    <div class="overlay-header">
+      <h3>Keyboard Shortcuts</h3>
+      <button class="btn mini" id="preview-close-shortcuts">Close</button>
+    </div>
+    <div id="preview-shortcuts-content" class="shortcut-list"></div>
+  </div>
+</div>
+
+<script>
+  window.addEventListener('DOMContentLoaded', function () {
+    let videoPath = {{ (video or '') | tojson }};
+  const v = document.getElementById('an-video');
+  const c = document.getElementById('an-canvas');
+  const fpsEl = document.getElementById('an-fps');
+  const framesEl = document.getElementById('an-frames');
+  const msgEl = document.getElementById('an-msg');
+  const nameEl = document.getElementById('an-name');
+  const timeEl = document.getElementById('an-time');
+  const helpBtn = document.getElementById('preview-help-shortcuts');
+  const helpOverlay = document.getElementById('preview-shortcuts-overlay');
+  const helpClose = document.getElementById('preview-close-shortcuts');
+  const helpContent = document.getElementById('preview-shortcuts-content');
+  const facilitySel = document.getElementById('app-facility');
+  let fac = facilitySel && facilitySel.value || '';
+  document.addEventListener('app:facility-changed', (e) => { try { fac = (e && e.detail && e.detail.name) || ''; } catch { } })
+
+  // Reuse last previewed video if none provided (remember across tabs)
+  if (!videoPath) {
+    try { videoPath = localStorage.getItem('cheesepie.preview.lastVideo') || ''; } catch (_) { videoPath = ''; }
+    if (videoPath && nameEl) nameEl.value = videoPath;
+  }
+  if (!videoPath) { msgEl.textContent = 'No video provided. Open from Browser → Preview.'; return; }
+  try { localStorage.setItem('cheesepie.preview.lastVideo', videoPath); } catch (_) { }
+  // Load video
+  (function loadVideo() { try { const s = document.createElement('source'); s.src = '/media?path=' + encodeURIComponent(videoPath); v.appendChild(s); v.load(); } catch (e) { } })();
+  // Fetch meta and positions via existing analyze API
+  let fps = 0, frames = 0, hasTracking = false;
+  const chunkSize = 300; // frames
+  let lastChunkStart = -1;
+  let currentChunk = null;
+  let durationSec = 0;
+
+  function updateFpsFromVideo() {
+    if (durationSec <= 0 && isFinite(v.duration) && v.duration > 0) {
+      durationSec = v.duration;
+    }
+    if (!fps && frames > 0 && durationSec > 0) {
+      fps = Math.max(1, Math.round(frames / durationSec));
+      fpsEl.textContent = String(fps);
+    }
+  }
+
+  // Fallback: probe media metadata for fps and frame count
+  fetch('/api/media_meta?path=' + encodeURIComponent(videoPath))
+    .then(r => r.ok ? r.json() : null)
+    .then(meta => {
+      if (!meta) return;
+      const mfps = meta?.streams?.video?.fps;
+      const mframes = meta?.streams?.video?.nb_frames;
+      const mdur = meta?.duration;
+      if (!fps && mfps && isFinite(mfps)) {
+        fps = Math.max(1, Math.round(mfps));
+        fpsEl.textContent = String(fps);
+      }
+      if (!frames && mframes && isFinite(mframes)) {
+        frames = Math.max(0, Math.round(mframes));
+        framesEl.textContent = frames ? String(frames) : '—';
+      }
+      if (!durationSec && mdur && isFinite(mdur)) {
+        durationSec = mdur;
+      }
+      updateFpsFromVideo();
+    }).catch(() => { });
+
+  fetch('/api/analyze/info?video=' + encodeURIComponent(videoPath) + (fac ? ('&facility=' + encodeURIComponent(fac)) : ''))
+    .then(r => r.json()).then(info => {
+      frames = Math.max(0, Math.round((info && info.frames) || 0));
+      framesEl.textContent = frames ? String(frames) : '—';
+      hasTracking = Boolean(info && info.ok);
+      if (!hasTracking) {
+        msgEl.textContent = 'No tracking found for this video.';
+        return;
+      }
+      fps = Math.max(0, Math.round((info && info.fps) || 0));
+      fpsEl.textContent = fps ? String(fps) : '—';
+      updateFpsFromVideo();
+    }).catch(() => { msgEl.textContent = 'Failed to load tracking info.'; });
+  // Draw positions in chunks as video plays
+  const ctx = c.getContext('2d');
+  function resize() { try { const r = v.getBoundingClientRect(); c.width = Math.max(1, Math.round(r.width)); c.height = Math.max(1, Math.round(r.height)); } catch (e) { } }
+  window.addEventListener('resize', resize); v.addEventListener('loadedmetadata', () => { resize(); updateFpsFromVideo(); }); if (v.readyState >= 1) { resize(); updateFpsFromVideo(); }
+  // simple streaming draw example
+  function fetchAndDraw(start) {
+    if (!hasTracking) return;
+    const url = '/api/analyze/positions?video=' + encodeURIComponent(videoPath) + '&start=' + start + '&count=' + chunkSize + (fac ? ('&facility=' + encodeURIComponent(fac)) : '');
+    fetch(url).then(r => r.ok ? r.json() : null).then(d => {
+      if (!d || !d.ok || !Array.isArray(d.x) || !Array.isArray(d.y)) return;
+      currentChunk = { start: d.start || start, x: d.x, y: d.y };
+      drawFrame(Math.floor((v.currentTime || 0) * (fps || 0)));
+    }).catch(() => { });
+  }
+  function drawFrame(frame) {
+    try {
+      ctx.clearRect(0, 0, c.width, c.height);
+      if (!currentChunk || !fps) return;
+      const rel = frame - (currentChunk.start || 0);
+      const xs = currentChunk.x || [];
+      const ys = currentChunk.y || [];
+      if (rel < 0 || !xs.length || !ys.length || rel >= (xs[0] ? xs[0].length || 0 : 0)) return;
+      ctx.strokeStyle = '#00A0B0'; ctx.lineWidth = 2;
+      const mice = Math.min(xs.length, ys.length);
+      for (let i = 0; i < mice; i++) {
+        const px = xs[i] && xs[i][rel]; const py = ys[i] && ys[i][rel];
+        if (!isFinite(px) || !isFinite(py)) continue;
+        const x = px * c.width, y = py * c.height;
+        ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.stroke();
+      }
+    } catch (e) { }
+  }
+  function updateTimeLabel() {
+    if (!timeEl) return;
+    const t = v.currentTime || 0;
+    const h = Math.floor(t / 3600);
+    const m = Math.floor((t % 3600) / 60);
+    const s = Math.floor(t % 60);
+    const ms = Math.floor((t - Math.floor(t)) * 1000);
+    timeEl.textContent = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(3, '0')}`;
+  }
+
+  v.addEventListener('timeupdate', () => {
+    updateTimeLabel();
+    if (!hasTracking || !fps) return; const frame = Math.floor((v.currentTime || 0) * fps);
+    const chunkStart = Math.floor(frame / chunkSize) * chunkSize;
+    if (!currentChunk || frame < (currentChunk.start || 0) || frame >= (currentChunk.start || 0) + chunkSize) { currentChunk = null; }
+    if (chunkStart !== lastChunkStart) { lastChunkStart = chunkStart; fetchAndDraw(chunkStart); }
+    drawFrame(frame);
+  });
+  v.addEventListener('seeking', () => { currentChunk = null; });
+  v.addEventListener('play', () => { if (hasTracking && fps) fetchAndDraw(Math.floor((v.currentTime || 0) * fps / chunkSize) * chunkSize); });
+  v.addEventListener('pause', () => { updateTimeLabel(); drawFrame(Math.floor((v.currentTime || 0) * (fps || 0))); });
+  // ensure first draw when ready
+  v.addEventListener('canplay', () => { updateTimeLabel(); if (fps) drawFrame(Math.floor((v.currentTime || 0) * fps)); });
+  if (v.readyState >= 2) { updateTimeLabel(); if (fps) drawFrame(Math.floor((v.currentTime || 0) * fps)); }
+
+  // Keyboard shortcuts
+  const keyboardCfg = ((window.CHEESEPIE || {}).annotator || {}).keyboard || {};
+  const jumpCfg = keyboardCfg.jump_seconds || { left: 5, right: 5, shift: 1, alt: 0.5 };
+  const frameCfg = keyboardCfg.frame_step_keys || { prev: '[', next: ']' };
+
+  function seekSeconds(delta) {
+    const dur = v.duration || 0; if (!(dur > 0)) return;
+    const t = Math.max(0, Math.min(dur, (v.currentTime || 0) + delta));
+    try { v.currentTime = t; } catch { }
+  }
+  function stepFrame(dir) {
+    if (!fps) {
+      // If still unknown, try to estimate from metadata or duration/frames
+      updateFpsFromVideo();
+      if (!fps) return;
+    }
+    v.pause();
+    const delta = dir / fps;
+    seekSeconds(delta);
+  }
+  function fmtKey(key) { return `<span class="kbd">${key}</span>`; }
+  function renderShortcuts() {
+    if (!helpContent) return;
+    const rows = [];
+    rows.push(`<div class="shortcut-item">${fmtKey('Space')} <span>Play / Pause</span></div>`);
+    rows.push(`<div class="shortcut-item">${fmtKey('←')} <span>Jump back ${jumpCfg.left || 0}s</span></div>`);
+    rows.push(`<div class="shortcut-item">${fmtKey('→')} <span>Jump forward ${jumpCfg.right || 0}s</span></div>`);
+    if (jumpCfg.shift) rows.push(`<div class="shortcut-item">${fmtKey('Shift + ←/→')} <span>Jump ${jumpCfg.shift}s</span></div>`);
+    if (jumpCfg.alt) rows.push(`<div class="shortcut-item">${fmtKey('Alt + ←/→')} <span>Jump ${jumpCfg.alt}s</span></div>`);
+    rows.push(`<div class="shortcut-item">${fmtKey(frameCfg.prev || '[')} <span>Previous frame</span></div>`);
+    rows.push(`<div class="shortcut-item">${fmtKey(frameCfg.next || ']')} <span>Next frame</span></div>`);
+    rows.push(`<div class="shortcut-item">${fmtKey('?')} <span>Show shortcuts</span></div>`);
+    helpContent.innerHTML = rows.join('');
+  }
+  function openShortcuts() { renderShortcuts(); if (helpOverlay) helpOverlay.hidden = false; }
+  function closeShortcuts() { if (helpOverlay) helpOverlay.hidden = true; }
+  helpBtn?.addEventListener('click', openShortcuts);
+  helpClose?.addEventListener('click', closeShortcuts);
+  helpOverlay?.addEventListener('click', (e) => { if (e.target === helpOverlay) closeShortcuts(); });
+
+  document.addEventListener('keydown', (e) => {
+    const tag = (e.target && (e.target.tagName || '').toLowerCase());
+    const isTyping = tag === 'input' || tag === 'textarea' || (e.target && e.target.isContentEditable);
+    if (helpOverlay && !helpOverlay.hidden && e.key === 'Escape') { e.preventDefault(); closeShortcuts(); return; }
+    if (isTyping) return;
+    if (e.key === '?' || (e.key === '/' && e.shiftKey)) { e.preventDefault(); openShortcuts(); return; }
+    if (e.code === 'Space' || e.key === ' ') { e.preventDefault(); if (v.paused) v.play(); else v.pause(); return; }
+    if (e.key === (frameCfg.prev || '[') || e.code === 'BracketLeft') { e.preventDefault(); stepFrame(-1); return; }
+    if (e.key === (frameCfg.next || ']') || e.code === 'BracketRight') { e.preventDefault(); stepFrame(1); return; }
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      const delta = -(e.shiftKey && jumpCfg.shift ? jumpCfg.shift : (e.altKey && jumpCfg.alt ? jumpCfg.alt : (jumpCfg.left || 0)));
+      seekSeconds(delta); return;
+    }
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      const delta = (e.shiftKey && jumpCfg.shift ? jumpCfg.shift : (e.altKey && jumpCfg.alt ? jumpCfg.alt : (jumpCfg.right || 0)));
+      seekSeconds(delta); return;
+    }
+  });
+  });
+</script>
+{% endblock %}

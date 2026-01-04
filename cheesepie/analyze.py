@@ -119,9 +119,9 @@ def api_analyze_info():
     mat = _track_path_for_video(video)
     x_y = _load_mat_tracks(mat)
     if not x_y:
-        return jsonify({'ok': False, 'track': str(mat), 'mice': 0})
+        return jsonify({'ok': False, 'track': str(mat), 'mice': 0, 'frames': 0})
     x, y = x_y
-    return jsonify({'ok': True, 'track': str(mat), 'mice': int(x.shape[0])})
+    return jsonify({'ok': True, 'track': str(mat), 'mice': int(x.shape[0]), 'frames': int(x.shape[1])})
 
 
 @bp.route('/api/analyze/positions')
@@ -151,4 +151,3 @@ def api_analyze_positions():
 
 
 __all__ = ['bp']
-

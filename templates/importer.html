@@ -1,27 +1,19 @@
 {% extends "base.html" %} {% block content %}
 <div class="panel">
-  <div class="panel-header">
-    <h1>Importer</h1>
-    <div class="muted">
-      Configure facility, experiment, dates, times, and cameras.
+  <div class="panel-header" style="display:flex; align-items:center; justify-content:space-between">
+    <div class="header-left">
+      <h1>Importer</h1>
+      <div class="muted">
+        Configure facility, experiment, dates, times, and cameras.
+      </div>
     </div>
   </div>
   <div class="controls">
     <div class="control-group">
       <label for="source-dir">Source Folder</label>
       <div style="display: flex; gap: 8px; align-items: center">
-        <input
-          id="source-dir"
-          type="text"
-          readonly
-          placeholder="Select a facility"
-          style="flex: 1"
-        />
-        <button
-          class="btn"
-          id="list-btn"
-          title="List all files per camera with progress"
-        >
+        <input id="source-dir" type="text" readonly placeholder="Select a facility" style="flex: 1" />
+        <button class="btn" id="list-btn" title="List all files per camera with progress">
           List
         </button>
       </div>
@@ -38,14 +30,7 @@
 
     <div class="control-group">
       <label for="batch-input">Batch</label>
-      <input
-        id="batch-input"
-        type="number"
-        min="0"
-        step="1"
-        value="1"
-        readonly
-      />
+      <input id="batch-input" type="number" min="0" step="1" value="1" readonly />
     </div>
 
     <div class="control-group">
@@ -69,34 +54,25 @@
     <div class="control-group" style="grid-column: 1 / -1">
       <label>Cameras</label>
       <div id="cameras-wrap">
-        <div
-          id="cams-topline"
-          style="
+        <div id="cams-topline" style="
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 12px;
             flex-wrap: wrap;
-          "
-        >
+          ">
           <div class="cam-toolbar" id="cams-toolbar" hidden>
             <button type="button" class="btn mini" id="cams-all">All</button>
             <button type="button" class="btn mini" id="cams-none">None</button>
             <div class="cam-row" id="cams-row"></div>
           </div>
-          <div
-            style="
+          <div style="
               display: flex;
               align-items: center;
               gap: 8px;
               flex-wrap: wrap;
-            "
-          >
-            <button
-              class="btn primary"
-              id="open-import"
-              title="Open import dialog"
-            >
+            ">
+            <button class="btn primary" id="open-import" title="Open import dialog">
               Import
             </button>
           </div>
@@ -110,9 +86,7 @@
 </div>
 
 <!-- Import Modal -->
-<div
-  id="import-modal"
-  style="
+<div id="import-modal" style="
     display: none;
     position: fixed;
     inset: 0;
@@ -121,29 +95,18 @@
     align-items: center;
     justify-content: center;
     padding: 24px;
-  "
->
-  <div
-    class="panel"
-    style="
+  ">
+  <div class="panel" style="
       margin: 0;
       width: min(1100px, 96vw);
       max-height: 90vh;
       overflow: auto;
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
       border-radius: 10px;
-    "
-  >
-    <div
-      class="panel-header"
-      style="display: flex; align-items: center; justify-content: space-between"
-    >
+    ">
+    <div class="panel-header" style="display: flex; align-items: center; justify-content: space-between">
       <div style="display: flex; align-items: center; gap: 8px">
-        <button
-          class="btn"
-          id="import-close"
-          title="Close"
-          style="
+        <button class="btn" id="import-close" title="Close" style="
             font-weight: 700;
             width: 32px;
             height: 32px;
@@ -151,27 +114,16 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-          "
-        >
+          ">
           ✕
         </button>
         <h1 style="margin: 0">Import</h1>
       </div>
       <div style="display: flex; gap: 8px; align-items: center">
-        <button
-          class="btn primary"
-          id="import-btn"
-          disabled
-          title="Complete selections to enable scan"
-        >
+        <button class="btn primary" id="import-btn" disabled title="Complete selections to enable scan">
           Rescan
         </button>
-        <button
-          class="btn"
-          id="run-btn"
-          disabled
-          title="Run is available after a successful scan"
-        >
+        <button class="btn" id="run-btn" disabled title="Run is available after a successful scan">
           Run
         </button>
       </div>
@@ -210,52 +162,52 @@
     let scanDotsTimer = null;
     let scanDotsBase = "";
     // Resume any in-progress scan/encode when returning to Importer
-    async function resumeJobs(){
-      try{
+    async function resumeJobs() {
+      try {
         let jid = null;
-        try{ const cur = await fetch('/api/import/scan_prepare/current').then(r=>r.json()).catch(()=>null); if (cur && cur.ok && cur.job_id) jid = cur.job_id; }catch{}
-        if (!jid){ try{ jid = localStorage.getItem('cheesepie.scan_job') || ''; }catch{} }
-        if (jid){
+        try { const cur = await fetch('/api/import/scan_prepare/current').then(r => r.json()).catch(() => null); if (cur && cur.ok && cur.job_id) jid = cur.job_id; } catch { }
+        if (!jid) { try { jid = localStorage.getItem('cheesepie.scan_job') || ''; } catch { } }
+        if (jid) {
           window.__SCAN_JOB_ID__ = jid;
           ensureScanPanel(); ensureDaysPanel();
-          try{ const btn=document.getElementById('open-import'); if (btn){ btn.disabled=false; btn.textContent='Cancel'; btn.style.background='#b71c1c'; btn.style.color='#fff'; btn.dataset.running='1'; } }catch{}
-          try{ if (scanPollTimer){ clearInterval(scanPollTimer); } }catch{}
+          try { const btn = document.getElementById('open-import'); if (btn) { btn.disabled = false; btn.textContent = 'Cancel'; btn.style.background = '#b71c1c'; btn.style.color = '#fff'; btn.dataset.running = '1'; } } catch { }
+          try { if (scanPollTimer) { clearInterval(scanPollTimer); } } catch { }
           // Make sure the Available Files panel is visible when resuming
-          try{
+          try {
             const content = document.getElementById('scan-content');
             const btn = document.getElementById('scan-toggle-btn');
             const panel = document.getElementById('import-scan');
-            if (content){ content.style.display = 'block'; }
-            if (btn){ btn.textContent = 'Hide'; }
-            if (panel){ panel.dataset.collapsed = '0'; }
-          }catch{}
-          scanPollTimer = setInterval(()=>{ pollScanStatus(jid); }, 1500);
+            if (content) { content.style.display = 'block'; }
+            if (btn) { btn.textContent = 'Hide'; }
+            if (panel) { panel.dataset.collapsed = '0'; }
+          } catch { }
+          scanPollTimer = setInterval(() => { pollScanStatus(jid); }, 1500);
           // Trigger an immediate poll instead of waiting for the first interval
-          try{ await pollScanStatus(jid); }catch{}
+          try { await pollScanStatus(jid); } catch { }
         }
-      }catch{}
-      try{
-        let ejid = null; try{ ejid = localStorage.getItem('cheesepie.encode_job') || ''; }catch{}
-        if (ejid){
-          encodeJobId = ejid; try{ window.__ENCODE_JOB_ID__ = ejid; }catch{};
+      } catch { }
+      try {
+        let ejid = null; try { ejid = localStorage.getItem('cheesepie.encode_job') || ''; } catch { }
+        if (ejid) {
+          encodeJobId = ejid; try { window.__ENCODE_JOB_ID__ = ejid; } catch { };
           // Reflect Stop/Cancel state on the top Import button
-          try{ const btn=document.getElementById('open-import'); if (btn){ btn.disabled=false; btn.textContent='Cancel'; btn.style.background='#b71c1c'; btn.style.color='#fff'; btn.dataset.running='1'; } }catch{}
+          try { const btn = document.getElementById('open-import'); if (btn) { btn.disabled = false; btn.textContent = 'Cancel'; btn.style.background = '#b71c1c'; btn.style.color = '#fff'; btn.dataset.running = '1'; } } catch { }
           pollEncode();
         }
-      }catch{}
+      } catch { }
     }
 
     // Ensure panels exist immediately so resume shows something without clicks
-    try{ ensureScanPanel(); ensureDaysPanel(); }catch(e){}
+    try { ensureScanPanel(); ensureDaysPanel(); } catch (e) { }
     // Default the scan panel to hidden on load (user can expand with "Show")
-    try{
+    try {
       const content = document.getElementById('scan-content');
       const btn = document.getElementById('scan-toggle-btn');
       const panel = document.getElementById('import-scan');
-      if (content){ content.style.display = 'none'; }
-      if (btn){ btn.textContent = 'Show'; }
-      if (panel){ panel.dataset.collapsed = '1'; }
-    }catch(e){}
+      if (content) { content.style.display = 'none'; }
+      if (btn) { btn.textContent = 'Show'; }
+      if (panel) { panel.dataset.collapsed = '1'; }
+    } catch (e) { }
 
     function pad2(n) {
       return String(n).padStart(2, "0");
@@ -278,7 +230,7 @@
       try {
         const eb = document.getElementById("error-banner");
         if (eb) { eb.style.display = 'none'; eb.textContent = ''; }
-      } catch {}
+      } catch { }
     }
     function parseStackLoc(err) {
       try {
@@ -289,7 +241,7 @@
             return { file: m[1], line: Number(m[2]), col: Number(m[3]) };
           }
         }
-      } catch {}
+      } catch { }
       return null;
     }
     function showError(context, err) {
@@ -301,7 +253,7 @@
       eb.style.display = "block";
       try {
         console.error(context, err);
-      } catch {}
+      } catch { }
     }
     window.addEventListener("error", (e) => {
       showError("Unhandled error", (e && e.error) || e.message);
@@ -380,9 +332,9 @@
       const camParam = (params.get("cameras") || "").trim();
       const camList = camParam
         ? camParam
-            .split(",")
-            .map((s) => parseInt(s, 10))
-            .filter((n) => Number.isFinite(n))
+          .split(",")
+          .map((s) => parseInt(s, 10))
+          .filter((n) => Number.isFinite(n))
         : [];
 
       if (sd) startDate.value = sd;
@@ -418,7 +370,7 @@
         if (facilitySel && facilitySel.value) {
           try {
             refreshFacility();
-          } catch (e) {}
+          } catch (e) { }
         }
         updateUrl();
       }
@@ -457,13 +409,13 @@
         }
         validate();
         updateUrl();
-      } catch (e) {}
+      } catch (e) { }
     }
     document.addEventListener("app:facility-changed", function () {
       try {
         updateUrl();
         refreshFacility();
-      } catch (e) {}
+      } catch (e) { }
     });
 
     function setDisabled(el, dis) {
@@ -742,7 +694,7 @@
         return;
       }
       const trigBtn = document.getElementById('import-btn') || document.getElementById('open-import');
-      if (trigBtn){ trigBtn.disabled = true; trigBtn.textContent = "Scanning…"; }
+      if (trigBtn) { trigBtn.disabled = true; trigBtn.textContent = "Scanning…"; }
       try {
         const rb = document.getElementById("run-btn");
         if (rb) {
@@ -750,7 +702,7 @@
           rb.classList.remove("primary");
           rb.title = "Run available after scan completes";
         }
-      } catch {}
+      } catch { }
       try {
         const chk = await fetch(
           `/api/import/check_source?facility=${encodeURIComponent(fac)}`
@@ -786,8 +738,7 @@
             const d = JSON.parse(ev.data);
             if (d && d.camera) {
               setScanMeta(
-                `Camera cam${String(d.camera).padStart(2, "0")} — ${d.root}${
-                  d.exists ? "" : " (missing)"
+                `Camera cam${String(d.camera).padStart(2, "0")} — ${d.root}${d.exists ? "" : " (missing)"
                 }`
               );
               appendDirRow({
@@ -797,7 +748,7 @@
                 exists: d.exists,
               });
             }
-          } catch {}
+          } catch { }
         });
         es.addEventListener("dir", (ev) => {
           try {
@@ -807,7 +758,7 @@
               if (run) run.textContent = `Scanning: ${d.path}`;
               appendDirRow(d);
             }
-          } catch {}
+          } catch { }
         });
         es.addEventListener("file", (ev) => {
           try {
@@ -816,7 +767,7 @@
               files.push(d);
               appendScanRow(d);
             }
-          } catch {}
+          } catch { }
         });
         es.addEventListener("done", async () => {
           try {
@@ -826,7 +777,7 @@
             // Update collapsed header with total files found
             try {
               setScanHeaderMeta(formatCount(files.length));
-            } catch {}
+            } catch { }
             ensureDaysPanel();
             const res = await fetch("/api/import/prepare_from_manifest", {
               method: "POST",
@@ -855,14 +806,14 @@
             try {
               const dp = document.getElementById("days-status");
               if (dp) dp.scrollIntoView({ behavior: "smooth", block: "start" });
-            } catch {}
+            } catch { }
           } catch (e) {
             showError("Prepare error", e);
             expandScanPanelOnError(String((e && e.message) || e || ""));
           } finally {
-            if (trigBtn){
-              try{
-                if (isEncoding && isEncoding()){
+            if (trigBtn) {
+              try {
+                if (isEncoding && isEncoding()) {
                   trigBtn.disabled = false;
                   trigBtn.textContent = 'Cancel';
                   trigBtn.style.background = '#b71c1c';
@@ -875,7 +826,7 @@
                   trigBtn.style.color = '';
                   trigBtn.dataset.running = '0';
                 }
-              }catch(e){}
+              } catch (e) { }
             }
           }
         });
@@ -884,21 +835,21 @@
           stopScanDots();
           stopScanProgress();
           scanController = null;
-          if (trigBtn){ trigBtn.disabled = false; trigBtn.textContent = "Rescan"; }
+          if (trigBtn) { trigBtn.disabled = false; trigBtn.textContent = "Rescan"; }
           expandScanPanelOnError("Scan error");
         };
       } catch (e) {
         showError("Scan error", e);
         expandScanPanelOnError(String((e && e.message) || e || ""));
-        if (trigBtn){ trigBtn.disabled = false; trigBtn.textContent = "Rescan"; }
+        if (trigBtn) { trigBtn.disabled = false; trigBtn.textContent = "Rescan"; }
       }
     }
     if (importBtn) importBtn.addEventListener("click", onStartScan);
-    function setImportBtnStateRunning(running){
-      try{
+    function setImportBtnStateRunning(running) {
+      try {
         const btn = document.getElementById('open-import');
         if (!btn) return;
-        if (running){
+        if (running) {
           btn.disabled = false;
           btn.textContent = 'Cancel';
           btn.style.background = '#b71c1c';
@@ -911,40 +862,40 @@
           btn.style.color = '';
           btn.dataset.running = '0';
         }
-      }catch(e){}
+      } catch (e) { }
     }
 
-    function isEncoding(){ try{ return !!window.__ENCODE_JOB_ID__; } catch { return false; } }
+    function isEncoding() { try { return !!window.__ENCODE_JOB_ID__; } catch { return false; } }
 
     let scanPollTimer = null;
-    function stopScanPolling(){ if (scanPollTimer){ clearInterval(scanPollTimer); scanPollTimer=null; } }
-    async function pollScanStatus(jobId){
-      try{
+    function stopScanPolling() { if (scanPollTimer) { clearInterval(scanPollTimer); scanPollTimer = null; } }
+    async function pollScanStatus(jobId) {
+      try {
         const r = await fetch(`/api/import/scan_prepare/status?job=${encodeURIComponent(jobId)}`);
         const d = await r.json();
-        if (!r.ok || d.error){ throw new Error(d && d.error || r.statusText); }
+        if (!r.ok || d.error) { throw new Error(d && d.error || r.statusText); }
         // Update Available Files table
         ensureScanPanel();
-        try{ renderScanResults({ total: d.total||0, source_dir: '', camera_pattern: '', files: d.files||[] }); } catch{}
+        try { renderScanResults({ total: d.total || 0, source_dir: '', camera_pattern: '', files: d.files || [] }); } catch { }
         // If plan present, render Day Preparation
-        if (d.plan && d.plan.plan){ try{ renderDaysPlan(d.plan); } catch{} }
+        if (d.plan && d.plan.plan) { try { renderDaysPlan(d.plan); } catch { } }
         // Handle terminal states
-        if (d.status === 'DONE'){
+        if (d.status === 'DONE') {
           // Scan finished: stop progress and polling
           stopScanPolling();
-          try{ stopScanProgress(); setScanMeta('Scan complete.'); }catch{}
+          try { stopScanProgress(); setScanMeta('Scan complete.'); } catch { }
           // Auto start encode when plan is ready
-          try{ await onRunEncode(); } catch{}
-          try{ localStorage.removeItem('cheesepie.scan_job'); } catch{}
-        } else if (d.status === 'CANCELLED' || d.status === 'ERROR'){
+          try { await onRunEncode(); } catch { }
+          try { localStorage.removeItem('cheesepie.scan_job'); } catch { }
+        } else if (d.status === 'CANCELLED' || d.status === 'ERROR') {
           stopScanPolling();
           setScanMeta(d.status === 'ERROR' ? 'Scan error' : 'Scan canceled.');
           stopScanProgress();
-          try{ localStorage.removeItem('cheesepie.scan_job'); } catch{}
+          try { localStorage.removeItem('cheesepie.scan_job'); } catch { }
         }
-      }catch(e){ stopScanPolling(); try{ showError('Scan status', e); }catch{} }
+      } catch (e) { stopScanPolling(); try { showError('Scan status', e); } catch { } }
     }
-    async function startScanAndRun(autoRun=true){
+    async function startScanAndRun(autoRun = true) {
       scanAutoRun = !!autoRun;
       ensureScanPanel(); ensureDaysPanel();
       // Kick background Scan/Prepare job
@@ -958,44 +909,44 @@
       const cams = getSelectedCameras();
       const batch = Math.max(0, Number(batchInput.value || 0));
       // Show progress UI
-      startScanProgress(`${scanAutoRun? 'Import prep – scanning in' : 'Full scan in'} ${combinedSourcePattern(fac)} …`, true);
-      try{
-        const res = await fetch('/api/import/scan_prepare/start', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ facility: fac, experiment: exp, treatment: trt, batch, start_date: sDate, end_date: eDate, start_time: sTime, end_time: eTime, cameras: cams, camera_pattern: (FACS[fac] && (FACS[fac].camera_pattern || FACS[fac].camera_glob)) || '' }) });
+      startScanProgress(`${scanAutoRun ? 'Import prep – scanning in' : 'Full scan in'} ${combinedSourcePattern(fac)} …`, true);
+      try {
+        const res = await fetch('/api/import/scan_prepare/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ facility: fac, experiment: exp, treatment: trt, batch, start_date: sDate, end_date: eDate, start_time: sTime, end_time: eTime, cameras: cams, camera_pattern: (FACS[fac] && (FACS[fac].camera_pattern || FACS[fac].camera_glob)) || '' }) });
         const d = await res.json();
-        if (!res.ok || !d || d.error || !d.job_id){ throw new Error((d && d.error) || res.statusText); }
+        if (!res.ok || !d || d.error || !d.job_id) { throw new Error((d && d.error) || res.statusText); }
         window.__SCAN_JOB_ID__ = d.job_id;
-        try{ localStorage.setItem('cheesepie.scan_job', d.job_id); }catch{}
+        try { localStorage.setItem('cheesepie.scan_job', d.job_id); } catch { }
         stopScanPolling();
-        scanPollTimer = setInterval(()=>{ pollScanStatus(d.job_id); }, 1500);
-      }catch(e){
+        scanPollTimer = setInterval(() => { pollScanStatus(d.job_id); }, 1500);
+      } catch (e) {
         stopScanProgress();
-        try{ showError('Scan start', e); }catch{}
+        try { showError('Scan start', e); } catch { }
         // Reset Import button state
-        try{ const btn=document.getElementById('open-import'); if (btn){ btn.disabled=false; btn.textContent='Import'; btn.style.background=''; btn.style.color=''; btn.dataset.running='0'; } }catch{}
+        try { const btn = document.getElementById('open-import'); if (btn) { btn.disabled = false; btn.textContent = 'Import'; btn.style.background = ''; btn.style.color = ''; btn.dataset.running = '0'; } } catch { }
       }
     }
 
-  if (openImportBtn) openImportBtn.addEventListener('click', async () => {
-      try{
+    if (openImportBtn) openImportBtn.addEventListener('click', async () => {
+      try {
         hideErrorBanner();
         ensureScanPanel(); ensureDaysPanel();
         // If encoding is running → cancel encode
-        try{
+        try {
           const ejid = (window.__ENCODE_JOB_ID__ || localStorage.getItem('cheesepie.encode_job') || '').trim();
-          if (ejid){ await onStopEncode(); setImportBtnStateRunning(false); return; }
-        }catch{}
+          if (ejid) { await onStopEncode(); setImportBtnStateRunning(false); return; }
+        } catch { }
         // If scan is running → cancel scan
-        try{
+        try {
           const sjid = (window.__SCAN_JOB_ID__ || localStorage.getItem('cheesepie.scan_job') || '').trim();
-          if (sjid){ if (scanPollTimer){ clearInterval(scanPollTimer); scanPollTimer=null; } await fetch(`/api/import/scan_prepare/cancel?job=${encodeURIComponent(sjid)}`, { method:'POST' }); try{ localStorage.removeItem('cheesepie.scan_job'); }catch{}; stopScanProgress(); setScanMeta('Scan canceled.'); setImportBtnStateRunning(false); return; }
-        }catch{}
+          if (sjid) { if (scanPollTimer) { clearInterval(scanPollTimer); scanPollTimer = null; } await fetch(`/api/import/scan_prepare/cancel?job=${encodeURIComponent(sjid)}`, { method: 'POST' }); try { localStorage.removeItem('cheesepie.scan_job'); } catch { }; stopScanProgress(); setScanMeta('Scan canceled.'); setImportBtnStateRunning(false); return; }
+        } catch { }
         // Otherwise, start scan+prepare
         const ready = !!(facilitySel && facilitySel.value) && !!experimentSel.value && !!treatmentSel.value && !!startDate.value && !!endDate.value && !!startTime.value && !!endTime.value && getSelectedCameras().length > 0;
         validate();
-        if (!ready){ showError('Import', new Error('Complete selections first.')); return; }
+        if (!ready) { showError('Import', new Error('Complete selections first.')); return; }
         openImportBtn.disabled = true; openImportBtn.textContent = 'Scanning…';
         await startScanAndRun();
-      }catch(e){ try{ showError('Import start error', e); } catch{} }
+      } catch (e) { try { showError('Import start error', e); } catch { } }
     });
 
     // Kick resume once UI is ready
@@ -1076,7 +1027,7 @@
             hdr.style.padding = "8px 12px";
             hdr.style.alignItems = "center";
           }
-        } catch {}
+        } catch { }
       }
     }
 
@@ -1126,18 +1077,18 @@
         if (scanHeader) scanHeader.addEventListener("click", toggleCollapsed);
         const cancelBtn = document.getElementById("scan-cancel");
         cancelBtn.addEventListener("click", async () => {
-          try { if (scanPollTimer){ clearInterval(scanPollTimer); scanPollTimer=null; } } catch{}
-          try{
+          try { if (scanPollTimer) { clearInterval(scanPollTimer); scanPollTimer = null; } } catch { }
+          try {
             const jid = (window.__SCAN_JOB_ID__ || '').trim();
-            if (jid){ await fetch(`/api/import/scan_prepare/cancel?job=${encodeURIComponent(jid)}`, { method:'POST' }); }
-          }catch{}
+            if (jid) { await fetch(`/api/import/scan_prepare/cancel?job=${encodeURIComponent(jid)}`, { method: 'POST' }); }
+          } catch { }
           scanController = null;
           stopScanProgress();
           setScanMeta("Scan canceled.");
-          try{ localStorage.removeItem('cheesepie.scan_job'); }catch{}
+          try { localStorage.removeItem('cheesepie.scan_job'); } catch { }
           if (typeof listBtn !== "undefined" && listBtn) {
             listBtn.disabled = false;
-            try { listBtn.removeAttribute('disabled'); } catch {}
+            try { listBtn.removeAttribute('disabled'); } catch { }
             listBtn.textContent = "List";
           }
         });
@@ -1157,7 +1108,7 @@
     function startScanDots(base) {
       try {
         stopScanDots();
-      } catch {}
+      } catch { }
       scanDotsBase = (base && String(base)) || "Scanning";
       let i = 0;
       setScanHeaderMeta(scanDotsBase);
@@ -1203,7 +1154,7 @@
             panel.scrollIntoView({ behavior: "smooth", block: "start" });
           }
         }
-      } catch {}
+      } catch { }
     }
 
     function startScanProgress(message, expand) {
@@ -1220,7 +1171,7 @@
           btn.textContent = wantExpand ? "Hide" : "Show";
           panel.dataset.collapsed = wantExpand ? "0" : "1";
         }
-      } catch {}
+      } catch { }
       startScanDots("Scanning");
       if (box) {
         box.style.display = "flex";
@@ -1274,7 +1225,7 @@
         }
         setScanHeaderMeta("Error");
         if (meta && message) meta.textContent = message;
-      } catch {}
+      } catch { }
     }
 
     function renderScanResults(data) {
@@ -1285,9 +1236,8 @@
       const pt = data.path_time_regex
         ? `, regex "${data.path_time_regex}"`
         : "";
-      meta.textContent = `${data.total || 0} file(s) from ${
-        data.source_dir || ""
-      } using pattern "${data.camera_pattern || ""}"${pt}`;
+      meta.textContent = `${data.total || 0} file(s) from ${data.source_dir || ""
+        } using pattern "${data.camera_pattern || ""}"${pt}`;
       if (!files.length) {
         wrap.innerHTML =
           '<div class="muted" style="padding:8px">No files found.</div>';
@@ -1300,16 +1250,14 @@
           const mg =
             typeof f.match_pattern === "boolean" ? f.match_pattern : true;
           const mr = !!f.match_regex;
-          const globBadge = `<span style=\"margin-left:8px; padding:2px 6px; border-radius:10px; font-size:11px; ${
-            mg
-              ? "background:var(--accent);color:#fff"
-              : "background:#eee;color:#666"
-          }\">pattern${mg ? "✓" : "×"}</span>`;
-          const regexBadge = `<span style=\"margin-left:6px; padding:2px 6px; border-radius:10px; font-size:11px; ${
-            mr
-              ? "background:var(--accent);color:#fff"
-              : "background:#eee;color:#666"
-          }\">regex${mr ? "✓" : "×"}</span>`;
+          const globBadge = `<span style=\"margin-left:8px; padding:2px 6px; border-radius:10px; font-size:11px; ${mg
+            ? "background:var(--accent);color:#fff"
+            : "background:#eee;color:#666"
+            }\">pattern${mg ? "✓" : "×"}</span>`;
+          const regexBadge = `<span style=\"margin-left:6px; padding:2px 6px; border-radius:10px; font-size:11px; ${mr
+            ? "background:var(--accent);color:#fff"
+            : "background:#eee;color:#666"
+            }\">regex${mr ? "✓" : "×"}</span>`;
           return `<div style=\"padding:6px 8px; border-bottom:1px solid var(--border); white-space:nowrap; overflow:hidden; text-overflow:ellipsis\">\n        <span class=\"muted\" style=\"margin-right:8px\">${camStr}</span>${f.path}${globBadge}${regexBadge}\n      </div>`;
         })
         .join("");
@@ -1427,7 +1375,7 @@
         // Add Escape-to-close
         try {
           document.addEventListener("keydown", __unused_onImportKeydown);
-        } catch {}
+        } catch { }
         // Auto-start scan if selections are complete (do not rely on stale disabled state)
         const ready =
           !!(facilitySel && facilitySel.value) &&
@@ -1440,7 +1388,7 @@
           getSelectedCameras().length > 0;
         try {
           validate();
-        } catch {}
+        } catch { }
         if (ready) {
           onStartScan();
         }
@@ -1448,14 +1396,14 @@
       } catch (e) {
         try {
           showError("Open import dialog error", e);
-        } catch {}
+        } catch { }
       }
     }
     function __unused_closeImportDialog() {
       if (modal) modal.style.display = "none";
       try {
         document.removeEventListener("keydown", __unused_onImportKeydown);
-      } catch {}
+      } catch { }
     }
     // modal handler removed
     // modal handler removed
@@ -1464,7 +1412,7 @@
       modal.addEventListener("click", (e) => {
         try {
           // modal removed
-        } catch {}
+        } catch { }
       });
     }
 
@@ -1475,7 +1423,7 @@
           e.preventDefault();
           // modal removed
         }
-      } catch {}
+      } catch { }
     }
 
     async function refreshBatch() {
@@ -1550,8 +1498,8 @@
           encodeJobId = data.job_id;
           try {
             window.__ENCODE_JOB_ID__ = encodeJobId;
-          } catch {}
-          try{ localStorage.setItem('cheesepie.encode_job', encodeJobId); } catch{}
+          } catch { }
+          try { localStorage.setItem('cheesepie.encode_job', encodeJobId); } catch { }
           const rb = document.getElementById("run-btn");
           if (rb) {
             rb.disabled = false;
@@ -1561,7 +1509,7 @@
             rb.title = "Cancel encoding";
             rb.dataset.running = "1";
           }
-          if (importBtnTop){ importBtnTop.disabled = false; importBtnTop.textContent = 'Cancel'; importBtnTop.style.background = '#b71c1c'; importBtnTop.style.color = '#fff'; importBtnTop.dataset.running = '1'; }
+          if (importBtnTop) { importBtnTop.disabled = false; importBtnTop.textContent = 'Cancel'; importBtnTop.style.background = '#b71c1c'; importBtnTop.style.color = '#fff'; importBtnTop.dataset.running = '1'; }
           // Optimistically flag first runnable item as RUNNING
           try {
             const planArr = Array.isArray(window.__DAYS_PLAN__)
@@ -1576,8 +1524,8 @@
                   typeof d.segments === "number"
                     ? d.segments
                     : st === "MISSING"
-                    ? 0
-                    : 1;
+                      ? 0
+                      : 1;
                 if (
                   segs > 0 &&
                   st !== "DONE" &&
@@ -1592,7 +1540,7 @@
               if (marked) break;
             }
             if (marked) renderDaysPlan({ plan: planArr, status: "RUNNING" });
-          } catch {}
+          } catch { }
           pollEncode();
         } else {
           // Fallback: render immediate plan (sync encode flow)
@@ -1607,7 +1555,7 @@
             runBtn.disabled = false;
             runBtn.textContent = "Run";
           }
-          if (importBtnTop){ importBtnTop.disabled = false; importBtnTop.textContent = "Import"; importBtnTop.style.background = ""; importBtnTop.style.color = ""; importBtnTop.dataset.running = "0"; }
+          if (importBtnTop) { importBtnTop.disabled = false; importBtnTop.textContent = "Import"; importBtnTop.style.background = ""; importBtnTop.style.color = ""; importBtnTop.dataset.running = "0"; }
         }
       } catch (e) {
         showError("Run error", e);
@@ -1617,12 +1565,12 @@
         }
         if (runBtn) runBtn.title = String((e && e.message) || "Error");
         // Reset Import button and clear any encode state
-        try{
+        try {
           const ib = document.getElementById('open-import');
-          if (ib){ ib.disabled = false; ib.textContent = 'Import'; ib.style.background = ''; ib.style.color = ''; ib.dataset.running = '0'; }
-        }catch{}
-        try{ window.__ENCODE_JOB_ID__ = null; }catch{}
-        try{ localStorage.removeItem('cheesepie.encode_job'); }catch{}
+          if (ib) { ib.disabled = false; ib.textContent = 'Import'; ib.style.background = ''; ib.style.color = ''; ib.dataset.running = '0'; }
+        } catch { }
+        try { window.__ENCODE_JOB_ID__ = null; } catch { }
+        try { localStorage.removeItem('cheesepie.encode_job'); } catch { }
       }
     }
 
@@ -1643,15 +1591,15 @@
             renderDaysPlan(s);
           }
           // While encoding is active, ensure Import button is in Cancel state
-          try{
-            const st = String(s.status||'').toUpperCase();
+          try {
+            const st = String(s.status || '').toUpperCase();
             const ib = document.getElementById('open-import');
-            if (ib){
-              if (st === 'RUNNING' || st === 'QUEUED'){
+            if (ib) {
+              if (st === 'RUNNING' || st === 'QUEUED') {
                 ib.disabled = false; ib.textContent = 'Cancel'; ib.style.background = '#b71c1c'; ib.style.color = '#fff'; ib.dataset.running = '1';
               }
             }
-          }catch{}
+          } catch { }
           if (s.status === "DONE" || s.status === "CANCELLED") {
             clearInterval(encodeTimer);
             if (runBtn) {
@@ -1662,12 +1610,12 @@
               runBtn.dataset.running = "0";
               runBtn.title = "";
             }
-            if (importBtnTop){ importBtnTop.disabled = false; importBtnTop.textContent = "Import"; importBtnTop.style.background=""; importBtnTop.style.color=""; importBtnTop.dataset.running="0"; importBtnTop.title=""; }
+            if (importBtnTop) { importBtnTop.disabled = false; importBtnTop.textContent = "Import"; importBtnTop.style.background = ""; importBtnTop.style.color = ""; importBtnTop.dataset.running = "0"; importBtnTop.title = ""; }
             currentRunPlan = null;
             try {
               window.__ENCODE_JOB_ID__ = null;
-            } catch {}
-            try{ localStorage.removeItem('cheesepie.encode_job'); }catch{}
+            } catch { }
+            try { localStorage.removeItem('cheesepie.encode_job'); } catch { }
           }
         } catch (err) {
           clearInterval(encodeTimer);
@@ -1679,11 +1627,11 @@
             runBtn.dataset.running = "0";
             runBtn.title = "";
           }
-          if (importBtnTop){ importBtnTop.disabled = false; importBtnTop.textContent = "Import"; importBtnTop.style.background=""; importBtnTop.style.color=""; importBtnTop.dataset.running="0"; importBtnTop.title=""; }
+          if (importBtnTop) { importBtnTop.disabled = false; importBtnTop.textContent = "Import"; importBtnTop.style.background = ""; importBtnTop.style.color = ""; importBtnTop.dataset.running = "0"; importBtnTop.title = ""; }
           try {
             window.__ENCODE_JOB_ID__ = null;
-          } catch {}
-          try{ localStorage.removeItem('cheesepie.encode_job'); }catch{}
+          } catch { }
+          try { localStorage.removeItem('cheesepie.encode_job'); } catch { }
         }
       }, 2000);
     }
@@ -1754,8 +1702,8 @@
             typeof d.segments === "number"
               ? d.segments
               : status === "MISSING"
-              ? 0
-              : 1;
+                ? 0
+                : 1;
           if (
             status === "WAITING" ||
             status === "PLANNED" ||
@@ -1809,7 +1757,7 @@
             <td style=\"padding:6px 4px\">${camStr}</td>
             <td style=\"padding:6px 4px\">${dayStr}</td>
             <td style=\"padding:6px 4px\">${segs}</td>
-            <td style=\"padding:6px 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis\">${(path && !/\.txt$/i.test(path)) ? `<a href=\"#\" class=\"dp-preview\" data-path=\"${encodeURIComponent(path)}\" title=\"Preview video\">${path}</a>` : (path||'')}</td>
+            <td style=\"padding:6px 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis\">${(path && !/\.txt$/i.test(path)) ? `<a href=\"#\" class=\"dp-preview\" data-path=\"${encodeURIComponent(path)}\" title=\"Preview video\">${path}</a>` : (path || '')}</td>
             <td style=\"padding:6px 4px\">${durTxt}</td>
             <td style=\"padding:6px 4px\">${statusHtml}</td>
             <td style=\"padding:6px 4px\">${healthTxt}</td>
@@ -1822,7 +1770,7 @@
       try {
         const panel = document.getElementById('days-status');
         if (panel) panel.style.display = rows ? '' : 'none';
-      } catch {}
+      } catch { }
 
       // No separate overall progress UI; status is reflected per row
 
@@ -1868,48 +1816,48 @@
     } catch (err) {
       try {
         showError("Render plan error", err);
-      } catch {}
+      } catch { }
     }
   }
 
   // Lightweight video preview overlay for Day Preparation paths
-  (function setupDayPreview(){
-    function closeOverlay(){
-      try{ const ov=document.getElementById('dp-video-preview'); if (ov) ov.remove(); }catch(e){}
-      try{ document.removeEventListener('keydown', onKey); } catch(e){}
+  (function setupDayPreview() {
+    function closeOverlay() {
+      try { const ov = document.getElementById('dp-video-preview'); if (ov) ov.remove(); } catch (e) { }
+      try { document.removeEventListener('keydown', onKey); } catch (e) { }
     }
-    function onKey(ev){ if (ev.key==='Escape'){ ev.preventDefault(); closeOverlay(); } }
-    function openPreview(path){
-      try{
-        const decPath = decodeURIComponent(path||'');
+    function onKey(ev) { if (ev.key === 'Escape') { ev.preventDefault(); closeOverlay(); } }
+    function openPreview(path) {
+      try {
+        const decPath = decodeURIComponent(path || '');
         if (/\.txt$/i.test(decPath)) return; // ignore text lists
         // Build overlay
-        const ov = document.createElement('div'); ov.id='dp-video-preview';
+        const ov = document.createElement('div'); ov.id = 'dp-video-preview';
         ov.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:2000; display:flex; align-items:center; justify-content:center; padding:20px;';
         const panel = document.createElement('div');
         panel.style.cssText = 'background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:10px; box-shadow:0 10px 30px var(--shadow); width:min(1000px,96vw); max-width:96vw;';
-        const header = document.createElement('div'); header.style.cssText='display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border-bottom:1px solid var(--border,#ddd)';
-        const title = document.createElement('div'); title.textContent = (decPath.split('/').pop()||decPath); title.style.cssText='font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
-        const actions = document.createElement('div'); actions.style.cssText='display:flex; gap:8px; align-items:center';
-        const analyze = document.createElement('a'); analyze.className='btn mini'; analyze.textContent='Open in Analyze'; analyze.href = '/analyze?video=' + encodeURIComponent(decPath);
-        const close = document.createElement('button'); close.className='btn'; close.textContent='✕'; close.title='Close'; close.style.cssText='font-weight:700; width:32px; height:32px; padding:0; display:inline-flex; align-items:center; justify-content:center';
+        const header = document.createElement('div'); header.style.cssText = 'display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border-bottom:1px solid var(--border,#ddd)';
+        const title = document.createElement('div'); title.textContent = (decPath.split('/').pop() || decPath); title.style.cssText = 'font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+        const actions = document.createElement('div'); actions.style.cssText = 'display:flex; gap:8px; align-items:center';
+        const analyze = document.createElement('a'); analyze.className = 'btn mini'; analyze.textContent = 'Open in Preview'; analyze.href = '/preview?video=' + encodeURIComponent(decPath);
+        const close = document.createElement('button'); close.className = 'btn'; close.textContent = '✕'; close.title = 'Close'; close.style.cssText = 'font-weight:700; width:32px; height:32px; padding:0; display:inline-flex; align-items:center; justify-content:center';
         close.addEventListener('click', closeOverlay);
         actions.appendChild(analyze); actions.appendChild(close);
         header.appendChild(title); header.appendChild(actions);
-        const body = document.createElement('div'); body.style.cssText='padding:8px 12px;';
+        const body = document.createElement('div'); body.style.cssText = 'padding:8px 12px;';
         const video = document.createElement('video');
-        video.controls = true; video.preload='metadata'; video.style.cssText='width:100%; height:auto; background:var(--surface);';
+        video.controls = true; video.preload = 'metadata'; video.style.cssText = 'width:100%; height:auto; background:var(--surface);';
         const src = document.createElement('source'); src.src = '/media?path=' + encodeURIComponent(decPath);
         video.appendChild(src);
         body.appendChild(video);
         panel.appendChild(header); panel.appendChild(body); ov.appendChild(panel);
-        ov.addEventListener('click', (e)=>{ if (e.target === ov) closeOverlay(); });
+        ov.addEventListener('click', (e) => { if (e.target === ov) closeOverlay(); });
         document.body.appendChild(ov);
         document.addEventListener('keydown', onKey);
-        try{ video.load(); }catch(e){}
-      }catch(e){ try{ showError('Preview error', e); }catch(_){} }
+        try { video.load(); } catch (e) { }
+      } catch (e) { try { showError('Preview error', e); } catch (_) { } }
     }
-    document.addEventListener('click', function(ev){
+    document.addEventListener('click', function (ev) {
       const a = ev.target && (ev.target.closest ? ev.target.closest('a.dp-preview') : null);
       if (!a) return;
       ev.preventDefault();
@@ -1928,9 +1876,8 @@
       "padding:6px 8px; border-bottom:1px dashed var(--border); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color: var(--muted-fg)";
     const missing =
       d.exists === false ? ' <span style="color:#c00">(missing)</span>' : "";
-    row.innerHTML = `<span class="muted" style="margin-right:8px">${camStr}</span>${
-      d.path || d.root || ""
-    }${missing}`;
+    row.innerHTML = `<span class="muted" style="margin-right:8px">${camStr}</span>${d.path || d.root || ""
+      }${missing}`;
     wrap.appendChild(row);
   }
 </script>

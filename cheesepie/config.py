@@ -264,14 +264,14 @@ def cfg_importer_facilities() -> Dict[str, Any]:
 
 
 def cfg_default_facility() -> str:
-    """Return configured default facility name (lowercased) if valid.
+    """Return configured default facility name if valid.
 
     Looks for `facilities.default` in CONFIG and ensures it exists among
     the normalized facilities keys. Returns empty string if not set/valid.
     """
     try:
         raw = CONFIG.get('facilities', {}) if isinstance(CONFIG.get('facilities', {}), dict) else {}
-        name = str(raw.get('default', '')).strip().lower()
+        name = str(raw.get('default', '')).strip()
     except Exception:
         name = ''
     facs = cfg_importer_facilities()

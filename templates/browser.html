@@ -1,45 +1,75 @@
-{% extends 'base.html' %}
-{% block content %}
+{% extends 'base.html' %} {% block content %}
 <section class="panel">
   <div class="panel-header">
-    <div>
+    <div class="header-left">
       <h1>File Browser</h1>
-      <p class="muted">Browse experiment videos, filter, and inspect details.</p>
+      <p class="muted">
+        Browse experiment videos, filter, and inspect details.
+      </p>
     </div>
-  </div>
-
-  <div class="controls">
-    <div class="control-group">
-      <label for="dir-input">Folder path</label>
+    <div class="header-controls">
       <div class="inline">
-        <input id="dir-input" type="text" placeholder="/path/to/videos" spellcheck="false" autocomplete="off">
-        <button id="up-btn" class="btn" title="Up one folder" aria-label="Up one folder">↑</button>
+        <input id="dir-input" type="text" placeholder="/path/to/videos" spellcheck="false" autocomplete="off" />
+        <button id="up-btn" class="btn" title="Up one folder" aria-label="Up one folder">
+          ↑
+        </button>
         <button id="load-btn" class="btn primary">Load</button>
-      </div>
-    </div>
-    <div class="control-group">
-      <label for="search-input">Search</label>
-      <div class="search-wrap">
-        <input id="search-input" type="text" placeholder="Type to filter (e.g. session1, .mp4)">
-        <button id="clear-search" class="clear-x" title="Clear" aria-label="Clear search" hidden>×</button>
       </div>
     </div>
   </div>
 
   <div class="layout">
-    <div class="file-list" id="file-list">
-      <div class="placeholder muted">Enter a folder path and click Load.</div>
+    <div class="browser-main">
+      <div class="search-bar-area">
+        <div class="search-wrap">
+          <input id="search-input" type="text" placeholder="Type to filter (e.g. session1, .mp4)" />
+          <button id="clear-search" class="clear-x" title="Clear" aria-label="Clear search" hidden>
+            ×
+          </button>
+        </div>
+      </div>
+      <div class="file-list" id="file-list">
+        <div class="placeholder muted">Enter a folder path and click Load.</div>
+      </div>
     </div>
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-inner">
-        <div class="muted" id="actions-placeholder">Select a file to see available actions.</div>
+        <div class="muted" id="actions-placeholder">
+          Select a file to see available actions.
+        </div>
         <div id="actions"></div>
-        <div style="border-top:1px solid var(--border); margin:12px 0 10px;"></div>
-        <h2>Details</h2>
-        <div class="muted" id="details-placeholder">Select a file to see details.</div>
         <div id="details"></div>
       </div>
     </aside>
+  </div>
+</section>
+
+<section id="browser-track" class="panel" style="margin-top: 16px; display: none;">
+  <div class="panel-header" style="display:flex; align-items:center; justify-content:space-between; padding:8px 16px;">
+    <h1 style="margin:0">Tracking</h1>
+    <div style="display:flex; align-items:center; gap:16px">
+      <div class="muted" id="track-status">Idle</div>
+      <div style="display:flex; gap:8px; align-items:center">
+        <button class="btn mini" id="track-cancel" disabled>Cancel</button>
+        <button class="btn mini" id="track-retry" disabled>Retry failed</button>
+      </div>
+    </div>
+  </div>
+  <div id="track-panel">
+    <div class="table-wrap" style="margin-top:8px">
+      <table id="track-table" style="width:100%; border-collapse:collapse; font-size:13px">
+        <thead>
+          <tr>
+            <th style="text-align:left; padding:6px 4px">File</th>
+            <th style="text-align:left; padding:6px 4px; width: 10ch; text-align: center;">Status</th>
+            <th style="text-align:left; padding:6px 4px; width: 10ch; text-align: center;">Step</th>
+            <th style="text-align:left; padding:6px 4px; width: 10ch; text-align: center;">Progress</th>
+            <th style="text-align:left; padding:6px 4px; width: 10ch; text-align: center;">Log</th>
+          </tr>
+        </thead>
+        <tbody id="track-body"></tbody>
+      </table>
+    </div>
   </div>
 </section>
 {% endblock %}
