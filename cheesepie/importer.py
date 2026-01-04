@@ -25,7 +25,16 @@ from .config import (
     cfg_importer_health_tolerance_seconds,
 )
 from .media import probe_media
-from .tasks import TaskContext, cancel_task as cancel_task_record, enqueue_task, get_task, register_task, update_task
+from .tasks import (
+    TaskContext,
+    cancel_task as cancel_task_record,
+    enqueue_task,
+    get_task,
+    list_tasks,
+    register_task_resumer,
+    set_task_cancel_hook,
+    update_task,
+)
 
 
 bp = Blueprint('import_api', __name__)
@@ -219,11 +228,35 @@ def _task_total_steps(plan: Dict[str, Any]) -> int:
         return 0
 
 
+def _find_task_by_payload(kind: str, key: str, value: str) -> Optional[Dict[str, Any]]:
+    try:
+        tasks = list_tasks(active_only=False, limit=500)
+    except Exception:
+        tasks = []
+    for t in tasks:
+        if str(t.get('kind') or '') != kind:
+            continue
+        payload = t.get('payload') or {}
+        if str(payload.get(key) or '') == value:
+            return t
+    return None
+
+
 def _run_import_job(ctx: TaskContext, plan: Dict[str, Any]) -> None:
     total = _task_total_steps(plan)
-    prog = 0
+    jobs = plan.get('jobs') or []
+    completed = 0
+    for cam_entry in jobs:
+        for day_entry in cam_entry.get('days', []):
+            st = str(day_entry.get('status') or '').upper()
+            segs = int(day_entry.get('segments') or 0)
+            if segs <= 0 or st in ('MISSING', 'EMPTY'):
+                continue
+            if st in ('DONE', 'FAILED', 'CANCELLED'):
+                completed += 1
+    prog = completed
     if total > 0:
-        ctx.set_progress(0, total=total)
+        ctx.set_progress(prog, total=total)
     jobs = plan.get('jobs') or []
     for cam_entry in jobs:
         cam = cam_entry.get('camera')
@@ -232,6 +265,8 @@ def _run_import_job(ctx: TaskContext, plan: Dict[str, Any]) -> None:
             st = str(day_entry.get('status') or '').upper()
             if segments <= 0 or st in ('MISSING', 'EMPTY'):
                 day_entry['status'] = 'MISSING' if segments <= 0 else st
+                continue
+            if st in ('DONE', 'FAILED', 'CANCELLED'):
                 continue
             if ctx.cancelled():
                 day_entry['status'] = 'CANCELLED'
@@ -257,6 +292,267 @@ def _run_import_job(ctx: TaskContext, plan: Dict[str, Any]) -> None:
                 return
     final_status = 'CANCELLED' if ctx.cancelled() else 'DONE'
     update_task(ctx.task_id, status=final_status, progress=prog, meta={'plan': plan})
+
+
+def _scan_task_runner(ctx: TaskContext, payload: Dict[str, Any]) -> None:
+    job_id = str(payload.get('job_id') or uuid.uuid4().hex)
+    params = payload.get('params') or {}
+    set_task_cancel_hook(ctx.task_id, lambda: _cancel_scan_job(job_id))
+    with SCAN_LOCK:
+        if job_id not in SCAN_JOBS:
+            SCAN_JOBS[job_id] = {
+                'id': job_id,
+                'status': 'QUEUED',
+                'params': params,
+                'files': [],
+                'total': 0,
+                'cancel': False,
+            }
+        SCAN_JOBS[job_id]['task_id'] = ctx.task_id
+    if ctx.cancelled():
+        with SCAN_LOCK:
+            job = SCAN_JOBS.get(job_id)
+            if job:
+                job['status'] = 'CANCELLED'
+        _update_scan_task(job_id, status='CANCELLED', message='Cancelled')
+        return
+    _scan_prepare_worker(job_id)
+
+
+def _encode_task_runner(ctx: TaskContext, payload: Dict[str, Any]) -> None:
+    facility = str(payload.get('facility', '')).strip().lower()
+    experiment = str(payload.get('experiment', '')).strip()
+    treatment = str(payload.get('treatment', '')).strip()
+    try:
+        batch = int(payload.get('batch', 1))
+    except Exception:
+        batch = 1
+    plan = payload.get('plan') or payload.get('lists') or []
+    start_date = str(payload.get('start_date', '')).strip()
+    end_date = str(payload.get('end_date', '')).strip()
+    start_time = str(payload.get('start_time', '')).strip()
+    end_time = str(payload.get('end_time', '')).strip()
+    job_id = str(payload.get('job_id') or uuid.uuid4().hex)
+    set_task_cancel_hook(ctx.task_id, lambda: _cancel_encode_job(job_id))
+    if ctx.cancelled():
+        update_task(ctx.task_id, status='CANCELLED', message='Cancelled')
+        return
+
+    facs = cfg_importer_facilities()
+    if facility not in facs:
+        update_task(ctx.task_id, status='FAILED', message='Unknown facility')
+        return
+    fac = facs[facility]
+    out_base = str(payload.get('output_dir') or fac.get('output_dir') or '').strip() or str(cfg_importer_working_dir())
+    base_dir = Path(out_base).expanduser().joinpath(experiment, treatment)
+    try:
+        base_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        update_task(ctx.task_id, status='FAILED', message=f'Cannot create output dir: {e}')
+        return
+
+    if not _ffmpeg_exists():
+        update_task(ctx.task_id, status='FAILED', message='ffmpeg not available')
+        return
+
+    # Expected window seconds per day
+    day_expected: Dict[int, float] = {}
+    try:
+        for i, w in enumerate(_day_windows(start_date, end_date, start_time, end_time), start=1):
+            day_expected[i] = (w['end'] - w['start']).total_seconds()
+    except Exception:
+        day_expected = {}
+
+    # Health tolerance seconds (facility override or global default)
+    try:
+        tol = float(fac.get('health_tolerance_seconds')) if fac.get('health_tolerance_seconds') is not None else cfg_importer_health_tolerance_seconds()
+        if tol < 0:
+            tol = 0.0
+    except Exception:
+        tol = cfg_importer_health_tolerance_seconds()
+
+    try:
+        total = sum(
+            1
+            for cam_entry in plan
+            for d in (cam_entry.get('days') or [])
+            if int(d.get('segments') or 0) > 0 and str(d.get('status','')).upper() != 'MISSING'
+        )
+    except Exception:
+        total = sum(len(cam_entry.get('days') or []) for cam_entry in plan)
+    prog = 0
+    for cam_entry in plan:
+        for d in (cam_entry.get('days') or []):
+            segs = int(d.get('segments') or 0) if 'segments' in d else 0
+            st = str(d.get('status') or '').upper()
+            if segs <= 0 or st == 'MISSING':
+                continue
+            if st in ('DONE', 'FAILED', 'CANCELLED'):
+                prog += 1
+
+    with ENCODE_LOCK:
+        ENCODE_JOBS[job_id] = {
+            'id': job_id,
+            'status': 'RUNNING',
+            'progress': prog,
+            'total': total,
+            'plan': plan,
+            'output_dir': str(base_dir),
+            'cancel': False,
+            'task_id': ctx.task_id,
+        }
+
+    results: List[Dict[str, Any]] = []
+    base_plan: List[Dict[str, Any]] = plan
+
+    def _snapshot_plan(cur_cam: Optional[int] = None, cur_days: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+        processed: Dict[int, Dict[int, Dict[str, Any]]] = {}
+        for ce in results:
+            c = int(ce.get('camera'))
+            dmap: Dict[int, Dict[str, Any]] = {}
+            for de in ce.get('days', []) or []:
+                try:
+                    dmap[int(de.get('day'))] = de
+                except Exception:
+                    pass
+            processed[c] = dmap
+        if cur_cam is not None and cur_days is not None:
+            dmap = processed.get(int(cur_cam), {})
+            for de in cur_days:
+                try:
+                    dmap[int(de.get('day'))] = de
+                except Exception:
+                    pass
+            processed[int(cur_cam)] = dmap
+
+        full: List[Dict[str, Any]] = []
+        for bc in base_plan:
+            cam_id = bc.get('camera')
+            base_days = bc.get('days') or []
+            out_days: List[Dict[str, Any]] = []
+            done_map = processed.get(int(cam_id), {})
+            for bd in base_days:
+                try:
+                    di = int(bd.get('day') or 0)
+                except Exception:
+                    di = 0
+                if di in done_map:
+                    out_days.append(done_map[di])
+                else:
+                    segs = int(bd.get('segments') or 0) if 'segments' in bd else 0
+                    st = str(bd.get('status') or '').upper()
+                    if st in ('DONE', 'FAILED', 'CANCELLED'):
+                        out_days.append({**bd, 'status': st})
+                    elif st == 'MISSING' or segs <= 0:
+                        out_days.append({**bd, 'status': 'MISSING'})
+                    else:
+                        tmp = dict(bd)
+                        tmp['status'] = 'PENDING'
+                        out_days.append(tmp)
+            full.append({'camera': cam_id, 'days': out_days})
+        return full
+
+    def _publish(status: Optional[str] = None, plan_state: Optional[List[Dict[str, Any]]] = None, message: Optional[str] = None) -> None:
+        fields: Dict[str, Any] = {'total': total, 'progress': prog}
+        if status:
+            fields['status'] = status
+        if message is not None:
+            fields['message'] = message
+        if plan_state is not None:
+            fields['meta'] = {'plan': plan_state}
+        update_task(ctx.task_id, **fields)
+        with ENCODE_LOCK:
+            j = ENCODE_JOBS.get(job_id)
+            if j:
+                if status:
+                    j['status'] = status
+                j['progress'] = prog
+                j['plan'] = plan_state or j.get('plan')
+
+    _publish(status='RUNNING', plan_state=_snapshot_plan())
+
+    for cam_entry in plan:
+        cam = cam_entry.get('camera')
+        out_days: List[Dict[str, Any]] = []
+        for d in cam_entry.get('days', []):
+            list_path = Path(str(d.get('list_path') or '')).expanduser()
+            segments = int(d.get('segments') or 0) if 'segments' in d else (0 if str(d.get('status','')).upper()=='MISSING' else 1)
+            st = str(d.get('status') or '').upper()
+            if list_path.name.endswith('.txt'):
+                out_name = list_path.name[:-4] + '.mp4'
+            else:
+                day_num = int(d.get('day') or 0)
+                out_name = f"{experiment}-{treatment}.exp{batch:03d}{cam}.day{day_num:02d}.cam{int(cam):02d}.mp4"
+            out_path = base_dir.joinpath(out_name)
+
+            if segments <= 0 or st == 'MISSING':
+                out_days.append({'day': d.get('day'), 'status': 'MISSING', 'segments': 0, 'output': str(out_path), 'list_path': str(list_path)})
+                continue
+            if st in ('DONE', 'FAILED', 'CANCELLED'):
+                out_days.append({**d, 'output': str(out_path), 'list_path': str(list_path)})
+                continue
+            if not list_path.exists():
+                out_days.append({'day': d.get('day'), 'status': 'FAILED', 'segments': segments, 'message': 'list not found', 'output': str(out_path), 'list_path': str(list_path)})
+                prog += 1
+                _publish(plan_state=_snapshot_plan(cur_cam=cam, cur_days=out_days), message='List not found')
+                continue
+
+            running_entry: Dict[str, Any] = {
+                'day': d.get('day'),
+                'status': 'RUNNING',
+                'segments': segments,
+                'output': str(out_path),
+                'list_path': str(list_path),
+            }
+            out_days.append(running_entry)
+            _publish(plan_state=_snapshot_plan(cur_cam=cam, cur_days=out_days))
+
+            if _job_cancelled(job_id) or ctx.cancelled():
+                out_days[-1] = {
+                    'day': d.get('day'),
+                    'status': 'CANCELLED',
+                    'segments': segments,
+                    'output': str(out_path),
+                }
+                _publish(status='CANCELLED', plan_state=_snapshot_plan(cur_cam=cam, cur_days=out_days), message='Cancelled')
+                return
+
+            code, msg, cancelled = _run_ffmpeg_concat_monitored(list_path, out_path, job_id)
+            entry: Dict[str, Any] = {
+                'day': d.get('day'),
+                'status': ('CANCELLED' if cancelled else ('DONE' if code == 0 else 'FAILED')),
+                'segments': segments,
+                'output': str(out_path),
+                'ffmpeg': msg,
+                'list_path': str(list_path),
+            }
+            try:
+                exp_len = day_expected.get(int(d.get('day') or 0))
+                actual = None
+                if out_path.exists():
+                    meta = probe_media(out_path)
+                    dur = meta.get('duration') if isinstance(meta, dict) else None
+                    if isinstance(dur, (int, float)):
+                        actual = float(dur)
+                if actual is not None:
+                    entry['duration'] = actual
+                if exp_len is not None and actual is not None:
+                    delta = actual - float(exp_len)
+                    ok = abs(delta) <= float(tol)
+                    entry['health'] = {'expected': float(exp_len), 'actual': actual, 'delta': delta, 'ok': ok}
+            except Exception:
+                pass
+            out_days[-1] = entry
+            if cancelled:
+                _publish(status='CANCELLED', plan_state=_snapshot_plan(cur_cam=cam, cur_days=out_days), message=msg or 'Cancelled')
+                return
+            prog += 1
+            _publish(plan_state=_snapshot_plan(cur_cam=cam, cur_days=out_days), message=msg or '')
+
+        results.append({'camera': cam, 'days': out_days})
+
+    final_plan = _snapshot_plan()
+    _publish(status='DONE', plan_state=final_plan)
 
 def _set_job_proc(job_id: str, proc: Optional[subprocess.Popen]) -> None:
     with ENCODE_LOCK:
@@ -390,6 +686,11 @@ def _scan_prepare_worker(job_id: str) -> None:
         job = SCAN_JOBS.get(job_id)
     if not job:
         return
+    with SCAN_LOCK:
+        job = SCAN_JOBS.get(job_id)
+        if job:
+            job['status'] = 'RUNNING'
+    _update_scan_task(job_id, status='RUNNING', message='Scanning source directories')
     try:
         params = job.get('params', {})
         facility = str(params.get('facility', '')).strip().lower()
@@ -610,15 +911,15 @@ def _prepare_plan_from_manifest(facility: str, experiment: str, treatment: str, 
 
 @bp.route('/scan_prepare/start', methods=['POST'])
 def api_scan_prepare_start():
-    payload = request.json or {}
-    facility = str(payload.get('facility', '')).strip().lower()
-    experiment = str(payload.get('experiment', '')).strip()
-    treatment = str(payload.get('treatment', '')).strip()
-    start_date = str(payload.get('start_date', '')).strip()
-    end_date = str(payload.get('end_date', '')).strip()
-    start_time = str(payload.get('start_time', '')).strip()
-    end_time = str(payload.get('end_time', '')).strip()
-    cameras = payload.get('cameras') or []
+    req = request.json or {}
+    facility = str(req.get('facility', '')).strip().lower()
+    experiment = str(req.get('experiment', '')).strip()
+    treatment = str(req.get('treatment', '')).strip()
+    start_date = str(req.get('start_date', '')).strip()
+    end_date = str(req.get('end_date', '')).strip()
+    start_time = str(req.get('start_time', '')).strip()
+    end_time = str(req.get('end_time', '')).strip()
+    cameras = req.get('cameras') or []
     try:
         cams = sorted({int(c) for c in cameras})
     except Exception:
@@ -633,25 +934,29 @@ def api_scan_prepare_start():
             'params': {
                 'facility': facility, 'experiment': experiment, 'treatment': treatment,
                 'start_date': start_date, 'end_date': end_date, 'start_time': start_time, 'end_time': end_time,
-                'cameras': cams, 'camera_pattern': str(payload.get('camera_pattern') or ''), 'batch': int(payload.get('batch') or 1),
+                'cameras': cams, 'camera_pattern': str(req.get('camera_pattern') or ''), 'batch': int(req.get('batch') or 1),
             },
             'files': [], 'total': 0, 'cancel': False,
         }
-    task_entry = register_task(
+    task_payload = {
+        'job_id': job_id,
+        'params': {
+            'facility': facility, 'experiment': experiment, 'treatment': treatment,
+            'start_date': start_date, 'end_date': end_date, 'start_time': start_time, 'end_time': end_time,
+            'cameras': cams, 'camera_pattern': str(req.get('camera_pattern') or ''), 'batch': int(req.get('batch') or 1),
+        },
+    }
+    task_entry = enqueue_task(
         title=f"Scan {facility} {experiment}-{treatment}",
         kind='import.scan',
+        runner=lambda ctx, payload=task_payload: _scan_task_runner(ctx, payload),
         total=0,
-        meta={'params': {'facility': facility, 'experiment': experiment, 'treatment': treatment}},
-        start_immediately=True,
+        meta={'params': task_payload['params']},
+        payload=task_payload,
         on_cancel=lambda: _cancel_scan_job(job_id),
     )
     with SCAN_LOCK:
         SCAN_JOBS[job_id]['task_id'] = task_entry['id']
-    t = threading.Thread(target=_scan_prepare_worker, args=(job_id,), daemon=True)
-    t.start()
-    with SCAN_LOCK:
-        SCAN_JOBS[job_id]['status'] = 'RUNNING'
-    _update_scan_task(job_id, status='RUNNING', message='Scanning source directories')
     return jsonify({'ok': True, 'job_id': job_id})
 
 @bp.route('/scan_prepare/status')
@@ -662,13 +967,28 @@ def api_scan_prepare_status():
     with SCAN_LOCK:
         job = SCAN_JOBS.get(job_id)
         if not job:
-            return jsonify({'error': 'Not found'}), 404
-        out = {k: job.get(k) for k in ('id','status','total','files','error') if k in job}
-        if 'plan' in job:
-            out['plan'] = job['plan']
-        if job.get('task_id'):
-            out['task_id'] = job.get('task_id')
-    return jsonify(out)
+            job = None
+        if job:
+            out = {k: job.get(k) for k in ('id','status','total','files','error') if k in job}
+            if 'plan' in job:
+                out['plan'] = job['plan']
+            if job.get('task_id'):
+                out['task_id'] = job.get('task_id')
+            return jsonify(out)
+    task = _find_task_by_payload('import.scan', 'job_id', job_id)
+    if task:
+        meta = task.get('meta') or {}
+        resp = {
+            'id': job_id,
+            'status': task.get('status'),
+            'total': meta.get('total', 0),
+            'files': meta.get('files', []),
+            'error': task.get('message'),
+            'plan': meta.get('plan'),
+            'task_id': task.get('id'),
+        }
+        return jsonify(resp)
+    return jsonify({'error': 'Not found'}), 404
 
 @bp.route('/scan_prepare/cancel', methods=['POST'])
 def api_scan_prepare_cancel():
@@ -678,10 +998,16 @@ def api_scan_prepare_cancel():
     task_id = None
     with SCAN_LOCK:
         job = SCAN_JOBS.get(job_id)
-        if not job:
+        if job:
+            job['cancel'] = True
+            task_id = job.get('task_id')
+        else:
+            job = None
+    if not job:
+        task = _find_task_by_payload('import.scan', 'job_id', job_id)
+        if not task:
             return jsonify({'error': 'Not found'}), 404
-        job['cancel'] = True
-        task_id = job.get('task_id')
+        task_id = task.get('id')
     if task_id:
         try:
             cancel_task_record(task_id)
@@ -1890,204 +2216,31 @@ def api_import_encode_days():
                 'output_dir': str(base_dir),
                 'cancel': False,
             }
-        task_entry = register_task(
+        task_payload = {
+            'job_id': job_id,
+            'facility': facility,
+            'experiment': experiment,
+            'treatment': treatment,
+            'batch': batch,
+            'plan': plan,
+            'start_date': start_date,
+            'end_date': end_date,
+            'start_time': start_time,
+            'end_time': end_time,
+            'output_dir': str(base_dir),
+        }
+        task_entry = enqueue_task(
             title=f"Encode {experiment}-{treatment} batch {batch}",
             kind='import.encode',
+            runner=lambda ctx, payload=task_payload: _encode_task_runner(ctx, payload),
             total=total,
             meta={'plan': plan, 'output_dir': str(base_dir)},
-            start_immediately=True,
+            payload=task_payload,
             on_cancel=lambda: _cancel_encode_job(job_id),
         )
-        task_id = task_entry['id']
         with ENCODE_LOCK:
-            ENCODE_JOBS[job_id]['task_id'] = task_id
-
-        def _run_encode_job():
-            with ENCODE_LOCK:
-                job = ENCODE_JOBS.get(job_id)
-                if not job:
-                    return
-                job['status'] = 'RUNNING'
-
-            prog = 0
-            results: List[Dict[str, Any]] = []
-            base_plan: List[Dict[str, Any]] = plan
-
-            def _publish_task(status: Optional[str] = None, plan_state: Optional[List[Dict[str, Any]]] = None, message: Optional[str] = None):
-                fields: Dict[str, Any] = {'total': total}
-                if status:
-                    fields['status'] = status
-                fields['progress'] = prog
-                if message is not None:
-                    fields['message'] = message
-                if plan_state is not None:
-                    fields['meta'] = {'plan': plan_state}
-                if task_id:
-                    update_task(task_id, **fields)
-
-            def _snapshot_plan(cur_cam: Optional[int] = None, cur_days: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
-                processed: Dict[int, Dict[int, Dict[str, Any]]] = {}
-                for ce in results:
-                    c = int(ce.get('camera'))
-                    dmap: Dict[int, Dict[str, Any]] = {}
-                    for de in ce.get('days', []) or []:
-                        try:
-                            dmap[int(de.get('day'))] = de
-                        except Exception:
-                            pass
-                    processed[c] = dmap
-                if cur_cam is not None and cur_days is not None:
-                    dmap = processed.get(int(cur_cam), {})
-                    for de in cur_days:
-                        try:
-                            dmap[int(de.get('day'))] = de
-                        except Exception:
-                            pass
-                    processed[int(cur_cam)] = dmap
-
-                full: List[Dict[str, Any]] = []
-                for bc in base_plan:
-                    cam_id = bc.get('camera')
-                    base_days = bc.get('days') or []
-                    out_days: List[Dict[str, Any]] = []
-                    done_map = processed.get(int(cam_id), {})
-                    for bd in base_days:
-                        try:
-                            di = int(bd.get('day') or 0)
-                        except Exception:
-                            di = 0
-                        if di in done_map:
-                            out_days.append(done_map[di])
-                        else:
-                            segs = int(bd.get('segments') or 0) if 'segments' in bd else 0
-                            st = str(bd.get('status') or '').upper()
-                            if st == 'MISSING' or segs <= 0:
-                                out_days.append({**bd, 'status': 'MISSING'})
-                            else:
-                                # Not yet processed — keep visible as PENDING
-                                tmp = dict(bd)
-                                tmp['status'] = 'PENDING'
-                                out_days.append(tmp)
-                    full.append({'camera': cam_id, 'days': out_days})
-                return full
-            _publish_task(status='RUNNING', plan_state=_snapshot_plan())
-            for cam_entry in plan:
-                cam = cam_entry.get('camera')
-                out_days: List[Dict[str, Any]] = []
-                for d in cam_entry.get('days', []):
-                    list_path = Path(str(d.get('list_path') or '')).expanduser()
-                    segments = int(d.get('segments') or 0) if 'segments' in d else (0 if str(d.get('status','')).upper()=='MISSING' else 1)
-                    if list_path.name.endswith('.txt'):
-                        out_name = list_path.name[:-4] + '.mp4'
-                    else:
-                        day_num = int(d.get('day') or 0)
-                        out_name = f"{experiment}-{treatment}.exp{batch:03d}{cam}.day{day_num:02d}.cam{int(cam):02d}.mp4"
-                    out_path = base_dir.joinpath(out_name)
-
-                    if segments <= 0:
-                        out_days.append({'day': d.get('day'), 'status': 'MISSING', 'segments': 0, 'output': str(out_path), 'list_path': str(list_path)})
-                        continue
-                    if not list_path.exists():
-                        out_days.append({'day': d.get('day'), 'status': 'FAILED', 'segments': segments, 'message': 'list not found', 'output': str(out_path), 'list_path': str(list_path)})
-                        prog += 1
-                        with ENCODE_LOCK:
-                            j = ENCODE_JOBS.get(job_id)
-                            if j:
-                                j['progress'] = prog
-                                j['plan'] = results + [{'camera': cam, 'days': out_days}]
-                        _publish_task(plan_state=_snapshot_plan(cur_cam=cam, cur_days=out_days), message='List not found')
-                        continue
-                    # mark running and push update
-                    running_entry: Dict[str, Any] = {
-                        'day': d.get('day'),
-                        'status': 'RUNNING',
-                        'segments': segments,
-                        'output': str(out_path),
-                        'list_path': str(list_path),
-                    }
-                    out_days.append(running_entry)
-                    with ENCODE_LOCK:
-                        j = ENCODE_JOBS.get(job_id)
-                        if j:
-                            j['plan'] = _snapshot_plan(cur_cam=cam, cur_days=out_days)
-                    _publish_task(plan_state=_snapshot_plan(cur_cam=cam, cur_days=out_days))
-
-                    # if cancelled before starting, exit
-                    if _job_cancelled(job_id):
-                        # replace RUNNING with CANCELLED and break
-                        out_days[-1] = {
-                            'day': d.get('day'),
-                            'status': 'CANCELLED',
-                            'segments': segments,
-                            'output': str(out_path),
-                        }
-                        with ENCODE_LOCK:
-                            j = ENCODE_JOBS.get(job_id)
-                            if j:
-                                j['plan'] = _snapshot_plan(cur_cam=cam, cur_days=out_days)
-                                j['status'] = 'CANCELLED'
-                        _publish_task(status='CANCELLED', plan_state=_snapshot_plan(cur_cam=cam, cur_days=out_days), message='Cancelled')
-                        break
-
-                    code, msg, cancelled = _run_ffmpeg_concat_monitored(list_path, out_path, job_id)
-                    entry: Dict[str, Any] = {
-                        'day': d.get('day'),
-                        'status': ('CANCELLED' if cancelled else ('DONE' if code == 0 else 'FAILED')),
-                        'segments': segments,
-                        'output': str(out_path),
-                        'ffmpeg': msg,
-                        'list_path': str(list_path),
-                    }
-                    try:
-                        exp_len = day_expected.get(int(d.get('day') or 0))
-                        actual = None
-                        if out_path.exists():
-                            meta = probe_media(out_path)
-                            dur = meta.get('duration') if isinstance(meta, dict) else None
-                            if isinstance(dur, (int, float)):
-                                actual = float(dur)
-                        if actual is not None:
-                            entry['duration'] = actual
-                        if exp_len is not None and actual is not None:
-                            delta = actual - float(exp_len)
-                            ok = abs(delta) <= float(tol)
-                            entry['health'] = {'expected': float(exp_len), 'actual': actual, 'delta': delta, 'ok': ok}
-                    except Exception:
-                        pass
-                    # replace RUNNING entry with final entry
-                    out_days[-1] = entry
-                    if cancelled:
-                        with ENCODE_LOCK:
-                            j = ENCODE_JOBS.get(job_id)
-                            if j:
-                                j['plan'] = _snapshot_plan(cur_cam=cam, cur_days=out_days)
-                                j['status'] = 'CANCELLED'
-                        _publish_task(status='CANCELLED', plan_state=_snapshot_plan(cur_cam=cam, cur_days=out_days), message=msg or 'Cancelled')
-                        break
-                    prog += 1
-                    with ENCODE_LOCK:
-                        j = ENCODE_JOBS.get(job_id)
-                        if j:
-                            j['progress'] = prog
-                            j['plan'] = _snapshot_plan(cur_cam=cam, cur_days=out_days)
-                    _publish_task(plan_state=_snapshot_plan(cur_cam=cam, cur_days=out_days))
-
-                results.append({'camera': cam, 'days': out_days})
-
-            final_plan = _snapshot_plan()
-            final_status = 'DONE'
-            with ENCODE_LOCK:
-                job = ENCODE_JOBS.get(job_id)
-                if job:
-                    if job.get('status') != 'CANCELLED':
-                        job['status'] = 'DONE'
-                    final_status = job.get('status', final_status)
-                    job['plan'] = final_plan
-            _publish_task(status=final_status, plan_state=final_plan)
-
-        t = threading.Thread(target=_run_encode_job, daemon=True)
-        t.start()
-        return jsonify({'ok': True, 'job_id': job_id, 'status': 'QUEUED', 'progress': 0, 'total': ENCODE_JOBS[job_id]['total'], 'plan': plan})
+            ENCODE_JOBS[job_id]['task_id'] = task_entry['id']
+        return jsonify({'ok': True, 'job_id': job_id, 'task_id': task_entry['id'], 'status': 'QUEUED', 'progress': 0, 'total': ENCODE_JOBS[job_id]['total'], 'plan': plan})
 
     # sync mode: process now and return plan
     results = []
@@ -2141,11 +2294,26 @@ def api_import_encode_status():
     with ENCODE_LOCK:
         job = ENCODE_JOBS.get(jid)
         if not job:
-            return jsonify({'error': 'Job not found'}), 404
-        resp = dict(job)
-        if job.get('task_id'):
-            resp['task_id'] = job.get('task_id')
+            job = None
+        if job:
+            resp = dict(job)
+            if job.get('task_id'):
+                resp['task_id'] = job.get('task_id')
+            return jsonify({'ok': True, **resp})
+    task = _find_task_by_payload('import.encode', 'job_id', jid)
+    if task:
+        meta = task.get('meta') or {}
+        resp = {
+            'id': jid,
+            'status': task.get('status'),
+            'progress': task.get('progress', 0),
+            'total': task.get('total', 0),
+            'plan': meta.get('plan'),
+            'output_dir': meta.get('output_dir'),
+            'task_id': task.get('id'),
+        }
         return jsonify({'ok': True, **resp})
+    return jsonify({'error': 'Job not found'}), 404
 
 
 @bp.route('/encode_cancel', methods=['POST'])
@@ -2163,19 +2331,49 @@ def api_import_encode_cancel():
         return jsonify({'error': 'Missing job id'}), 400
     with ENCODE_LOCK:
         job = ENCODE_JOBS.get(jid)
-        if not job:
+        task_id = None
+        if job:
+            job['cancel'] = True
+            task_id = job.get('task_id')
+            proc = ENCODE_PROCS.get(jid)
+            if proc and proc.poll() is None:
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
+    if not job:
+        task = _find_task_by_payload('import.encode', 'job_id', jid)
+        if not task:
             return jsonify({'error': 'Job not found'}), 404
-        job['cancel'] = True
-        task_id = job.get('task_id')
-        proc = ENCODE_PROCS.get(jid)
-        if proc and proc.poll() is None:
-            try:
-                proc.terminate()
-            except Exception:
-                pass
+        try:
+            cancel_task_record(task.get('id'))
+        except Exception:
+            pass
+        return jsonify({'ok': True, 'status': 'CANCELLING', 'job': jid})
     try:
         if task_id:
             cancel_task_record(task_id)
     except Exception:
         pass
     return jsonify({'ok': True, 'status': 'CANCELLING', 'job': jid})
+
+
+def _resume_import_concat(ctx: TaskContext, payload: Dict[str, Any]) -> None:
+    plan = payload.get('plan') or {}
+    if not plan:
+        update_task(ctx.task_id, status='FAILED', message='Missing import plan')
+        return
+    _run_import_job(ctx, plan)
+
+
+def _resume_import_scan(ctx: TaskContext, payload: Dict[str, Any]) -> None:
+    _scan_task_runner(ctx, payload)
+
+
+def _resume_import_encode(ctx: TaskContext, payload: Dict[str, Any]) -> None:
+    _encode_task_runner(ctx, payload)
+
+
+register_task_resumer('import.concat', _resume_import_concat)
+register_task_resumer('import.scan', _resume_import_scan)
+register_task_resumer('import.encode', _resume_import_encode)

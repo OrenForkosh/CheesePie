@@ -11,6 +11,7 @@
         <input type="checkbox" id="show-completed" />
         Show completed
       </label>
+      <button class="btn" id="cancel-all">Cancel all</button>
       <button class="btn" id="refresh-tasks">Refresh</button>
     </div>
   </div>
@@ -138,6 +139,7 @@
     const listEl = document.getElementById("tasks-list");
     const toggleCompleted = document.getElementById("show-completed");
     const refreshBtn = document.getElementById("refresh-tasks");
+    const cancelAllBtn = document.getElementById("cancel-all");
     let pollTimer = null;
 
     const doneStates = ["DONE", "FAILED", "CANCELLED"];
@@ -299,6 +301,18 @@
 
     refreshBtn.addEventListener("click", (ev) => {
       ev.preventDefault();
+      loadTasks();
+    });
+    cancelAllBtn.addEventListener("click", async (ev) => {
+      ev.preventDefault();
+      if (!confirm("Cancel all active tasks?")) return;
+      try {
+        await fetch("/api/tasks/cancel_all", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ active_only: true }),
+        });
+      } catch { }
       loadTasks();
     });
     toggleCompleted.addEventListener("change", () => loadTasks());

@@ -1211,6 +1211,82 @@
     } catch (e) { }
   })();
 
+  // Settings page: restart server
+  (function setupRestartServer() {
+    try {
+      const btn = document.getElementById("restart-app");
+      const status = document.getElementById("restart-status");
+      if (!btn) return;
+      btn.addEventListener("click", () => {
+        if (!confirm("Restart the CheesePie server now?")) return;
+        btn.disabled = true;
+        if (status) status.textContent = "Restarting…";
+        fetch("/api/config/restart", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ confirm: true }),
+        })
+          .then((r) => r.json().then((d) => ({ ok: r.ok && d && !d.error, d })))
+          .then((res) => {
+            if (!res.ok) {
+              if (status) status.textContent = "Error: " + (res.d && res.d.error);
+              btn.disabled = false;
+              return;
+            }
+            if (status) status.textContent = "Restart requested. Reconnecting…";
+            setTimeout(() => {
+              location.reload();
+            }, 4000);
+          })
+          .catch((e) => {
+            if (status) status.textContent = "Error: " + e;
+            btn.disabled = false;
+          });
+      });
+    } catch (e) { }
+  })();
+
+  // Settings page: update from GitHub
+  (function setupUpdateServer() {
+    try {
+      const btn = document.getElementById("update-app");
+      const status = document.getElementById("update-status");
+      if (!btn) return;
+      btn.addEventListener("click", () => {
+        const msg =
+          "Pull latest code from GitHub and restart the server?\n" +
+          "This will fail if there are local changes.";
+        if (!confirm(msg)) return;
+        btn.disabled = true;
+        if (status) status.textContent = "Updating…";
+        fetch("/api/config/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ confirm: true }),
+        })
+          .then((r) => r.json().then((d) => ({ ok: r.ok && d && !d.error, d })))
+          .then((res) => {
+            if (!res.ok) {
+              if (status) status.textContent = "Error: " + (res.d && res.d.error);
+              btn.disabled = false;
+              return;
+            }
+            if (status) {
+              const out = (res.d && res.d.output) || "Update complete.";
+              status.textContent = out + " Restarting…";
+            }
+            setTimeout(() => {
+              location.reload();
+            }, 5000);
+          })
+          .catch((e) => {
+            if (status) status.textContent = "Error: " + e;
+            btn.disabled = false;
+          });
+      });
+    } catch (e) { }
+  })();
+
   // MATLAB status polling removed
 })();
 

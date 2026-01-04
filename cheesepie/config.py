@@ -3,6 +3,11 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
+import signal
+import subprocess
+import threading
+import time
 from pathlib import Path
 from flask import Blueprint, jsonify, request
 from typing import Any, Dict, List, Optional
@@ -405,6 +410,23 @@ __all__ = [
 ]
 bp = Blueprint('config_api', __name__)
 
+
+def _schedule_restart(delay: float = 0.5) -> None:
+    def _restart():
+        try:
+            time.sleep(max(0.0, float(delay)))
+        except Exception:
+            pass
+        try:
+            os.kill(os.getpid(), signal.SIGTERM)
+        except Exception:
+            try:
+                os._exit(0)
+            except Exception:
+                pass
+
+    threading.Thread(target=_restart, daemon=True).start()
+
 @bp.route('/info')
 def api_config_info():
     try:
@@ -463,3 +485,45 @@ def api_config_list():
         return jsonify({'ok': True, 'items': items, 'current': str(cur), 'origin': origin})
     except Exception as e:
         return jsonify({'error': f'Failed to list configs: {e}'}), 500
+
+
+@bp.route('/restart', methods=['POST'])
+def api_config_restart():
+    """Trigger a process restart; requires an external supervisor to auto-restart."""
+    _schedule_restart()
+    return jsonify({'ok': True, 'message': 'Restarting'}), 202
+
+
+@bp.route('/update', methods=['POST'])
+def api_config_update():
+    """Pull latest code from GitHub, then restart (supervisor required)."""
+    repo_root = Path(__file__).resolve().parent.parent
+    if not repo_root.joinpath('.git').exists():
+        return jsonify({'error': 'Not a git repository', 'path': str(repo_root)}), 400
+    if shutil.which('git') is None:
+        return jsonify({'error': 'git is not available in PATH'}), 400
+    try:
+        status = subprocess.run(
+            ['git', '-C', str(repo_root), 'status', '--porcelain'],
+            capture_output=True,
+            text=True,
+        )
+        if status.returncode != 0:
+            return jsonify({'error': 'Failed to read git status', 'details': status.stderr}), 500
+        if (status.stdout or '').strip():
+            return jsonify({'error': 'Working tree has local changes; please commit or stash first'}), 409
+    except Exception as e:
+        return jsonify({'error': f'Failed to check git status: {e}'}), 500
+    try:
+        res = subprocess.run(
+            ['git', '-C', str(repo_root), 'pull', 'https://github.com/OrenForkosh/CheesePie.git'],
+            capture_output=True,
+            text=True,
+        )
+    except Exception as e:
+        return jsonify({'error': f'Failed to run git pull: {e}'}), 500
+    output = (res.stdout or '') + (res.stderr or '')
+    if res.returncode != 0:
+        return jsonify({'error': 'git pull failed', 'output': output.strip()}), 500
+    _schedule_restart()
+    return jsonify({'ok': True, 'output': output.strip()}), 202

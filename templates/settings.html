@@ -35,6 +35,26 @@
       </div>
       <div class="muted" id="cfg-status" style="margin-top:6px"></div>
     </div>
+    <div class="control-group">
+      <label>Server</label>
+      <div class="inline" style="gap:8px; flex-wrap: wrap">
+        <button id="restart-app" class="btn themed-settings">Restart server</button>
+        <div class="muted" id="restart-status"></div>
+      </div>
+      <div class="muted" style="margin-top:6px">
+        Requires a process manager (Docker/systemd) to auto-restart after exit.
+      </div>
+    </div>
+    <div class="control-group">
+      <label>Update</label>
+      <div class="inline" style="gap:8px; flex-wrap: wrap">
+        <button id="update-app" class="btn themed-settings">Update from GitHub</button>
+        <div class="muted" id="update-status"></div>
+      </div>
+      <div class="muted" style="margin-top:6px">
+        Runs <code>git pull</code> and restarts the server on success.
+      </div>
+    </div>
   </div>
 </section>
 {% endblock %}
