@@ -182,3 +182,14 @@ cython_debug/
 *.mp4
 # Local auth file (password hash)
 .cheesepie_auth.json
+# Local machine configs / mounts
+config.json
+config.mac.json
+config.local.json
+config.*.local.json
+compose.yaml
+compose.*.yaml
+docker-compose.override.yml
+docker-compose.override.yaml
+
+local/

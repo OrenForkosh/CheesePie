@@ -31,6 +31,7 @@ def create_app() -> Flask:
     from .analyze import bp as analyze_bp
     from .track import bp as track_bp
     from .importer import bp as importer_bp
+    from .tasks import bp as tasks_bp
     from .pages import bp as pages_bp
     from .filters import register_filters
     from .auth import bp as auth_bp, verify_token, password_is_set, set_auth_cookie
@@ -47,6 +48,7 @@ def create_app() -> Flask:
     app.register_blueprint(track_bp)
     app.register_blueprint(config_bp, url_prefix='/api/config')
     app.register_blueprint(importer_bp, url_prefix='/api/import')
+    app.register_blueprint(tasks_bp, url_prefix='/api/tasks')
     app.register_blueprint(pages_bp)
     app.register_blueprint(auth_bp)
 

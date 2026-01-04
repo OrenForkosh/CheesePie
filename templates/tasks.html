@@ -1,0 +1,313 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="panel">
+  <div class="panel-header" style="display:flex; align-items:center; justify-content:space-between; gap:12px">
+    <div>
+      <h1 style="margin:0">Tasks</h1>
+      <div class="muted">Shared queue of long-running jobs. All users can watch progress and cancel active work.</div>
+    </div>
+    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">
+      <label class="muted" style="display:flex; align-items:center; gap:6px; font-size:13px">
+        <input type="checkbox" id="show-completed" />
+        Show completed
+      </label>
+      <button class="btn" id="refresh-tasks">Refresh</button>
+    </div>
+  </div>
+  <div id="tasks-list" class="task-list placeholder">Loading tasks…</div>
+</div>
+
+<style>
+  .task-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--border, #2b2b2b);
+    border-radius: 10px;
+    background: var(--panel-bg, #121212);
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+  .task-row:hover {
+    background: var(--surface, #181818);
+    border-color: var(--border-strong, #3a3a3a);
+  }
+  .task-main {
+    flex: 1;
+    min-width: 0;
+  }
+  .task-title {
+    font-weight: 700;
+    font-size: 16px;
+    margin-bottom: 4px;
+  }
+  .task-sub {
+    color: var(--muted, #a0a0a0);
+    font-size: 13px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+  .status-PENDING { background: #2d2d38; color: #f7c948; }
+  .status-RUNNING { background: #1f2a44; color: #6db3ff; }
+  .status-DONE { background: #123524; color: #5cf08d; }
+  .status-FAILED { background: #3a1b1b; color: #ff8a80; }
+  .status-ERROR { background: #3a1b1b; color: #ff8a80; }
+  .status-CANCELLED { background: #3a2a1f; color: #ffb74d; }
+  .status-QUEUED { background: #2a2a2f; color: #c9d1d9; }
+  .progress-rail {
+    position: relative;
+    width: 160px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--muted, #303030);
+    overflow: hidden;
+  }
+  .progress-bar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    background: linear-gradient(90deg, #f6c344, #ff8a00);
+    border-radius: 999px;
+    width: 0%;
+    transition: width 0.2s ease;
+  }
+  .task-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .task-details {
+    margin-top: -6px;
+    margin-bottom: 12px;
+    padding: 10px 14px 2px 14px;
+    border-left: 3px solid var(--border, #2b2b2b);
+    background: var(--card, rgba(255,255,255,0.02));
+    border-radius: 0 0 10px 10px;
+    display: none;
+  }
+  .task-row[data-open="1"] + .task-details {
+    display: block;
+  }
+  .plan-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 8px;
+  }
+  .plan-camera {
+    padding: 8px 10px;
+    border: 1px solid var(--border, #2b2b2b);
+    border-radius: 8px;
+    background: var(--panel-bg, #121212);
+  }
+  .plan-camera h4 {
+    margin: 0 0 6px 0;
+    font-size: 13px;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+  .plan-day {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    font-size: 13px;
+    padding: 3px 0;
+  }
+  .plan-day .muted {
+    font-size: 12px;
+  }
+</style>
+
+<script>
+  window.addEventListener("DOMContentLoaded", () => {
+    const listEl = document.getElementById("tasks-list");
+    const toggleCompleted = document.getElementById("show-completed");
+    const refreshBtn = document.getElementById("refresh-tasks");
+    let pollTimer = null;
+
+    const doneStates = ["DONE", "FAILED", "CANCELLED"];
+
+    function fmtTime(iso) {
+      if (!iso) return "";
+      try {
+        const d = new Date(iso);
+        return d.toLocaleString();
+      } catch {
+        return iso;
+      }
+    }
+
+    function statusPill(status) {
+      const st = String(status || "QUEUED").toUpperCase();
+      const pill = document.createElement("span");
+      pill.className = `status-pill status-${st}`;
+      pill.textContent = st;
+      return pill;
+    }
+
+    function buildPlanDetails(plan) {
+      const wrap = document.createElement("div");
+      wrap.className = "task-details";
+      const cams = plan && Array.isArray(plan.jobs) ? plan.jobs : Array.isArray(plan) ? plan : [];
+      if (!cams.length) {
+        wrap.innerHTML = '<div class="muted">No plan details.</div>';
+        return wrap;
+      }
+      const grid = document.createElement("div");
+      grid.className = "plan-grid";
+      cams.forEach((cam) => {
+        const card = document.createElement("div");
+        card.className = "plan-camera";
+        const header = document.createElement("h4");
+        header.textContent = `Camera ${cam.camera ?? "?"}`;
+        card.appendChild(header);
+        const days = Array.isArray(cam.days) ? cam.days : [];
+        days.forEach((d) => {
+          const row = document.createElement("div");
+          row.className = "plan-day";
+          const left = document.createElement("div");
+          left.textContent = `Day ${d.day ?? "?"}`;
+          const right = document.createElement("div");
+          right.style.display = "flex";
+          right.style.alignItems = "center";
+          right.style.gap = "6px";
+          right.appendChild(statusPill(d.status || "PENDING"));
+          const segs = typeof d.segments === "number" ? d.segments : null;
+          if (segs !== null && segs !== undefined) {
+            const meta = document.createElement("div");
+            meta.className = "muted";
+            meta.textContent = `${segs} segment${segs === 1 ? "" : "s"}`;
+            right.appendChild(meta);
+          }
+          row.appendChild(left);
+          row.appendChild(right);
+          card.appendChild(row);
+        });
+        grid.appendChild(card);
+      });
+      wrap.appendChild(grid);
+      return wrap;
+    }
+
+    function renderTasks(tasks) {
+      if (!tasks || tasks.length === 0) {
+        listEl.innerHTML = '<div class="placeholder muted">No tasks yet.</div>';
+        return;
+      }
+      listEl.innerHTML = "";
+      tasks.forEach((task) => {
+        const status = String(task.status || "QUEUED").toUpperCase();
+        const pct =
+          task.total && task.total > 0
+            ? Math.min(100, Math.round(((task.progress || 0) / task.total) * 100))
+            : doneStates.includes(status)
+              ? 100
+              : 0;
+        const row = document.createElement("div");
+        row.className = "task-row";
+        row.dataset.open = "0";
+        const main = document.createElement("div");
+        main.className = "task-main";
+        const title = document.createElement("div");
+        title.className = "task-title";
+        title.textContent = task.title || task.kind || "Task";
+        const sub = document.createElement("div");
+        sub.className = "task-sub";
+        const kind = document.createElement("div");
+        kind.textContent = task.kind || "task";
+        const created = document.createElement("div");
+        created.textContent = fmtTime(task.created_at);
+        sub.appendChild(kind);
+        if (created.textContent) sub.appendChild(created);
+        if (task.message) {
+          const msg = document.createElement("div");
+          msg.textContent = task.message;
+          sub.appendChild(msg);
+        }
+        main.appendChild(title);
+        main.appendChild(sub);
+        const actions = document.createElement("div");
+        actions.className = "task-actions";
+        actions.appendChild(statusPill(status));
+        const prog = document.createElement("div");
+        prog.className = "progress-rail";
+        const bar = document.createElement("div");
+        bar.className = "progress-bar";
+        bar.style.width = `${pct}%`;
+        prog.appendChild(bar);
+        actions.appendChild(prog);
+        if (!doneStates.includes(status)) {
+          const cancelBtn = document.createElement("button");
+          cancelBtn.className = "btn mini";
+          cancelBtn.textContent = "Cancel";
+          cancelBtn.title = "Stop this task";
+          cancelBtn.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            try {
+              await fetch("/api/tasks/cancel", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ task: task.id }),
+              });
+              loadTasks();
+            } catch { }
+          });
+          actions.appendChild(cancelBtn);
+        }
+        row.appendChild(main);
+        row.appendChild(actions);
+        const details = buildPlanDetails((task.meta && task.meta.plan) || null);
+        row.addEventListener("click", () => {
+          const open = row.dataset.open === "1";
+          row.dataset.open = open ? "0" : "1";
+          details.style.display = open ? "none" : "block";
+        });
+        listEl.appendChild(row);
+        listEl.appendChild(details);
+      });
+    }
+
+    async function loadTasks() {
+      const includeCompleted = toggleCompleted.checked;
+      const qs = includeCompleted ? "" : "?active=1";
+      try {
+        const res = await fetch(`/api/tasks${qs}`);
+        const data = await res.json();
+        if (!res.ok || !data || data.error) {
+          throw new Error((data && data.error) || res.statusText);
+        }
+        renderTasks(data.tasks || []);
+      } catch (e) {
+        listEl.innerHTML = `<div class="muted">Failed to load tasks: ${e}</div>`;
+      }
+    }
+
+    refreshBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      loadTasks();
+    });
+    toggleCompleted.addEventListener("change", () => loadTasks());
+
+    loadTasks();
+    pollTimer = setInterval(loadTasks, 2000);
+    window.addEventListener("beforeunload", () => {
+      if (pollTimer) clearInterval(pollTimer);
+    });
+  });
+</script>
+{% endblock %}

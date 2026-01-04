@@ -59,6 +59,11 @@ def importer():
 def settings():
     return render_template('settings.html', active_tab='settings')
 
+
+@bp.route('/tasks')
+def tasks():
+    return render_template('tasks.html', active_tab='tasks')
+
 # Temporary compatibility: redirect old Analyze URL to Preview
 @bp.route('/analyze')
 def analyze_compat():

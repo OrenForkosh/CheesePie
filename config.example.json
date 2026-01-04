@@ -1,0 +1,82 @@
+{
+  "annotator": {
+    "autosave": false,
+    "default_animals": ["R", "G", "B", "Y"],
+    "default_fps": 30,
+    "default_types": [
+      {
+        "color": "#4f8cff",
+        "key": "g",
+        "mode": "single",
+        "name": "Grooming"
+      },
+      {
+        "color": "#ff6b6b",
+        "key": "c",
+        "mode": "agonistic",
+        "name": "Chasing"
+      },
+      {
+        "color": "#ffd166",
+        "key": "s",
+        "mode": "single",
+        "name": "Sniffing"
+      }
+    ],
+    "keyboard": {
+      "frame_step_keys": {
+        "next": "]",
+        "prev": "["
+      },
+      "jump_seconds": {
+        "alt": 10,
+        "left": 300,
+        "right": 300,
+        "shift": 60
+      }
+    }
+  },
+  "browser": {
+    "preview_thumbnails": 8,
+    "visible_extensions": [".mp4", ".avi"],
+    "default_dir": "./data/output"
+  },
+  "facilities": {
+    "demo": {
+      "camera_pattern": "cam{cam:02d}",
+      "source_dir": "./data/source",
+      "ignore_dir_regex": "^@",
+      "max_file_duration": "4:00",
+      "output_dir": "./data/output",
+      "path_time_regex": "(?P<year>\\d{4})(?P<month>\\d{2})(?P<day>\\d{2})[_-](?P<hour>\\d{2})(?P<minute>\\d{2})(?:(?P<second>\\d{2}))?",
+      "camera_list": [1, 2],
+      "experiments": {
+        "DEMO": ["pilot"]
+      },
+      "setups": {
+        "default": {
+          "arena_width_cm": 60,
+          "arena_height_cm": 60,
+          "grid_cols": 6,
+          "grid_rows": 6,
+          "bg_frames": 50,
+          "bg_quantile": 50,
+          "arena": { "x": 0, "y": 0, "width": 640, "height": 480 },
+          "roi": {}
+        }
+      }
+    }
+  },
+  "importer": {
+    "ignore_dir_regex": "^@",
+    "source_extensions": [".mp4", ".mkv", ".avi"],
+    "working_dir": "./working"
+  },
+  "matlab": {
+    "binary": "/Applications/MATLAB_R2025a.app/bin/matlab",
+    "enabled": false,
+    "mode": "engine",
+    "paths": ["./matlab"],
+    "whitelist": ["segment_frame"]
+  }
+}
