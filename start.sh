@@ -112,5 +112,22 @@ fi
 export DEBUG="${DEBUG:-1}"               # set to 0 to disable auto-reload
 export PORT="${PORT:-8000}"
 export HOST="${HOST:-127.0.0.1}"
+
 log "Starting app on http://${HOST}:${PORT} (DEBUG=${DEBUG}) ..."
-exec python app.py
+while true; do
+  if python app.py; then
+    code=0
+  else
+    code=$?
+  fi
+  if [[ "$code" -eq 143 ]]; then
+    log "App requested restart; relaunching..."
+    continue
+  fi
+  if [[ "$code" -eq 0 ]]; then
+    log "App exited cleanly."
+    exit 0
+  fi
+  err "App exited with code $code."
+  exit "$code"
+done
