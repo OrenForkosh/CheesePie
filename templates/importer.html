@@ -72,6 +72,9 @@
               gap: 8px;
               flex-wrap: wrap;
             ">
+            <button class="btn" id="list-import-btn" title="List files that match your selection">
+              List
+            </button>
             <button class="btn primary" id="open-import" title="Open import dialog">
               Import
             </button>
@@ -155,22 +158,116 @@
     const listBtn = document.getElementById("list-btn");
     const camsHint = $("#cameras-hint");
     const importBtn = document.getElementById("import-btn");
+    const listImportBtn = document.getElementById("list-import-btn");
     const openImportBtn = document.getElementById('open-import');
     const runTopBtn = document.getElementById("run-btn");
     let scanController = null;
     let scanAnimTimer = null;
     let scanDotsTimer = null;
     let scanDotsBase = "";
+    let scanAutoRun = true;
+    let scanMode = "import";
+    let scanFilterInRange = false;
+    let scanSeenPaths = new Set();
+
+    function loadScanMode() {
+      let mode = "import";
+      try { mode = localStorage.getItem('cheesepie.scan_mode') || 'import'; } catch { }
+      scanMode = mode === "list" || mode === "list-filtered" ? mode : "import";
+      scanAutoRun = scanMode === "import";
+      scanFilterInRange = scanMode === "list-filtered";
+    }
+
+    function setScanMode(mode) {
+      if (mode === "list-filtered") {
+        scanMode = "list-filtered";
+        scanFilterInRange = true;
+      } else if (mode === "list") {
+        scanMode = "list";
+        scanFilterInRange = false;
+      } else {
+        scanMode = "import";
+        scanFilterInRange = false;
+      }
+      scanAutoRun = scanMode === "import";
+      try { localStorage.setItem('cheesepie.scan_mode', scanMode); } catch { }
+    }
+
+    function clearScanMode() {
+      scanMode = "import";
+      scanAutoRun = true;
+      scanFilterInRange = false;
+      try { localStorage.removeItem('cheesepie.scan_mode'); } catch { }
+    }
+
+    function setListBtnState(state) {
+      if (!listBtn) return;
+      if (state === "running") {
+        listBtn.disabled = true;
+        listBtn.textContent = "Listing…";
+      } else if (state === "disabled") {
+        listBtn.disabled = true;
+        listBtn.textContent = "List";
+      } else {
+        listBtn.disabled = false;
+        listBtn.textContent = "List";
+      }
+    }
+
+    function setListImportBtnState(state) {
+      if (!listImportBtn) return;
+      if (state === "running") {
+        listImportBtn.disabled = true;
+        listImportBtn.textContent = "Listing…";
+      } else if (state === "disabled") {
+        listImportBtn.disabled = true;
+        listImportBtn.textContent = "List";
+      } else {
+        listImportBtn.disabled = false;
+        listImportBtn.textContent = "List";
+      }
+    }
+
+    function setImportBtnStateIdle() {
+      if (!openImportBtn) return;
+      openImportBtn.disabled = false;
+      openImportBtn.textContent = "Import";
+      openImportBtn.style.background = "";
+      openImportBtn.style.color = "";
+      openImportBtn.dataset.running = "0";
+      openImportBtn.title = "";
+    }
+
+    function setImportBtnStateScanning() {
+      if (!openImportBtn) return;
+      openImportBtn.disabled = true;
+      openImportBtn.textContent = "Scanning…";
+      openImportBtn.style.background = "";
+      openImportBtn.style.color = "";
+      openImportBtn.dataset.running = "0";
+      openImportBtn.title = "Scan in progress";
+    }
     // Resume any in-progress scan/encode when returning to Importer
     async function resumeJobs() {
       try {
+        loadScanMode();
         let jid = null;
         try { const cur = await fetch('/api/import/scan_prepare/current').then(r => r.json()).catch(() => null); if (cur && cur.ok && cur.job_id) jid = cur.job_id; } catch { }
         if (!jid) { try { jid = localStorage.getItem('cheesepie.scan_job') || ''; } catch { } }
         if (jid) {
           window.__SCAN_JOB_ID__ = jid;
           ensureScanPanel(); ensureDaysPanel();
-          try { const btn = document.getElementById('open-import'); if (btn) { btn.disabled = false; btn.textContent = 'Cancel'; btn.style.background = '#b71c1c'; btn.style.color = '#fff'; btn.dataset.running = '1'; } } catch { }
+          if (scanMode === "list") {
+            setListBtnState("running");
+            setListImportBtnState("disabled");
+          } else if (scanMode === "list-filtered") {
+            setListImportBtnState("running");
+            setListBtnState("disabled");
+          } else {
+            setImportBtnStateScanning();
+            setListBtnState("disabled");
+            setListImportBtnState("disabled");
+          }
           try { if (scanPollTimer) { clearInterval(scanPollTimer); } } catch { }
           // Make sure the Available Files panel is visible when resuming
           try {
@@ -181,7 +278,7 @@
             if (btn) { btn.textContent = 'Hide'; }
             if (panel) { panel.dataset.collapsed = '0'; }
           } catch { }
-          scanPollTimer = setInterval(() => { pollScanStatus(jid); }, 1500);
+          scanPollTimer = setInterval(() => { pollScanStatus(jid); }, 1000);
           // Trigger an immediate poll instead of waiting for the first interval
           try { await pollScanStatus(jid); } catch { }
         }
@@ -541,6 +638,14 @@
       const hasDates = !!startDate.value && !!endDate.value;
       const hasTimes = !!startTime.value && !!endTime.value;
       const anyCam = !!camsRow.querySelector(".cam-btn.active");
+      let scanActive = false;
+      try { scanActive = !!window.__SCAN_JOB_ID__ || !!scanController; } catch { }
+      let reason = "";
+      if (!hasFac) reason = "Select a facility";
+      else if (!hasExp || !hasTrt) reason = "Pick experiment and treatment";
+      else if (!hasDates) reason = "Set start/end dates";
+      else if (!hasTimes) reason = "Set start/end times";
+      else if (!anyCam) reason = "Pick at least one camera";
       importBtn.disabled = !(
         hasFac &&
         hasExp &&
@@ -549,13 +654,20 @@
         hasTimes &&
         anyCam
       );
+      if (listImportBtn) {
+        listImportBtn.disabled = !(
+          hasFac &&
+          hasExp &&
+          hasTrt &&
+          hasDates &&
+          hasTimes &&
+          anyCam
+        ) || scanActive;
+        listImportBtn.title = listImportBtn.disabled
+          ? reason || "Complete selections to list files"
+          : "List files that match your selection";
+      }
       // Scan tooltip
-      let reason = "";
-      if (!hasFac) reason = "Select a facility";
-      else if (!hasExp || !hasTrt) reason = "Pick experiment and treatment";
-      else if (!hasDates) reason = "Set start/end dates";
-      else if (!hasTimes) reason = "Set start/end times";
-      else if (!anyCam) reason = "Pick at least one camera";
       importBtn.title = importBtn.disabled
         ? reason || "Complete selections to enable scan"
         : "";
@@ -647,7 +759,9 @@
         hideErrorBanner();
         const fac = facilitySel.value;
         if (!fac) { alert("Please select a facility first."); return; }
-        listBtn.disabled = true; listBtn.textContent = "Listing…";
+        setScanMode("list");
+        setListBtnState("running");
+        setListImportBtnState("disabled");
         try {
           const chk = await fetch(`/api/import/check_source?facility=${encodeURIComponent(fac)}`);
           if (!chk.ok) {
@@ -655,13 +769,46 @@
             throw new Error((d && d.error) || "Source folder not accessible");
           }
           // Use background scan/prepare job but do not auto-run encode
-          scanTriggerBtn = listBtn; scanAutoRun = false;
-          startScanProgress(`Full scan in ${combinedSourcePattern(fac)} …`, true);
-          await startScanAndRun(false);
+          await startScanAndRun(false, "list");
         } catch (e) {
           showError("List error", e);
           stopScanProgress();
-          listBtn.disabled = false; listBtn.textContent = "List";
+          setListBtnState("idle");
+          setListImportBtnState("idle");
+        }
+      });
+    }
+
+    if (listImportBtn) {
+      listImportBtn.addEventListener("click", async () => {
+        hideErrorBanner();
+        const fac = facilitySel.value;
+        const exp = experimentSel.value;
+        const trt = treatmentSel.value;
+        const sDate = startDate.value;
+        const eDate = endDate.value;
+        const sTime = startTime.value;
+        const eTime = endTime.value;
+        const cams = getSelectedCameras();
+        if (!fac || !exp || !trt || !sDate || !eDate || !sTime || !eTime || cams.length === 0) {
+          showError("List", new Error("Complete selections first."));
+          return;
+        }
+        setScanMode("list-filtered");
+        setListImportBtnState("running");
+        setListBtnState("disabled");
+        try {
+          const chk = await fetch(`/api/import/check_source?facility=${encodeURIComponent(fac)}`);
+          if (!chk.ok) {
+            const d = await chk.json().catch(() => ({}));
+            throw new Error((d && d.error) || "Source folder not accessible");
+          }
+          await startScanAndRun(false, "list-filtered");
+        } catch (e) {
+          showError("List error", e);
+          stopScanProgress();
+          setListImportBtnState("idle");
+          setListBtnState("idle");
         }
       });
     }
@@ -693,6 +840,9 @@
         );
         return;
       }
+      setScanMode("import");
+      setListBtnState("disabled");
+      setListImportBtnState("disabled");
       const trigBtn = document.getElementById('import-btn') || document.getElementById('open-import');
       if (trigBtn) { trigBtn.disabled = true; trigBtn.textContent = "Scanning…"; }
       try {
@@ -774,6 +924,9 @@
             es.close();
             stopScanProgress();
             scanController = null;
+            try { setListBtnState("idle"); } catch { }
+            try { setListImportBtnState("idle"); } catch { }
+            try { clearScanMode(); } catch { }
             // Update collapsed header with total files found
             try {
               setScanHeaderMeta(formatCount(files.length));
@@ -828,6 +981,7 @@
                 }
               } catch (e) { }
             }
+            try { validate(); } catch { }
           }
         });
         es.onerror = () => {
@@ -836,12 +990,20 @@
           stopScanProgress();
           scanController = null;
           if (trigBtn) { trigBtn.disabled = false; trigBtn.textContent = "Rescan"; }
+          try { setListBtnState("idle"); } catch { }
+          try { setListImportBtnState("idle"); } catch { }
+          try { clearScanMode(); } catch { }
+          try { validate(); } catch { }
           expandScanPanelOnError("Scan error");
         };
       } catch (e) {
         showError("Scan error", e);
         expandScanPanelOnError(String((e && e.message) || e || ""));
         if (trigBtn) { trigBtn.disabled = false; trigBtn.textContent = "Rescan"; }
+        try { setListBtnState("idle"); } catch { }
+        try { setListImportBtnState("idle"); } catch { }
+        try { clearScanMode(); } catch { }
+        try { validate(); } catch { }
       }
     }
     if (importBtn) importBtn.addEventListener("click", onStartScan);
@@ -874,30 +1036,104 @@
         const r = await fetch(`/api/import/scan_prepare/status?job=${encodeURIComponent(jobId)}`);
         const d = await r.json();
         if (!r.ok || d.error) { throw new Error(d && d.error || r.statusText); }
+        const status = String(d.status || "").toUpperCase();
         // Update Available Files table
         ensureScanPanel();
-        try { renderScanResults({ total: d.total || 0, source_dir: '', camera_pattern: '', files: d.files || [] }); } catch { }
+        try { renderScanResults({ total: d.total || 0, files: d.files || [] }); } catch { }
+        try {
+          const total = Number(d.total || 0);
+          const shown = scanSeenPaths.size || 0;
+          if (status === "RUNNING" || status === "QUEUED") {
+            if (total > 0) {
+              if (scanFilterInRange) {
+                setScanMeta(`Found ${total.toLocaleString()} file(s) • in range ${shown.toLocaleString()}`);
+              } else {
+                setScanMeta(`Found ${total.toLocaleString()} file(s)${shown ? ` • showing ${shown.toLocaleString()}` : ""}`);
+              }
+            } else {
+              setScanMeta("Scanning…");
+            }
+          }
+        } catch { }
         // If plan present, render Day Preparation
         if (d.plan && d.plan.plan) { try { renderDaysPlan(d.plan); } catch { } }
         // Handle terminal states
-        if (d.status === 'DONE') {
+        if (status === "DONE") {
           // Scan finished: stop progress and polling
           stopScanPolling();
-          try { stopScanProgress(); setScanMeta('Scan complete.'); } catch { }
+          try {
+            stopScanProgress();
+            const total = Number(d.total || 0) || 0;
+            const shown = scanSeenPaths.size || 0;
+            const headerTotal = scanFilterInRange ? shown : (total || shown);
+            const headerTxt = scanFilterInRange
+              ? `${formatCount(headerTotal)} in range`
+              : formatCount(headerTotal);
+            setScanHeaderMeta(headerTxt);
+            if (scanFilterInRange) {
+              setScanMeta(shown ? `Scan complete. ${shown.toLocaleString()} file(s) in range.` : "Scan complete. No files in range.");
+            } else {
+              const finalCount = total || shown;
+              setScanMeta(finalCount ? `Scan complete. Found ${finalCount.toLocaleString()} file(s).` : "Scan complete. No files found.");
+            }
+            if (scanFilterInRange ? shown === 0 : (total === 0 && shown === 0)) {
+              const empty = document.querySelector("#scan-empty td");
+              if (empty) empty.textContent = scanFilterInRange ? "No files in range." : "No files found.";
+            }
+          } catch { }
           // Auto start encode when plan is ready
-          try { await onRunEncode(); } catch { }
+          if (scanAutoRun) {
+            try { setImportBtnStateIdle(); } catch { }
+            try { await onRunEncode(); } catch { }
+          } else {
+            if (!isEncoding()) { try { setImportBtnStateIdle(); } catch { } }
+          }
+          try { setListBtnState("idle"); } catch { }
+          try { setListImportBtnState("idle"); } catch { }
+          try { validate(); } catch { }
+          try { clearScanMode(); } catch { }
           try { localStorage.removeItem('cheesepie.scan_job'); } catch { }
-        } else if (d.status === 'CANCELLED' || d.status === 'ERROR') {
+          try { window.__SCAN_JOB_ID__ = null; } catch { }
+        } else if (status === "CANCELLED" || status === "ERROR" || status === "FAILED") {
           stopScanPolling();
-          setScanMeta(d.status === 'ERROR' ? 'Scan error' : 'Scan canceled.');
+          setScanMeta(status === "CANCELLED" ? "Scan canceled." : "Scan error.");
           stopScanProgress();
+          try { setListBtnState("idle"); } catch { }
+          try { setListImportBtnState("idle"); } catch { }
+          try { validate(); } catch { }
+          if (!isEncoding()) { try { setImportBtnStateIdle(); } catch { } }
+          try { clearScanMode(); } catch { }
           try { localStorage.removeItem('cheesepie.scan_job'); } catch { }
+          try { window.__SCAN_JOB_ID__ = null; } catch { }
         }
-      } catch (e) { stopScanPolling(); try { showError('Scan status', e); } catch { } }
+      } catch (e) {
+        stopScanPolling();
+        try { stopScanProgress(); } catch { }
+        try { setListBtnState("idle"); } catch { }
+        try { setListImportBtnState("idle"); } catch { }
+        try { validate(); } catch { }
+        if (!isEncoding()) { try { setImportBtnStateIdle(); } catch { } }
+        try { clearScanMode(); } catch { }
+        try { showError('Scan status', e); } catch { }
+      }
     }
-    async function startScanAndRun(autoRun = true) {
-      scanAutoRun = !!autoRun;
+    async function startScanAndRun(autoRun = true, modeOverride) {
+      if (modeOverride) {
+        setScanMode(modeOverride);
+      } else {
+        setScanMode(autoRun ? "import" : "list");
+      }
       ensureScanPanel(); ensureDaysPanel();
+      if (scanMode === "list") {
+        setListBtnState("running");
+        setListImportBtnState("disabled");
+      } else if (scanMode === "list-filtered") {
+        setListImportBtnState("running");
+        setListBtnState("disabled");
+      } else {
+        setListBtnState("disabled");
+        setListImportBtnState("disabled");
+      }
       // Kick background Scan/Prepare job
       const fac = facilitySel.value;
       const exp = experimentSel.value;
@@ -909,7 +1145,10 @@
       const cams = getSelectedCameras();
       const batch = Math.max(0, Number(batchInput.value || 0));
       // Show progress UI
-      startScanProgress(`${scanAutoRun ? 'Import prep – scanning in' : 'Full scan in'} ${combinedSourcePattern(fac)} …`, true);
+      let msgBase = "Import prep – scanning in";
+      if (scanMode === "list-filtered") msgBase = "Listing in-range files in";
+      else if (scanMode === "list") msgBase = "Full scan in";
+      startScanProgress(`${msgBase} ${combinedSourcePattern(fac)} …`, true);
       try {
         const res = await fetch('/api/import/scan_prepare/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ facility: fac, experiment: exp, treatment: trt, batch, start_date: sDate, end_date: eDate, start_time: sTime, end_time: eTime, cameras: cams, camera_pattern: (FACS[fac] && (FACS[fac].camera_pattern || FACS[fac].camera_glob)) || '' }) });
         const d = await res.json();
@@ -917,12 +1156,16 @@
         window.__SCAN_JOB_ID__ = d.job_id;
         try { localStorage.setItem('cheesepie.scan_job', d.job_id); } catch { }
         stopScanPolling();
-        scanPollTimer = setInterval(() => { pollScanStatus(d.job_id); }, 1500);
+        scanPollTimer = setInterval(() => { pollScanStatus(d.job_id); }, 1000);
+        try { await pollScanStatus(d.job_id); } catch { }
       } catch (e) {
         stopScanProgress();
         try { showError('Scan start', e); } catch { }
         // Reset Import button state
-        try { const btn = document.getElementById('open-import'); if (btn) { btn.disabled = false; btn.textContent = 'Import'; btn.style.background = ''; btn.style.color = ''; btn.dataset.running = '0'; } } catch { }
+        try { setImportBtnStateIdle(); } catch { }
+        try { setListBtnState("idle"); } catch { }
+        try { setListImportBtnState("idle"); } catch { }
+        try { clearScanMode(); } catch { }
       }
     }
 
@@ -935,16 +1178,23 @@
           const ejid = (window.__ENCODE_JOB_ID__ || localStorage.getItem('cheesepie.encode_job') || '').trim();
           if (ejid) { await onStopEncode(); setImportBtnStateRunning(false); return; }
         } catch { }
-        // If scan is running → cancel scan
+        // If scan is running, direct user to the Scan panel cancel
         try {
           const sjid = (window.__SCAN_JOB_ID__ || localStorage.getItem('cheesepie.scan_job') || '').trim();
-          if (sjid) { if (scanPollTimer) { clearInterval(scanPollTimer); scanPollTimer = null; } await fetch(`/api/import/scan_prepare/cancel?job=${encodeURIComponent(sjid)}`, { method: 'POST' }); try { localStorage.removeItem('cheesepie.scan_job'); } catch { }; stopScanProgress(); setScanMeta('Scan canceled.'); setImportBtnStateRunning(false); return; }
+          if (sjid) {
+            setScanPanelCollapsed(false, true);
+            setScanMeta("Scan already running. Use Cancel in Available Files.");
+            return;
+          }
         } catch { }
         // Otherwise, start scan+prepare
         const ready = !!(facilitySel && facilitySel.value) && !!experimentSel.value && !!treatmentSel.value && !!startDate.value && !!endDate.value && !!startTime.value && !!endTime.value && getSelectedCameras().length > 0;
         validate();
         if (!ready) { showError('Import', new Error('Complete selections first.')); return; }
-        openImportBtn.disabled = true; openImportBtn.textContent = 'Scanning…';
+        setScanMode("import");
+        setListBtnState("disabled");
+        setListImportBtnState("disabled");
+        setImportBtnStateScanning();
         await startScanAndRun();
       } catch (e) { try { showError('Import start error', e); } catch { } }
     });
@@ -1053,7 +1303,7 @@
             <button type="button" id="scan-cancel" class="btn" style="white-space:nowrap">Cancel</button>
           </div>
           <div id="scan-meta" class="muted" style="margin: 8px 0"></div>
-          <div id="scan-list" style="max-height: 320px; overflow:auto; border:1px solid var(--border); border-radius:6px"></div>
+          <div id="scan-list" style="max-height: 320px; overflow:auto;"></div>
         </div>`;
         document.querySelector(".panel .controls").after(panel);
         // Setup collapse/expand toggle
@@ -1086,11 +1336,11 @@
           stopScanProgress();
           setScanMeta("Scan canceled.");
           try { localStorage.removeItem('cheesepie.scan_job'); } catch { }
-          if (typeof listBtn !== "undefined" && listBtn) {
-            listBtn.disabled = false;
-            try { listBtn.removeAttribute('disabled'); } catch { }
-            listBtn.textContent = "List";
-          }
+          try { window.__SCAN_JOB_ID__ = null; } catch { }
+          try { clearScanMode(); } catch { }
+          try { setListBtnState("idle"); } catch { }
+          try { setListImportBtnState("idle"); } catch { }
+          if (!isEncoding()) { try { setImportBtnStateIdle(); } catch { } }
         });
       }
     }
@@ -1157,6 +1407,43 @@
       } catch { }
     }
 
+    function resetScanTable() {
+      scanSeenPaths = new Set();
+      const wrap = document.getElementById("scan-list");
+      if (!wrap) return;
+      wrap.innerHTML = `
+        <table id="scan-table" style="width:100%; border-collapse:collapse; font-size:13px">
+          <thead>
+            <tr>
+              <th style="text-align:left">Camera</th>
+              <th style="text-align:left">Date</th>
+              <th style="text-align:left">Start</th>
+              <th style="text-align:left">Filename</th>
+            </tr>
+          </thead>
+          <tbody id="scan-tbody"></tbody>
+        </table>`;
+      const tbody = document.getElementById("scan-tbody");
+      if (tbody) {
+        const empty = document.createElement("tr");
+        empty.id = "scan-empty";
+        empty.className = "scan-empty";
+        const msg = scanFilterInRange ? "Waiting for files in range…" : "Waiting for files…";
+        empty.innerHTML = `<td colspan="4" class="muted" style="padding:8px">${msg}</td>`;
+        tbody.appendChild(empty);
+      }
+    }
+
+    function ensureScanTable() {
+      const tbody = document.getElementById("scan-tbody");
+      if (!tbody) resetScanTable();
+    }
+
+    function clearScanPlaceholder() {
+      const empty = document.getElementById("scan-empty");
+      if (empty && empty.parentElement) empty.parentElement.removeChild(empty);
+    }
+
     function startScanProgress(message, expand) {
       const box = document.getElementById("scan-progress");
       const bar = document.getElementById("scan-bar");
@@ -1172,7 +1459,7 @@
           panel.dataset.collapsed = wantExpand ? "0" : "1";
         }
       } catch { }
-      startScanDots("Scanning");
+      startScanDots(scanMode === "import" ? "Scanning" : "Listing");
       if (box) {
         box.style.display = "flex";
       }
@@ -1180,11 +1467,7 @@
         running.textContent = message || "Scanning…";
       }
       setScanMeta("");
-      const wrap = document.getElementById("scan-list");
-      if (wrap) {
-        wrap.innerHTML = `
-        <table id=\"scan-table\" style=\"width:100%; border-collapse:collapse; font-size:13px\">\n          <thead>\n            <tr>\n              <th style=\"text-align:left; padding:6px 4px\">Camera</th>\n              <th style=\"text-align:left; padding:6px 4px\">Date</th>\n              <th style=\"text-align:left; padding:6px 4px\">Start</th>\n              <th style=\"text-align:left; padding:6px 4px\">Filename</th>\n            </tr>\n          </thead>\n          <tbody id=\"scan-tbody\"></tbody>\n        </table>`;
-      }
+      resetScanTable();
       if (bar) {
         let pct = 5;
         if (scanAnimTimer) clearInterval(scanAnimTimer);
@@ -1229,58 +1512,51 @@
     }
 
     function renderScanResults(data) {
-      const wrap = document.getElementById("scan-list");
-      if (!wrap) return;
-      const meta = document.getElementById("scan-meta");
+      ensureScanTable();
       const files = Array.isArray(data.files) ? data.files : [];
-      const pt = data.path_time_regex
-        ? `, regex "${data.path_time_regex}"`
-        : "";
-      meta.textContent = `${data.total || 0} file(s) from ${data.source_dir || ""
-        } using pattern "${data.camera_pattern || ""}"${pt}`;
-      if (!files.length) {
-        wrap.innerHTML =
-          '<div class="muted" style="padding:8px">No files found.</div>';
-        return;
+      if (!files.length && scanSeenPaths.size === 0) return;
+      updateScanRows(files);
+    }
+
+    function updateScanRows(files) {
+      if (!Array.isArray(files)) return;
+      for (const f of files) {
+        const key = (f && f.path) ? String(f.path) : "";
+        if (!key || scanSeenPaths.has(key)) continue;
+        if (scanFilterInRange && !f.in_range) continue;
+        scanSeenPaths.add(key);
+        appendScanRow(f);
       }
-      const rows = files
-        .map((f) => {
-          const camStr =
-            f.camera != null ? `cam${String(f.camera).padStart(2, "0")}` : "—";
-          const mg =
-            typeof f.match_pattern === "boolean" ? f.match_pattern : true;
-          const mr = !!f.match_regex;
-          const globBadge = `<span style=\"margin-left:8px; padding:2px 6px; border-radius:10px; font-size:11px; ${mg
-            ? "background:var(--accent);color:#fff"
-            : "background:#eee;color:#666"
-            }\">pattern${mg ? "✓" : "×"}</span>`;
-          const regexBadge = `<span style=\"margin-left:6px; padding:2px 6px; border-radius:10px; font-size:11px; ${mr
-            ? "background:var(--accent);color:#fff"
-            : "background:#eee;color:#666"
-            }\">regex${mr ? "✓" : "×"}</span>`;
-          return `<div style=\"padding:6px 8px; border-bottom:1px solid var(--border); white-space:nowrap; overflow:hidden; text-overflow:ellipsis\">\n        <span class=\"muted\" style=\"margin-right:8px\">${camStr}</span>${f.path}${globBadge}${regexBadge}\n      </div>`;
-        })
-        .join("");
-      wrap.innerHTML = rows;
     }
 
     function appendScanRow(f) {
       const tbody = document.getElementById("scan-tbody");
       if (!tbody) return;
-      const camStr =
-        f.camera != null ? String(f.camera).padStart(2, "0") : "—";
-      const dateStr = (f.start || '').split(' ')[0] || '';
-      const startStr = f.start_hms || "";
-      const tr = document.createElement("tr");
-      if (f.in_range) {
-        tr.style.color = "#2e7d32";
-        tr.style.fontWeight = "600";
+      clearScanPlaceholder();
+      if (f && f.path) {
+        try { scanSeenPaths.add(String(f.path)); } catch { }
       }
-      tr.innerHTML = `
-      <td style="padding:6px 4px">${camStr}</td>
-      <td style="padding:6px 4px">${dateStr}</td>
-      <td style="padding:6px 4px">${startStr}</td>
-      <td style="padding:6px 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${f.path}</td>`;
+      const camStr = f.camera != null ? String(f.camera).padStart(2, "0") : "—";
+      const startTxt = (f.start || '').replace('T', ' ');
+      const parts = startTxt.split(' ');
+      const dateStr = parts[0] || "—";
+      const startStr = f.start_hms || parts[1] || "—";
+      const tr = document.createElement("tr");
+      if (f.in_range) tr.classList.add("scan-in-range");
+      const tdCam = document.createElement("td");
+      tdCam.textContent = camStr;
+      const tdDate = document.createElement("td");
+      tdDate.textContent = dateStr;
+      const tdStart = document.createElement("td");
+      tdStart.textContent = startStr;
+      const tdPath = document.createElement("td");
+      tdPath.className = "scan-path";
+      tdPath.textContent = f.path || "";
+      tdPath.title = f.path || "";
+      tr.appendChild(tdCam);
+      tr.appendChild(tdDate);
+      tr.appendChild(tdStart);
+      tr.appendChild(tdPath);
       tbody.appendChild(tr);
     }
 
@@ -1867,18 +2143,40 @@
   })();
 
   function appendDirRow(d) {
+    if (!d || !d.header) return;
     const wrap = document.getElementById("scan-list");
     if (!wrap) return;
-    const camStr =
-      d.camera != null ? `cam${String(d.camera).padStart(2, "0")}` : "—";
-    const row = document.createElement("div");
-    row.style.cssText =
-      "padding:6px 8px; border-bottom:1px dashed var(--border); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color: var(--muted-fg)";
-    const missing =
-      d.exists === false ? ' <span style="color:#c00">(missing)</span>' : "";
-    row.innerHTML = `<span class="muted" style="margin-right:8px">${camStr}</span>${d.path || d.root || ""
-      }${missing}`;
-    wrap.appendChild(row);
+    let tbody = document.getElementById("scan-tbody");
+    if (!tbody) {
+      wrap.innerHTML = `
+        <table id="scan-table" style="width:100%; border-collapse:collapse; font-size:13px">
+          <thead>
+            <tr>
+              <th style="text-align:left">Camera</th>
+              <th style="text-align:left">Date</th>
+              <th style="text-align:left">Start</th>
+              <th style="text-align:left">Filename</th>
+            </tr>
+          </thead>
+          <tbody id="scan-tbody"></tbody>
+        </table>`;
+      tbody = document.getElementById("scan-tbody");
+    }
+    if (!tbody) return;
+    const empty = document.getElementById("scan-empty");
+    if (empty && empty.parentElement) empty.parentElement.removeChild(empty);
+    const camStr = d.camera != null ? String(d.camera).padStart(2, "0") : "—";
+    const tr = document.createElement("tr");
+    tr.className = "scan-dir-row";
+    const tdCam = document.createElement("td");
+    tdCam.textContent = camStr;
+    const tdPath = document.createElement("td");
+    tdPath.colSpan = 3;
+    const missing = d.exists === false ? " (missing)" : "";
+    tdPath.textContent = `${d.path || d.root || ""}${missing}`;
+    tr.appendChild(tdCam);
+    tr.appendChild(tdPath);
+    tbody.appendChild(tr);
   }
 </script>
 {% endblock %}

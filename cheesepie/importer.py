@@ -146,6 +146,32 @@ def _ensure_dir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
 
 
+def _path_endswith_parts(path: Path, parts: List[str]) -> bool:
+    if not parts:
+        return False
+    if len(path.parts) < len(parts):
+        return False
+    tail = path.parts[-len(parts):]
+    return [p.lower() for p in tail] == [p.lower() for p in parts]
+
+
+def _resolve_output_dir(out_base: str, experiment: str, treatment: str) -> Path:
+    base = Path(str(out_base or '')).expanduser()
+    exp = str(experiment or '').strip()
+    trt = str(treatment or '').strip()
+    if not exp and not trt:
+        return base
+    if exp and trt:
+        if _path_endswith_parts(base, [exp, trt]):
+            return base
+        if _path_endswith_parts(base, [exp]):
+            return base.joinpath(trt)
+    elif exp:
+        if _path_endswith_parts(base, [exp]):
+            return base
+    return base.joinpath(*(p for p in (exp, trt) if p))
+
+
 def _format_hhmmss(seconds: float) -> str:
     try:
         if seconds is None or seconds < 0:
@@ -344,7 +370,7 @@ def _encode_task_runner(ctx: TaskContext, payload: Dict[str, Any]) -> None:
         return
     fac = facs[facility]
     out_base = str(payload.get('output_dir') or fac.get('output_dir') or '').strip() or str(cfg_importer_working_dir())
-    base_dir = Path(out_base).expanduser().joinpath(experiment, treatment)
+    base_dir = _resolve_output_dir(out_base, experiment, treatment)
     try:
         base_dir.mkdir(parents=True, exist_ok=True)
     except Exception as e:
@@ -780,13 +806,14 @@ def _scan_prepare_worker(job_id: str) -> None:
                             try:
                                 ts_name = _parse_start_from_stem(Path(fp).stem)
                                 ts = ts_name or (_parse_time_from_path(Path(fp), ptre) if rx else None)
-                                if ts and ws is not None and we is not None:
-                                    f_start = ts.timestamp()
-                                    max_dur_sec = _parse_dur_to_seconds(fac.get('max_file_duration'))
-                                    f_end = f_start + max_dur_sec
-                                    in_range = _overlaps(f_start, f_end, ws, we)
+                                if ts:
                                     start_iso = ts.isoformat(sep=' ')
                                     start_hms = ts.strftime('%H:%M:%S')
+                                    if ws is not None and we is not None:
+                                        f_start = ts.timestamp()
+                                        max_dur_sec = _parse_dur_to_seconds(fac.get('max_file_duration'))
+                                        f_end = f_start + max_dur_sec
+                                        in_range = _overlaps(f_start, f_end, ws, we)
                             except Exception:
                                 pass
                             total += 1
@@ -1866,17 +1893,18 @@ def api_import_scan_full_stream():
                         try:
                             ts_name = _parse_start_from_stem(Path(fp).stem)
                             ts = ts_name or (_parse_time_from_path(Path(fp), ptre) if rx else None)
-                            if ts and ws is not None and we is not None:
-                                f_start = ts.timestamp()
-                                f_end = f_start + max_dur_sec
-                                in_range = _overlaps(f_start, f_end, ws, we)
+                            if ts:
                                 start_iso = ts.isoformat(sep=' ')
                                 start_hms = ts.strftime('%H:%M:%S')
-                                if day_spans:
-                                    for di, dws, dwe in day_spans:
-                                        if _overlaps(f_start, f_end, dws, dwe):
-                                            day_idx = di
-                                            break
+                                if ws is not None and we is not None:
+                                    f_start = ts.timestamp()
+                                    f_end = f_start + max_dur_sec
+                                    in_range = _overlaps(f_start, f_end, ws, we)
+                                    if day_spans:
+                                        for di, dws, dwe in day_spans:
+                                            if _overlaps(f_start, f_end, dws, dwe):
+                                                day_idx = di
+                                                break
                         except Exception:
                             in_range = False
                             day_idx = None
@@ -2166,7 +2194,7 @@ def api_import_encode_days():
         return jsonify({'error': 'Unknown facility'}), 400
     fac = facs[facility]
     out_base = str(fac.get('output_dir') or '').strip() or str(cfg_importer_working_dir())
-    base_dir = Path(out_base).expanduser().joinpath(experiment, treatment)
+    base_dir = _resolve_output_dir(out_base, experiment, treatment)
     try:
         base_dir.mkdir(parents=True, exist_ok=True)
     except Exception as e:

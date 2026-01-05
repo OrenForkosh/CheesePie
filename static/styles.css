@@ -1857,6 +1857,49 @@ input[type="range"]::-moz-range-track {
   background: rgba(79, 140, 255, 0.18);
 }
 
+#scan-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+#scan-table th,
+#scan-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 6px 8px;
+}
+
+#scan-table th {
+  background: var(--panel);
+  color: var(--text);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+#scan-table td.scan-path {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#scan-table tbody tr.scan-in-range {
+  color: #2e7d32;
+  font-weight: 600;
+}
+
+#scan-table tbody tr.scan-dir-row {
+  color: var(--muted);
+}
+
+#scan-table tbody tr.scan-empty td {
+  color: var(--muted);
+}
+
 
 
 

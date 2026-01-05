@@ -194,3 +194,4 @@ docker-compose.override.yaml
 
 local/
 README-truenas.md
+working/tasks.json
