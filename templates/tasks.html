@@ -3,13 +3,19 @@
 <div class="panel">
   <div class="panel-header" style="display:flex; align-items:center; justify-content:space-between; gap:12px">
     <div>
-      <h1 style="margin:0">Tasks</h1>
+      <h1 id="tasks-title" style="margin:0; display:flex; align-items:center; gap:10px">
+        Tasks
+        <span id="tasks-live" class="tasks-live">
+          <span class="dot"></span>
+          <span class="label">Running</span>
+        </span>
+      </h1>
       <div class="muted">Shared queue of long-running jobs. All users can watch progress and cancel active work.</div>
     </div>
     <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">
       <label class="muted" style="display:flex; align-items:center; gap:6px; font-size:13px">
-        <input type="checkbox" id="show-completed" />
-        Show completed
+        <input type="checkbox" id="show-active-only" />
+        Show only active
       </label>
       <button class="btn" id="cancel-all">Cancel all</button>
       <button class="btn" id="refresh-tasks">Refresh</button>
@@ -132,17 +138,52 @@
   .plan-day .muted {
     font-size: 12px;
   }
+  #tasks-title .tasks-live {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #6db3ff;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  #tasks-title.running .tasks-live {
+    display: inline-flex;
+  }
+  #tasks-title .tasks-live .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: #6db3ff;
+    box-shadow: 0 0 0 0 rgba(109, 179, 255, 0.6);
+    animation: tasksPulse 1.2s ease-in-out infinite;
+  }
+  @keyframes tasksPulse {
+    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(109, 179, 255, 0.55); }
+    70% { transform: scale(1.2); box-shadow: 0 0 0 8px rgba(109, 179, 255, 0); }
+    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(109, 179, 255, 0); }
+  }
+  .task-section-title {
+    margin: 14px 0 8px 0;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted, #a0a0a0);
+  }
 </style>
 
 <script>
   window.addEventListener("DOMContentLoaded", () => {
     const listEl = document.getElementById("tasks-list");
-    const toggleCompleted = document.getElementById("show-completed");
+    const toggleActiveOnly = document.getElementById("show-active-only");
     const refreshBtn = document.getElementById("refresh-tasks");
     const cancelAllBtn = document.getElementById("cancel-all");
+    const titleEl = document.getElementById("tasks-title");
+    const liveEl = document.getElementById("tasks-live");
     let pollTimer = null;
 
-    const doneStates = ["DONE", "FAILED", "CANCELLED"];
+    const doneStates = ["DONE", "FAILED", "CANCELLED", "ERROR"];
 
     function fmtTime(iso) {
       if (!iso) return "";
@@ -160,6 +201,33 @@
       pill.className = `status-pill status-${st}`;
       pill.textContent = st;
       return pill;
+    }
+
+    function taskStartValue(task) {
+      const raw = task.started_at || task.created_at || task.finished_at || "";
+      const t = Date.parse(raw);
+      return Number.isFinite(t) ? t : 0;
+    }
+
+    function statusWeight(status) {
+      const st = String(status || "").toUpperCase();
+      if (st === "RUNNING") return 3;
+      if (st === "QUEUED" || st === "PENDING") return 2;
+      return 1;
+    }
+
+    function updateTitle(tasks) {
+      if (!titleEl || !liveEl) return;
+      const running = (tasks || []).filter(
+        (t) => String(t.status || "").toUpperCase() === "RUNNING"
+      ).length;
+      if (running > 0) {
+        titleEl.classList.add("running");
+        const label = liveEl.querySelector(".label");
+        if (label) label.textContent = running === 1 ? "1 Running" : `${running} Running`;
+      } else {
+        titleEl.classList.remove("running");
+      }
     }
 
     function buildPlanDetails(plan) {
@@ -208,11 +276,36 @@
 
     function renderTasks(tasks) {
       if (!tasks || tasks.length === 0) {
-        listEl.innerHTML = '<div class="placeholder muted">No tasks yet.</div>';
+        const emptyMsg =
+          toggleActiveOnly && toggleActiveOnly.checked
+            ? "No active tasks."
+            : "No tasks yet.";
+        listEl.innerHTML = `<div class="placeholder muted">${emptyMsg}</div>`;
         return;
       }
       listEl.innerHTML = "";
-      tasks.forEach((task) => {
+      const active = tasks.filter(
+        (t) => !doneStates.includes(String(t.status || "").toUpperCase())
+      );
+      const history = tasks.filter(
+        (t) => doneStates.includes(String(t.status || "").toUpperCase())
+      );
+      active.sort((a, b) => {
+        const wa = statusWeight(a.status);
+        const wb = statusWeight(b.status);
+        if (wa !== wb) return wb - wa;
+        return taskStartValue(b) - taskStartValue(a);
+      });
+      history.sort((a, b) => taskStartValue(b) - taskStartValue(a));
+
+      function appendSectionTitle(text) {
+        const header = document.createElement("div");
+        header.className = "task-section-title";
+        header.textContent = text;
+        listEl.appendChild(header);
+      }
+
+      function appendTask(task) {
         const status = String(task.status || "QUEUED").toUpperCase();
         const pct =
           task.total && task.total > 0
@@ -233,9 +326,15 @@
         const kind = document.createElement("div");
         kind.textContent = task.kind || "task";
         const created = document.createElement("div");
-        created.textContent = fmtTime(task.created_at);
+        const startedAt = task.started_at || task.created_at;
+        created.textContent = startedAt ? `Started: ${fmtTime(startedAt)}` : "";
         sub.appendChild(kind);
         if (created.textContent) sub.appendChild(created);
+        if (doneStates.includes(status) && task.finished_at) {
+          const finished = document.createElement("div");
+          finished.textContent = `Finished: ${fmtTime(task.finished_at)}`;
+          sub.appendChild(finished);
+        }
         if (task.message) {
           const msg = document.createElement("div");
           msg.textContent = task.message;
@@ -281,19 +380,30 @@
         });
         listEl.appendChild(row);
         listEl.appendChild(details);
-      });
+      }
+
+      if (active.length) {
+        appendSectionTitle("Active");
+        active.forEach(appendTask);
+      }
+      if (history.length) {
+        appendSectionTitle("History");
+        history.forEach(appendTask);
+      }
     }
 
     async function loadTasks() {
-      const includeCompleted = toggleCompleted.checked;
-      const qs = includeCompleted ? "" : "?active=1";
+      const activeOnly = toggleActiveOnly && toggleActiveOnly.checked;
+      const qs = activeOnly ? "?active=1&limit=0" : "?limit=0";
       try {
         const res = await fetch(`/api/tasks${qs}`);
         const data = await res.json();
         if (!res.ok || !data || data.error) {
           throw new Error((data && data.error) || res.statusText);
         }
-        renderTasks(data.tasks || []);
+        const tasks = data.tasks || [];
+        updateTitle(tasks);
+        renderTasks(tasks);
       } catch (e) {
         listEl.innerHTML = `<div class="muted">Failed to load tasks: ${e}</div>`;
       }
@@ -315,7 +425,7 @@
       } catch { }
       loadTasks();
     });
-    toggleCompleted.addEventListener("change", () => loadTasks());
+    if (toggleActiveOnly) toggleActiveOnly.addEventListener("change", () => loadTasks());
 
     loadTasks();
     pollTimer = setInterval(loadTasks, 2000);

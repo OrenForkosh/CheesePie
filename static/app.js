@@ -1482,3 +1482,89 @@
     emit();
   } catch (e) { }
 })();
+
+// Footer task progress summary (all pages)
+(function taskFooter() {
+  try {
+    const summaryEl = document.getElementById("tasks-footer-summary");
+    const barEl = document.getElementById("tasks-footer-bar");
+    const detailEl = document.getElementById("tasks-footer-detail");
+    if (!summaryEl || !barEl || !detailEl) return;
+    const doneStates = ["DONE", "FAILED", "CANCELLED", "ERROR"];
+    let timer = null;
+
+    function taskTitle(t) {
+      return t.title || t.kind || "Task";
+    }
+
+    function fmtProgress(t) {
+      const total = Number(t.total || 0);
+      const prog = Number(t.progress || 0);
+      if (total > 0) return ` (${prog}/${total})`;
+      return "";
+    }
+
+    function updateFooter(tasks) {
+      const active = (tasks || []).filter(
+        (t) => !doneStates.includes(String(t.status || "").toUpperCase())
+      );
+      const running = active.filter(
+        (t) => String(t.status || "").toUpperCase() === "RUNNING"
+      );
+      if (!active.length) {
+        summaryEl.textContent = "No active tasks";
+        detailEl.textContent = "";
+        barEl.classList.remove("indeterminate");
+        barEl.style.width = "0%";
+        return;
+      }
+      if (running.length) {
+        summaryEl.textContent =
+          `${active.length} active • ${running.length} running`;
+      } else {
+        summaryEl.textContent = `${active.length} queued`;
+      }
+      const focus = running[0] || active[0];
+      detailEl.textContent = `Now: ${taskTitle(focus)}${fmtProgress(focus)}`;
+      const totalTotal = active.reduce((acc, t) => {
+        const total = Number(t.total || 0);
+        return total > 0 ? acc + total : acc;
+      }, 0);
+      const totalProg = active.reduce((acc, t) => {
+        const total = Number(t.total || 0);
+        const prog = Number(t.progress || 0);
+        return total > 0 ? acc + prog : acc;
+      }, 0);
+      if (totalTotal > 0) {
+        const pct = Math.max(0, Math.min(100, Math.round((100 * totalProg) / totalTotal)));
+        barEl.classList.remove("indeterminate");
+        barEl.style.width = `${pct}%`;
+      } else {
+        barEl.classList.add("indeterminate");
+        barEl.style.width = "";
+      }
+    }
+
+    async function loadTasks() {
+      try {
+        const res = await fetch("/api/tasks?active=1&limit=0");
+        const data = await res.json();
+        if (!res.ok || !data || data.error) {
+          throw new Error((data && data.error) || res.statusText);
+        }
+        updateFooter(data.tasks || []);
+      } catch {
+        summaryEl.textContent = "Tasks unavailable";
+        detailEl.textContent = "";
+        barEl.classList.remove("indeterminate");
+        barEl.style.width = "0%";
+      }
+    }
+
+    loadTasks();
+    timer = setInterval(loadTasks, 4000);
+    window.addEventListener("beforeunload", () => {
+      if (timer) clearInterval(timer);
+    });
+  } catch { }
+})();

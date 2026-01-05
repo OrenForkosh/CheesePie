@@ -60655,13 +60655,13 @@
     "id": "daa490c36c1343d098095047aa970c43",
     "title": "Encode FEMALES_IDS-vs batch 1",
     "kind": "import.encode",
-    "status": "RUNNING",
-    "progress": 1,
+    "status": "DONE",
+    "progress": 2,
     "total": 2,
     "message": "frame=    1 fps=0.0 q=-1.0 size=       0kB time=00:00:00.00 bitrate=6193.5kbits/s speed=N/A",
     "created_at": "2026-01-05T16:00:41.397644Z",
     "started_at": "2026-01-05T16:00:41.397685Z",
-    "finished_at": null,
+    "finished_at": "2026-01-05T16:03:56.662477Z",
     "meta": {
       "plan": [
         {
@@ -60684,10 +60684,18 @@
             },
             {
               "day": 2,
-              "status": "RUNNING",
+              "status": "DONE",
               "segments": 5,
               "output": "/Users/forkosh/Documents/Datasets/Mice/Old/FEMALES_IDS/vs/FEMALES_IDS-vs.exp0015.day02.cam05.mp4",
-              "list_path": "/var/folders/vr/46ffk68519n15h254dxvw4lr0000gn/T/FEMALES_IDS-vs.exp0015.day02.cam05.txt"
+              "ffmpeg": "frame=    1 fps=0.0 q=-1.0 size=       0kB time=00:00:00.00 bitrate=6193.5kbits/s speed=N/A",
+              "list_path": "/var/folders/vr/46ffk68519n15h254dxvw4lr0000gn/T/FEMALES_IDS-vs.exp0015.day02.cam05.txt",
+              "duration": 43200.689311,
+              "health": {
+                "expected": 43200.0,
+                "actual": 43200.689311,
+                "delta": 0.6893110000019078,
+                "ok": true
+              }
             }
           ]
         }

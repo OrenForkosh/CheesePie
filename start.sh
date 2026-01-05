@@ -9,6 +9,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$SCRIPT_DIR"
 cd "$ROOT_DIR"
 
+git pull https://github.com/OrenForkosh/CheesePie
+
 # Choose Python (allow override via $PYTHON)
 PY_BIN="${PYTHON:-}"
 if [[ -z "$PY_BIN" ]]; then

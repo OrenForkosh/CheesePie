@@ -54,7 +54,20 @@
     {% block content %}{% endblock %}
   </main>
 
-  <footer class="footer muted"></footer>
+  <footer class="app-footer">
+    <div class="footer-inner">
+      <a class="footer-link" href="/tasks">
+        <span class="footer-title">Tasks</span>
+        <span id="tasks-footer-summary" class="footer-summary muted">No active tasks</span>
+      </a>
+      <div class="footer-progress">
+        <div class="progress footer-progress-rail">
+          <div id="tasks-footer-bar" class="bar"></div>
+        </div>
+      </div>
+      <div id="tasks-footer-detail" class="footer-detail muted"></div>
+    </div>
+  </footer>
 
   <script>
     window.CHEESEPIE = {{ public_config | tojson }};

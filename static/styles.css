@@ -485,8 +485,8 @@ body {
   color: var(--text);
   font: 14px/1.4 -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Inter,
     Helvetica, Arial, sans-serif;
-  padding-bottom: 44px;
-  /* reserve space for bottom banner */
+  padding-bottom: calc(var(--footer-height, 52px) + 8px);
+  /* reserve space for bottom footer */
 }
 
 :root[data-theme="light"] body {
@@ -504,6 +504,84 @@ body {
   justify-content: space-between;
   padding: 12px 18px;
   box-shadow: 0 8px 24px var(--shadow);
+}
+
+.app-footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9;
+  height: var(--footer-height, 52px);
+  background: linear-gradient(90deg, #111522, #101421);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -8px 24px var(--shadow);
+}
+
+:root[data-theme="light"] .app-footer {
+  background: linear-gradient(90deg, #ffffff, #f9fbff);
+}
+
+.footer-inner {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 16px;
+}
+
+.footer-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.footer-title {
+  font-weight: 700;
+}
+
+.footer-summary {
+  font-size: 12px;
+}
+
+.footer-progress {
+  flex: 1;
+  min-width: 120px;
+  max-width: 420px;
+}
+
+.app-footer .progress {
+  height: 6px;
+}
+
+.footer-detail {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 360px;
+}
+
+.footer-progress-rail .bar.indeterminate {
+  width: 40%;
+  animation: footerIndeterminate 1.2s linear infinite;
+}
+
+@keyframes footerIndeterminate {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(240%); }
+}
+
+@media (max-width: 720px) {
+  .footer-detail {
+    display: none;
+  }
+  .footer-progress {
+    max-width: 200px;
+  }
 }
 
 :root[data-theme="light"] .app-header {
