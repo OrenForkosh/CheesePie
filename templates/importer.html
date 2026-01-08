@@ -30,7 +30,8 @@
 
     <div class="control-group">
       <label for="batch-input">Batch</label>
-      <input id="batch-input" type="number" min="0" step="1" value="1" readonly />
+      <input id="batch-input" type="number" min="0" step="1" value="1" />
+      <div id="batch-hint" class="muted" style="margin-top: 4px"></div>
     </div>
 
     <div class="control-group">
@@ -155,6 +156,7 @@
     const camsAllBtn = $("#cams-all");
     const camsNoneBtn = $("#cams-none");
     const batchInput = $("#batch-input");
+    const batchHint = $("#batch-hint");
     const listBtn = document.getElementById("list-btn");
     const camsHint = $("#cameras-hint");
     const importBtn = document.getElementById("import-btn");
@@ -169,6 +171,9 @@
     let scanMode = "import";
     let scanFilterInRange = false;
     let scanSeenPaths = new Set();
+    let batchAvailable = true;
+    let batchCheckTimer = null;
+    let batchCheckSeq = 0;
 
     function loadScanMode() {
       let mode = "import";
@@ -390,12 +395,79 @@
       });
     }
 
+    function getBatchValue() {
+      const raw = (batchInput.value || "").trim();
+      if (!raw) return 0;
+      const n = parseInt(raw, 10);
+      return Number.isFinite(n) ? Math.max(0, n) : 0;
+    }
+
+    function setBatchAvailability(ok, message = "") {
+      batchAvailable = ok !== false;
+      if (batchHint) {
+        batchHint.textContent = message || "";
+        batchHint.style.color = batchAvailable ? "" : "#b71c1c";
+      }
+      if (batchInput) {
+        batchInput.style.borderColor = batchAvailable ? "" : "#b71c1c";
+      }
+      validate();
+    }
+
+    async function checkBatchAvailability() {
+      const fac = facilitySel.value;
+      const exp = experimentSel.value;
+      const trt = treatmentSel.value;
+      if (!fac || !exp || !trt) {
+        setBatchAvailability(true, "");
+        return;
+      }
+      const batch = getBatchValue();
+      const seq = ++batchCheckSeq;
+      if (batchHint) {
+        batchHint.textContent = "Checking batch availability…";
+        batchHint.style.color = "";
+      }
+      try {
+        const url = `/api/import/next_batch?facility=${encodeURIComponent(
+          fac
+        )}&experiment=${encodeURIComponent(exp)}&treatment=${encodeURIComponent(
+          trt
+        )}&batch=${encodeURIComponent(batch)}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (seq !== batchCheckSeq) return;
+        if (!res.ok || !data || data.error) {
+          throw new Error((data && data.error) || res.statusText);
+        }
+        if (data.available === false) {
+          const out = data.output_dir ? ` (${data.output_dir})` : "";
+          setBatchAvailability(
+            false,
+            `Batch ${batch} already exists in output folder${out}.`
+          );
+          return;
+        }
+        setBatchAvailability(true, "");
+      } catch (e) {
+        if (seq !== batchCheckSeq) return;
+        setBatchAvailability(false, "Unable to verify batch availability.");
+      }
+    }
+
+    function scheduleBatchCheck(delay = 200) {
+      if (batchCheckTimer) clearTimeout(batchCheckTimer);
+      batchCheckTimer = setTimeout(() => {
+        checkBatchAvailability();
+      }, delay);
+    }
+
     function updateUrl() {
       const params = new URLSearchParams();
       if (experimentSel.value) params.set("experiment", experimentSel.value);
       if (treatmentSel.value) params.set("treatment", treatmentSel.value);
-      const b = (batchInput.value || "").trim();
-      if (b) params.set("batch", b);
+      const bRaw = (batchInput.value || "").trim();
+      if (bRaw) params.set("batch", String(getBatchValue()));
       if (startDate.value) params.set("start_date", startDate.value);
       if (endDate.value) params.set("end_date", endDate.value);
       if (startTime.value) params.set("start_time", startTime.value);
@@ -456,6 +528,7 @@
         }
         if (b) {
           batchInput.value = String(Math.max(0, parseInt(b, 10) || 1));
+          await checkBatchAvailability();
         } else {
           await refreshBatch();
         }
@@ -638,6 +711,7 @@
       const hasDates = !!startDate.value && !!endDate.value;
       const hasTimes = !!startTime.value && !!endTime.value;
       const anyCam = !!camsRow.querySelector(".cam-btn.active");
+      const batchOk = batchAvailable !== false;
       let scanActive = false;
       try { scanActive = !!window.__SCAN_JOB_ID__ || !!scanController; } catch { }
       let reason = "";
@@ -646,13 +720,15 @@
       else if (!hasDates) reason = "Set start/end dates";
       else if (!hasTimes) reason = "Set start/end times";
       else if (!anyCam) reason = "Pick at least one camera";
+      else if (!batchOk) reason = "Batch already exists";
       importBtn.disabled = !(
         hasFac &&
         hasExp &&
         hasTrt &&
         hasDates &&
         hasTimes &&
-        anyCam
+        anyCam &&
+        batchOk
       );
       if (listImportBtn) {
         listImportBtn.disabled = !(
@@ -681,6 +757,10 @@
         runTopBtn.disabled = true;
         runTopBtn.classList.remove("primary");
         runTopBtn.title = "Run is available after a successful scan";
+      } else if (runTopBtn && !batchOk) {
+        runTopBtn.disabled = true;
+        runTopBtn.classList.remove("primary");
+        runTopBtn.title = "Batch already exists in output folder";
       }
     }
 
@@ -747,6 +827,15 @@
     endTime.addEventListener("change", () => {
       validate();
       updateUrl();
+    });
+    batchInput.addEventListener("input", () => {
+      updateUrl();
+      scheduleBatchCheck();
+    });
+    batchInput.addEventListener("change", () => {
+      batchInput.value = String(getBatchValue());
+      updateUrl();
+      scheduleBatchCheck(0);
     });
 
     // reset button removed
@@ -824,7 +913,11 @@
       const sTime = startTime.value;
       const eTime = endTime.value;
       const cams = getSelectedCameras();
-      const batch = Math.max(0, Number(batchInput.value || 0));
+      const batch = getBatchValue();
+      if (batchAvailable === false) {
+        showError("Import", new Error("Batch already exists in output folder."));
+        return;
+      }
       if (
         !fac ||
         !exp ||
@@ -1143,7 +1236,7 @@
       const sTime = startTime.value;
       const eTime = endTime.value;
       const cams = getSelectedCameras();
-      const batch = Math.max(0, Number(batchInput.value || 0));
+      const batch = getBatchValue();
       // Show progress UI
       let msgBase = "Import prep – scanning in";
       if (scanMode === "list-filtered") msgBase = "Listing in-range files in";
@@ -1188,9 +1281,15 @@
           }
         } catch { }
         // Otherwise, start scan+prepare
-        const ready = !!(facilitySel && facilitySel.value) && !!experimentSel.value && !!treatmentSel.value && !!startDate.value && !!endDate.value && !!startTime.value && !!endTime.value && getSelectedCameras().length > 0;
+        const ready = !!(facilitySel && facilitySel.value) && !!experimentSel.value && !!treatmentSel.value && !!startDate.value && !!endDate.value && !!startTime.value && !!endTime.value && getSelectedCameras().length > 0 && (batchAvailable !== false);
         validate();
-        if (!ready) { showError('Import', new Error('Complete selections first.')); return; }
+        if (!ready) {
+          const msg = batchAvailable === false
+            ? 'Batch already exists in output folder.'
+            : 'Complete selections first.';
+          showError('Import', new Error(msg));
+          return;
+        }
         setScanMode("import");
         setListBtnState("disabled");
         setListImportBtnState("disabled");
@@ -1705,24 +1804,31 @@
     async function refreshBatch() {
       const exp = experimentSel.value;
       const trt = treatmentSel.value;
+      const fac = facilitySel.value;
       if (!exp || !trt) {
         batchInput.value = "1";
+        setBatchAvailability(true, "");
         return;
       }
       try {
         const r = await fetch(
-          `/api/import/next_batch?experiment=${encodeURIComponent(
-            exp
-          )}&treatment=${encodeURIComponent(trt)}`
+          `/api/import/next_batch?facility=${encodeURIComponent(
+            fac
+          )}&experiment=${encodeURIComponent(exp)}&treatment=${encodeURIComponent(
+            trt
+          )}`
         );
         const d = await r.json();
         if (r.ok && d && d.ok) {
           batchInput.value = d.next_batch;
+          setBatchAvailability(true, "");
         } else {
           batchInput.value = "1";
+          setBatchAvailability(false, "Unable to verify batch availability.");
         }
       } catch {
         batchInput.value = "1";
+        setBatchAvailability(false, "Unable to verify batch availability.");
       }
       updateUrl();
     }
@@ -1734,10 +1840,18 @@
       const fac = facilitySel.value;
       const exp = experimentSel.value;
       const trt = treatmentSel.value;
-      const batch = Math.max(0, Number(batchInput.value || 0));
+      const batch = getBatchValue();
       const plan = currentRunPlan || window.__DAYS_PLAN__ || [];
       const runBtn = document.getElementById("run-btn");
       const importBtnTop = document.getElementById('open-import');
+      if (batchAvailable === false) {
+        showError("Run", new Error("Batch already exists in output folder."));
+        if (runBtn) {
+          runBtn.disabled = false;
+          runBtn.textContent = "Run";
+        }
+        return;
+      }
       if (runBtn) {
         runBtn.disabled = true;
         runBtn.textContent = "Running…";

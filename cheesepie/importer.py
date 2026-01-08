@@ -353,6 +353,10 @@ def _encode_task_runner(ctx: TaskContext, payload: Dict[str, Any]) -> None:
         batch = int(payload.get('batch', 1))
     except Exception:
         batch = 1
+    if batch < 0:
+        batch = 0
+    if batch < 0:
+        batch = 0
     plan = payload.get('plan') or payload.get('lists') or []
     start_date = str(payload.get('start_date', '')).strip()
     end_date = str(payload.get('end_date', '')).strip()
@@ -375,6 +379,18 @@ def _encode_task_runner(ctx: TaskContext, payload: Dict[str, Any]) -> None:
         base_dir.mkdir(parents=True, exist_ok=True)
     except Exception as e:
         update_task(ctx.task_id, status='FAILED', message=f'Cannot create output dir: {e}')
+        return
+
+    used_batches = _collect_used_batches(base_dir)
+    if batch in used_batches:
+        msg = f'Batch {batch} already exists in output folder'
+        update_task(ctx.task_id, status='FAILED', message=msg, meta={'output_dir': str(base_dir), 'used_batches': used_batches})
+        with ENCODE_LOCK:
+            j = ENCODE_JOBS.get(job_id)
+            if j:
+                j['status'] = 'FAILED'
+                j['message'] = msg
+                j['used_batches'] = used_batches
         return
 
     if not _ffmpeg_exists():
@@ -1115,25 +1131,53 @@ def _parse_start_from_stem(stem: str) -> Optional[datetime]:
         return None
 
 
-def _next_batch_number(exp: str, trt: str) -> int:
-    base = cfg_importer_working_dir().joinpath(str(exp).upper(), str(trt).lower())
-    if not base.exists() or not base.is_dir():
-        return 1
-    pat = re.compile(r"\.exp(\d{4})", re.IGNORECASE)
-    mx = 0
+def _resolve_import_output_dir(facility: str, experiment: str, treatment: str) -> Path:
+    out_base = ''
     try:
-        for p in base.iterdir():
-            m = pat.search(p.name)
-            if m:
-                try:
-                    val = int(m.group(1))
-                    if val > mx:
-                        mx = val
-                except Exception:
-                    pass
+        facs = cfg_importer_facilities()
+        fac = facs.get(str(facility or '').lower()) if isinstance(facs, dict) else None
+        if fac:
+            out_base = str(fac.get('output_dir') or '').strip()
     except Exception:
-        pass
-    return (mx + 1) if mx > 0 else 1
+        out_base = ''
+    if not out_base:
+        out_base = str(cfg_importer_working_dir())
+    return _resolve_output_dir(out_base, experiment, treatment)
+
+
+def _batch_from_exp_name(name: str) -> Optional[int]:
+    m = re.search(r"\.exp(\d{3,})", name, re.IGNORECASE)
+    if not m:
+        return None
+    digits = m.group(1)
+    if len(digits) < 3:
+        return None
+    try:
+        return int(digits[:3])
+    except Exception:
+        return None
+
+
+def _collect_used_batches(base_dir: Path) -> List[int]:
+    used = set()
+    try:
+        if not base_dir.exists() or not base_dir.is_dir():
+            return []
+        for p in base_dir.iterdir():
+            if not p.is_file():
+                continue
+            b = _batch_from_exp_name(p.name)
+            if b is not None:
+                used.add(b)
+    except Exception:
+        return []
+    return sorted(used)
+
+
+def _next_batch_number(exp: str, trt: str, facility: str = '') -> int:
+    base = _resolve_import_output_dir(facility, exp, trt)
+    used = _collect_used_batches(base)
+    return (max(used) + 1) if used else 1
 
 
 def _format_bytes(n: int) -> str:
@@ -1205,6 +1249,13 @@ def api_import_start():
     batch = int(payload.get('batch', 1))
     if batch < 0:
         batch = 0
+    used_batches = _collect_used_batches(work_base)
+    if batch in used_batches:
+        return jsonify({
+            'error': f'Batch {batch} already exists in output folder',
+            'output_dir': str(work_base),
+            'used_batches': used_batches,
+        }), 409
     for cam in cams:
         files = _iter_files_for_camera(source_dir, cam, exts, camera_pattern_override or fac.get('camera_pattern', ''))
         timeline: List[Dict[str, Any]] = []
@@ -1328,10 +1379,21 @@ def api_import_test_regex():
 def api_import_next_batch():
     exp = (request.args.get('experiment') or '').strip()
     trt = (request.args.get('treatment') or '').strip()
+    facility = (request.args.get('facility') or '').strip().lower()
+    req_batch = (request.args.get('batch') or '').strip()
     if not exp or not trt:
         return jsonify({'error': 'Missing experiment or treatment'}), 400
-    nb = _next_batch_number(exp, trt)
-    return jsonify({'ok': True, 'next_batch': nb})
+    base_dir = _resolve_import_output_dir(facility, exp, trt)
+    used = _collect_used_batches(base_dir)
+    nb = (max(used) + 1) if used else 1
+    resp: Dict[str, Any] = {'ok': True, 'next_batch': nb, 'used_batches': used, 'output_dir': str(base_dir)}
+    if req_batch:
+        try:
+            b = int(req_batch)
+            resp['available'] = b not in used
+        except Exception:
+            return jsonify({'error': 'Invalid batch'}), 400
+    return jsonify(resp)
 
 
 __all__ = ['bp']
@@ -2199,6 +2261,14 @@ def api_import_encode_days():
         base_dir.mkdir(parents=True, exist_ok=True)
     except Exception as e:
         return jsonify({'error': f'Cannot create output dir: {e}', 'path': str(base_dir)}), 500
+
+    used_batches = _collect_used_batches(base_dir)
+    if batch in used_batches:
+        return jsonify({
+            'error': f'Batch {batch} already exists in output folder',
+            'output_dir': str(base_dir),
+            'used_batches': used_batches,
+        }), 409
 
     if not _ffmpeg_exists():
         return jsonify({'error': 'ffmpeg not available'}), 400
