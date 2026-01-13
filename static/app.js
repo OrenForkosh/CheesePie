@@ -1489,6 +1489,7 @@
     const summaryEl = document.getElementById("tasks-footer-summary");
     const barEl = document.getElementById("tasks-footer-bar");
     const detailEl = document.getElementById("tasks-footer-detail");
+    const spinnerEl = document.getElementById("tasks-footer-spinner");
     if (!summaryEl || !barEl || !detailEl) return;
     const doneStates = ["DONE", "FAILED", "CANCELLED", "ERROR"];
     let timer = null;
@@ -1516,13 +1517,16 @@
         detailEl.textContent = "";
         barEl.classList.remove("indeterminate");
         barEl.style.width = "0%";
+        if (spinnerEl) spinnerEl.classList.remove("active");
         return;
       }
       if (running.length) {
         summaryEl.textContent =
           `${active.length} active • ${running.length} running`;
+        if (spinnerEl) spinnerEl.classList.add("active");
       } else {
         summaryEl.textContent = `${active.length} queued`;
+        if (spinnerEl) spinnerEl.classList.remove("active");
       }
       const focus = running[0] || active[0];
       detailEl.textContent = `Now: ${taskTitle(focus)}${fmtProgress(focus)}`;
@@ -1558,6 +1562,7 @@
         detailEl.textContent = "";
         barEl.classList.remove("indeterminate");
         barEl.style.width = "0%";
+        if (spinnerEl) spinnerEl.classList.remove("active");
       }
     }
 

@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import threading
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -42,6 +42,12 @@ bp = Blueprint('import_api', __name__)
 
 def _ffmpeg_exists() -> bool:
     return shutil.which('ffmpeg') is not None
+
+
+def _dt_to_epoch(dt: datetime) -> float:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc).timestamp()
+    return dt.timestamp()
 
 
 def _safe_time_str(s: str) -> Optional[str]:
@@ -763,8 +769,8 @@ def _scan_prepare_worker(job_id: str) -> None:
 
         win_start = _combine_date_time(start_date, start_time)
         win_end = _combine_date_time(end_date, end_time)
-        ws = win_start.timestamp() if win_start else None
-        we = win_end.timestamp() if win_end else None
+        ws = _dt_to_epoch(win_start) if win_start else None
+        we = _dt_to_epoch(win_end) if win_end else None
 
         if not cameras:
             try:
@@ -826,7 +832,7 @@ def _scan_prepare_worker(job_id: str) -> None:
                                     start_iso = ts.isoformat(sep=' ')
                                     start_hms = ts.strftime('%H:%M:%S')
                                     if ws is not None and we is not None:
-                                        f_start = ts.timestamp()
+                                        f_start = _dt_to_epoch(ts)
                                         max_dur_sec = _parse_dur_to_seconds(fac.get('max_file_duration'))
                                         f_end = f_start + max_dur_sec
                                         in_range = _overlaps(f_start, f_end, ws, we)
@@ -905,7 +911,8 @@ def _prepare_plan_from_manifest(facility: str, experiment: str, treatment: str, 
         ts = _parse_start_from_stem(p.stem) or _parse_time_from_path(p, str(fac.get('path_time_regex') or ''))
         if not ts:
             continue
-        by_cam[cam].append({'path': p, 'start': ts.timestamp(), 'end': ts.timestamp() + float(max_dur_sec)})
+        start_ts = _dt_to_epoch(ts)
+        by_cam[cam].append({'path': p, 'start': start_ts, 'end': start_ts + float(max_dur_sec)})
     out: List[Dict[str, Any]] = []
     for cam in cameras:
         segs = by_cam.get(cam) or []
@@ -920,8 +927,8 @@ def _prepare_plan_from_manifest(facility: str, experiment: str, treatment: str, 
                     segs[i]['end'] = min(segs[i]['end'], ns)
         cam_days: List[Dict[str, Any]] = []
         for di, win in enumerate(day_windows, start=1):
-            ws = win['start'].timestamp()
-            we = win['end'].timestamp()
+            ws = _dt_to_epoch(win['start'])
+            we = _dt_to_epoch(win['end'])
             items: List[Dict[str, Any]] = []
             cover = ws
             for s in segs:
@@ -1093,7 +1100,7 @@ def _file_time_range_with_regex(path: Path, regex: str) -> Optional[tuple[float,
     ts = _parse_time_from_path(path, regex)
     if not ts:
         return None
-    start_ts = ts.timestamp()
+    start_ts = _dt_to_epoch(ts)
     end_ts = start_ts + float(dur)
     return (start_ts, end_ts)
 
@@ -1116,7 +1123,7 @@ def _parse_start_from_stem(stem: str) -> Optional[datetime]:
             ep = parts[3].strip()
             if ep.isdigit() and len(ep) >= 13:
                 try:
-                    return datetime.fromtimestamp(int(ep) / 1000.0)
+                    return datetime.utcfromtimestamp(int(ep) / 1000.0)
                 except Exception:
                     pass
         # Fallback to second resolution
@@ -1271,8 +1278,8 @@ def api_import_start():
 
         day_entries: List[Dict[str, Any]] = []
         for di, win in enumerate(windows, start=1):
-            ws = win['start'].timestamp()
-            we = win['end'].timestamp()
+            ws = _dt_to_epoch(win['start'])
+            we = _dt_to_epoch(win['end'])
             segs = [s for s in timeline if _overlaps(s['start'], s['end'], ws, we)]
             items: List[Dict[str, Any]] = []
             if segs:
@@ -1636,7 +1643,8 @@ def api_import_make_day_lists():
                     # actual duration if available
                     # Avoid expensive per-file probing here for responsiveness.
                     # Use facility max duration as an upper bound; concat demuxer will stop at file end.
-                    segments.append({'path': p, 'start': ts.timestamp(), 'end': ts.timestamp() + float(max_dur_sec)})
+                    start_ts = _dt_to_epoch(ts)
+                    segments.append({'path': p, 'start': start_ts, 'end': start_ts + float(max_dur_sec)})
         except Exception:
             pass
 
@@ -1653,8 +1661,8 @@ def api_import_make_day_lists():
         # Build per-day items and write list file per day
         day_entries: List[Dict[str, Any]] = []
         for di, win in enumerate(day_windows, start=1):
-            ws = win['start'].timestamp()
-            we = win['end'].timestamp()
+            ws = _dt_to_epoch(win['start'])
+            we = _dt_to_epoch(win['end'])
             items: List[Dict[str, Any]] = []
             cover = ws
             for s in segments:
@@ -1782,7 +1790,8 @@ def api_import_prepare_days():
                     dur = meta.get('duration') if isinstance(meta, dict) else None
                     if not isinstance(dur, (int, float)) or dur <= 0:
                         dur = max_dur_sec
-                    segments.append({'path': p, 'start': ts.timestamp(), 'end': ts.timestamp() + float(dur)})
+                    start_ts = _dt_to_epoch(ts)
+                    segments.append({'path': p, 'start': start_ts, 'end': start_ts + float(dur)})
         except Exception:
             pass
 
@@ -1801,8 +1810,8 @@ def api_import_prepare_days():
 
         cam_days: List[Dict[str, Any]] = []
         for di, win in enumerate(day_windows, start=1):
-            ws = win['start'].timestamp()
-            we = win['end'].timestamp()
+            ws = _dt_to_epoch(win['start'])
+            we = _dt_to_epoch(win['end'])
             items: List[Dict[str, Any]] = []
             for s in segments:
                 if not _overlaps(s['start'], s['end'], ws, we):
@@ -1878,15 +1887,15 @@ def api_import_scan_full_stream():
     # Determine window timestamps
     win_start = _combine_date_time(start_date, start_time)
     win_end = _combine_date_time(end_date, end_time)
-    ws = win_start.timestamp() if win_start else None
-    we = win_end.timestamp() if win_end else None
+    ws = _dt_to_epoch(win_start) if win_start else None
+    we = _dt_to_epoch(win_end) if win_end else None
 
     # Build per-day windows for day assignment
     day_windows = _day_windows(start_date, end_date, start_time, end_time)
     day_spans: List[tuple[int, float, float]] = []
     try:
         for i, w in enumerate(day_windows, start=1):
-            day_spans.append((i, w['start'].timestamp(), w['end'].timestamp()))
+            day_spans.append((i, _dt_to_epoch(w['start']), _dt_to_epoch(w['end'])))
     except Exception:
         day_spans = []
 
@@ -1959,7 +1968,7 @@ def api_import_scan_full_stream():
                                 start_iso = ts.isoformat(sep=' ')
                                 start_hms = ts.strftime('%H:%M:%S')
                                 if ws is not None and we is not None:
-                                    f_start = ts.timestamp()
+                                    f_start = _dt_to_epoch(ts)
                                     f_end = f_start + max_dur_sec
                                     in_range = _overlaps(f_start, f_end, ws, we)
                                     if day_spans:
@@ -2179,7 +2188,8 @@ def api_import_prepare_from_manifest():
             ts = _parse_start_from_stem(p.stem) or _parse_time_from_path(p, str(fac.get('path_time_regex') or ''))
         if not ts:
             continue
-        by_cam[cam].append({'path': p, 'start': ts.timestamp(), 'end': ts.timestamp() + float(max_dur_sec)})
+        start_ts = _dt_to_epoch(ts)
+        by_cam[cam].append({'path': p, 'start': start_ts, 'end': start_ts + float(max_dur_sec)})
 
     out = []
     for cam in cameras:
@@ -2196,8 +2206,8 @@ def api_import_prepare_from_manifest():
                     segs[i]['end'] = min(segs[i]['end'], ns)
         cam_days = []
         for di, win in enumerate(day_windows, start=1):
-            ws = win['start'].timestamp()
-            we = win['end'].timestamp()
+            ws = _dt_to_epoch(win['start'])
+            we = _dt_to_epoch(win['end'])
             items = []
             cover = ws
             for s in segs:

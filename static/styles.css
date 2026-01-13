@@ -541,6 +541,19 @@ body {
 
 .footer-title {
   font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.footer-spinner {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--muted);
+  border-top-color: var(--primary);
+  animation: footerSpinner 0.9s linear infinite;
+  visibility: hidden;
 }
 
 .footer-summary {
@@ -573,6 +586,14 @@ body {
 @keyframes footerIndeterminate {
   0% { transform: translateX(-120%); }
   100% { transform: translateX(240%); }
+}
+
+.footer-spinner.active {
+  visibility: visible;
+}
+
+@keyframes footerSpinner {
+  to { transform: rotate(360deg); }
 }
 
 @media (max-width: 720px) {
