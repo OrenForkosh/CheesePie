@@ -26,7 +26,12 @@
   <header class="app-header">
     <div class="brand">
       <div class="logo">🧀</div>
-      <div class="title">CheesePie</div>
+      <div class="title">
+        CheesePie
+        {% if app_version %}
+          <span class="version muted">{{ app_version }}</span>
+        {% endif %}
+      </div>
     </div>
     <nav class="tabs">
       <a class="tab tab-browser {{ 'active' if active_tab == 'browser' else '' }}" href="/browser">Browser</a>

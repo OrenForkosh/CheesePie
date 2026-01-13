@@ -25,6 +25,7 @@ def create_app() -> Flask:
 
     # Deferred imports to avoid circulars
     from .config import inject_public_config, bp as config_bp
+    from .version import get_app_version
     from .preproc import bp as preproc_bp
     from .browser import bp as browser_bp
     from .media import bp as media_bp
@@ -37,7 +38,14 @@ def create_app() -> Flask:
     from .auth import bp as auth_bp, verify_token, password_is_set, set_auth_cookie
 
     # Context processors
+    app_version = get_app_version(base_dir)
+    app.config['APP_VERSION'] = app_version
+
+    def inject_app_version():
+        return {'app_version': app.config.get('APP_VERSION')}
+
     app.context_processor(inject_public_config)
+    app.context_processor(inject_app_version)
     register_filters(app)
 
     # Blueprints
