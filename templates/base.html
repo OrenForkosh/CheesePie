@@ -14,6 +14,11 @@
     })();
   </script>
   <link rel="stylesheet" href="/static/styles.css">
+  {% if page_css %}
+    {% for css in page_css %}
+      <link rel="stylesheet" href="{{ url_for('static', filename=css) }}">
+    {% endfor %}
+  {% endif %}
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
     href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@400;600&family=Roboto+Mono:wght@400;600&display=swap"

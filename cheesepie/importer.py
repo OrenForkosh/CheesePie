@@ -876,7 +876,11 @@ def _prepare_plan_from_manifest(facility: str, experiment: str, treatment: str, 
     facs = cfg_importer_facilities()
     fac = facs[facility]
     day_windows = _day_windows(start_date, end_date, start_time, end_time)
-    tmp_dir = Path(tempfile.gettempdir())
+    out_dir = _resolve_import_output_dir(facility, experiment, treatment)
+    try:
+        _ensure_dir(out_dir)
+    except Exception as e:
+        raise RuntimeError(f'Cannot create output dir: {e}')
     def _parse_dur_to_seconds(val: str | int | float | None) -> int:
         try:
             if isinstance(val, (int, float)):
@@ -909,7 +913,7 @@ def _prepare_plan_from_manifest(facility: str, experiment: str, treatment: str, 
     for cam in cameras:
         segs = by_cam.get(cam) or []
         if not segs:
-            out.append({'camera': cam, 'days': [{'day': di, 'status': 'MISSING', 'segments': 0, 'list_path': str(tmp_dir.joinpath(f"{experiment}-{treatment}.exp{batch:03d}{cam}.day{di:02d}.cam{cam:02d}.txt"))} for di, _ in enumerate(day_windows, start=1)]})
+            out.append({'camera': cam, 'days': [{'day': di, 'status': 'MISSING', 'segments': 0, 'list_path': str(out_dir.joinpath(f"{experiment}-{treatment}.exp{batch:03d}{cam}.day{di:02d}.cam{cam:02d}.txt"))} for di, _ in enumerate(day_windows, start=1)]})
             continue
         segs.sort(key=lambda s: s['start'])
         for i in range(len(segs)):
@@ -937,7 +941,7 @@ def _prepare_plan_from_manifest(facility: str, experiment: str, treatment: str, 
                 items.append({'path': str(s['path']).replace('\\', '/'), 'inpoint': inpoint, 'outpoint': outpoint})
                 cover = eff_end
             list_name = f"{experiment}-{treatment}.exp{batch:03d}{cam}.day{di:02d}.cam{cam:02d}.txt"
-            list_path = tmp_dir.joinpath(list_name)
+            list_path = out_dir.joinpath(list_name)
             if items:
                 _write_concat_list(list_path, items)
                 cam_days.append({'day': di, 'status': 'PENDING', 'segments': len(items), 'list_path': str(list_path)})
@@ -949,7 +953,7 @@ def _prepare_plan_from_manifest(facility: str, experiment: str, treatment: str, 
                     pass
                 cam_days.append({'day': di, 'status': 'MISSING', 'segments': 0, 'list_path': str(list_path)})
         out.append({'camera': cam, 'days': cam_days})
-    return {'ok': True, 'tmp_dir': str(tmp_dir), 'plan': out}
+    return {'ok': True, 'tmp_dir': str(out_dir), 'plan': out}
 
 @bp.route('/scan_prepare/start', methods=['POST'])
 def api_scan_prepare_start():
@@ -1684,7 +1688,7 @@ def api_import_make_day_lists():
 
 @bp.route('/prepare_days', methods=['POST'])
 def api_import_prepare_days():
-    """Scan and prepare per-day ffmpeg concat list files in temp, using
+    """Scan and prepare per-day ffmpeg concat list files in the output directory, using
     experiment/treatment/batch naming.
     Body JSON:
       facility, cameras [list], experiment, treatment, batch,
@@ -1748,7 +1752,11 @@ def api_import_prepare_days():
     max_dur_sec = _parse_dur_to_seconds(fac.get('max_file_duration'))
     cam_pat = camera_pattern_override or fac.get('camera_pattern', '')
 
-    tmp_dir = Path(tempfile.gettempdir())
+    out_dir = _resolve_import_output_dir(facility, experiment, treatment)
+    try:
+        _ensure_dir(out_dir)
+    except Exception as e:
+        return jsonify({'error': f'Cannot create output dir: {e}', 'path': str(out_dir)}), 500
     out: List[Dict[str, Any]] = []
 
     for cam in cameras:
@@ -1807,7 +1815,7 @@ def api_import_prepare_days():
 
             # <Experiment>-<Treatment>.exp<Batch:03d><Camera>.day<Day:02d>.cam<Camera:02d>.txt
             list_name = f"{experiment}-{treatment}.exp{batch:03d}{cam}.day{di:02d}.cam{cam:02d}.txt"
-            list_path = tmp_dir.joinpath(list_name)
+            list_path = out_dir.joinpath(list_name)
             if items:
                 try:
                     _write_concat_list(list_path, items)
@@ -1824,7 +1832,7 @@ def api_import_prepare_days():
 
         out.append({'camera': cam, 'days': cam_days})
 
-    return jsonify({'ok': True, 'tmp_dir': str(tmp_dir), 'plan': out})
+    return jsonify({'ok': True, 'tmp_dir': str(out_dir), 'plan': out})
 
 
 @bp.route('/scan_full_stream')
@@ -2147,7 +2155,11 @@ def api_import_prepare_from_manifest():
             return 4 * 3600
 
     max_dur_sec = _parse_dur_to_seconds(fac.get('max_file_duration'))
-    tmp_dir = Path(tempfile.gettempdir())
+    out_dir = _resolve_import_output_dir(facility, experiment, treatment)
+    try:
+        _ensure_dir(out_dir)
+    except Exception as e:
+        return jsonify({'error': f'Cannot create output dir: {e}', 'path': str(out_dir)}), 500
 
     # Normalize manifest entries per camera
     by_cam = {c: [] for c in cameras}
@@ -2211,7 +2223,7 @@ def api_import_prepare_from_manifest():
                 items.append({'path': str(s['path']).replace('\\', '/'), 'inpoint': inpoint, 'outpoint': outpoint})
                 cover = eff_end
             list_name = f"{experiment}-{treatment}.exp{batch:03d}{cam}.day{di:02d}.cam{cam:02d}.txt"
-            list_path = tmp_dir.joinpath(list_name)
+            list_path = out_dir.joinpath(list_name)
             if items:
                 try:
                     _write_concat_list(list_path, items)
@@ -2227,7 +2239,7 @@ def api_import_prepare_from_manifest():
                 cam_days.append({'day': di, 'status': 'MISSING', 'segments': 0, 'list_path': str(list_path)})
         out.append({'camera': cam, 'days': cam_days})
 
-    return jsonify({'ok': True, 'tmp_dir': str(tmp_dir), 'plan': out})
+    return jsonify({'ok': True, 'tmp_dir': str(out_dir), 'plan': out})
 
 
 @bp.route('/encode_days', methods=['POST'])

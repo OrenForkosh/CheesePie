@@ -77,6 +77,12 @@
   (function loadVideo() { try { const s = document.createElement('source'); s.src = '/media?path=' + encodeURIComponent(videoPath); v.appendChild(s); v.load(); } catch (e) { } })();
   // Fetch meta and positions via existing analyze API
   let fps = 0, frames = 0, hasTracking = false;
+  let trackColors = [];
+  let trackMice = 0;
+  let videoWidth = 0;
+  let videoHeight = 0;
+  const colorMap = { R: '#ff6b6b', G: '#4ade80', B: '#60a5fa', Y: '#facc15' };
+  const fallbackColors = ['#ff6b6b', '#4ade80', '#60a5fa', '#facc15', '#f472b6', '#fb923c'];
   const chunkSize = 300; // frames
   let lastChunkStart = -1;
   let currentChunk = null;
@@ -90,6 +96,45 @@
       fps = Math.max(1, Math.round(frames / durationSec));
       fpsEl.textContent = String(fps);
     }
+  }
+
+  function normalizeColors(raw) {
+    if (!raw) return [];
+    const entries = Array.isArray(raw) ? raw : [raw];
+    const tokens = [];
+    entries.forEach((entry) => {
+      if (entry == null) return;
+      const s = String(entry).trim();
+      if (!s) return;
+      if (s.includes(',')) {
+        s.split(',').forEach((p) => { const t = p.trim(); if (t) tokens.push(t); });
+      } else if (s.includes(' ')) {
+        s.split(' ').forEach((p) => { const t = p.trim(); if (t) tokens.push(t); });
+      } else if (s.length > 1 && /^[A-Za-z]+$/.test(s)) {
+        s.split('').forEach((ch) => tokens.push(ch));
+      } else {
+        tokens.push(s);
+      }
+    });
+    return tokens;
+  }
+
+  function mouseColor(idx) {
+    const raw = trackColors[idx];
+    if (raw) {
+      const key = String(raw).trim();
+      if (key) {
+        const upper = key.toUpperCase();
+        if (colorMap[upper]) return colorMap[upper];
+        return key;
+      }
+    }
+    return fallbackColors[idx % fallbackColors.length];
+  }
+
+  function updateVideoDims() {
+    if (v.videoWidth) videoWidth = v.videoWidth;
+    if (v.videoHeight) videoHeight = v.videoHeight;
   }
 
   // Fallback: probe media metadata for fps and frame count
@@ -120,9 +165,20 @@
       framesEl.textContent = frames ? String(frames) : '—';
       hasTracking = Boolean(info && info.ok);
       if (!hasTracking) {
-        msgEl.textContent = 'No tracking found for this video.';
+        const reason = info && info.reason;
+        if (reason === 'missing_file') {
+          msgEl.textContent = `Tracking file not found: ${(info && info.track) || ''}`.trim();
+        } else if (reason === 'missing_data') {
+          msgEl.textContent = `Tracking file found but no tracking data: ${(info && info.track) || ''}`.trim();
+        } else {
+          msgEl.textContent = 'No tracking found for this video.';
+        }
         return;
       }
+      trackMice = Math.max(0, Math.round((info && info.mice) || 0));
+      trackColors = normalizeColors(info && info.colors);
+      const colorLabel = trackColors.length ? ` (colors: ${trackColors.join(', ')})` : '';
+      msgEl.textContent = `Tracking loaded${trackMice ? `: ${trackMice} mice${colorLabel}` : colorLabel}.`;
       fps = Math.max(0, Math.round((info && info.fps) || 0));
       fpsEl.textContent = fps ? String(fps) : '—';
       updateFpsFromVideo();
@@ -130,16 +186,32 @@
   // Draw positions in chunks as video plays
   const ctx = c.getContext('2d');
   function resize() { try { const r = v.getBoundingClientRect(); c.width = Math.max(1, Math.round(r.width)); c.height = Math.max(1, Math.round(r.height)); } catch (e) { } }
-  window.addEventListener('resize', resize); v.addEventListener('loadedmetadata', () => { resize(); updateFpsFromVideo(); }); if (v.readyState >= 1) { resize(); updateFpsFromVideo(); }
+  window.addEventListener('resize', resize); v.addEventListener('loadedmetadata', () => { updateVideoDims(); resize(); updateFpsFromVideo(); }); if (v.readyState >= 1) { updateVideoDims(); resize(); updateFpsFromVideo(); }
   // simple streaming draw example
   function fetchAndDraw(start) {
     if (!hasTracking) return;
     const url = '/api/analyze/positions?video=' + encodeURIComponent(videoPath) + '&start=' + start + '&count=' + chunkSize + (fac ? ('&facility=' + encodeURIComponent(fac)) : '');
     fetch(url).then(r => r.ok ? r.json() : null).then(d => {
       if (!d || !d.ok || !Array.isArray(d.x) || !Array.isArray(d.y)) return;
-      currentChunk = { start: d.start || start, x: d.x, y: d.y };
+      const normalized = detectNormalized(d.x, d.y);
+      currentChunk = { start: d.start || start, x: d.x, y: d.y, normalized };
       drawFrame(Math.floor((v.currentTime || 0) * (fps || 0)));
     }).catch(() => { });
+  }
+  function detectNormalized(xs, ys) {
+    let maxAbs = 0;
+    for (let i = 0; i < xs.length; i++) {
+      const rowX = xs[i] || [];
+      const rowY = ys[i] || [];
+      const cols = Math.min(rowX.length, rowY.length);
+      for (let j = 0; j < cols; j++) {
+        const vx = rowX[j];
+        const vy = rowY[j];
+        if (isFinite(vx)) maxAbs = Math.max(maxAbs, Math.abs(vx));
+        if (isFinite(vy)) maxAbs = Math.max(maxAbs, Math.abs(vy));
+      }
+    }
+    return maxAbs <= 2;
   }
   function drawFrame(frame) {
     try {
@@ -149,13 +221,17 @@
       const xs = currentChunk.x || [];
       const ys = currentChunk.y || [];
       if (rel < 0 || !xs.length || !ys.length || rel >= (xs[0] ? xs[0].length || 0 : 0)) return;
-      ctx.strokeStyle = '#00A0B0'; ctx.lineWidth = 2;
+      const normalized = currentChunk.normalized !== false;
+      const scaleX = videoWidth ? (c.width / videoWidth) : 1;
+      const scaleY = videoHeight ? (c.height / videoHeight) : 1;
       const mice = Math.min(xs.length, ys.length);
       for (let i = 0; i < mice; i++) {
         const px = xs[i] && xs[i][rel]; const py = ys[i] && ys[i][rel];
         if (!isFinite(px) || !isFinite(py)) continue;
-        const x = px * c.width, y = py * c.height;
-        ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.stroke();
+        const x = normalized ? (px * c.width) : (px * scaleX);
+        const y = normalized ? (py * c.height) : (py * scaleY);
+        ctx.fillStyle = mouseColor(i);
+        ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
       }
     } catch (e) { }
   }
@@ -181,8 +257,8 @@
   v.addEventListener('play', () => { if (hasTracking && fps) fetchAndDraw(Math.floor((v.currentTime || 0) * fps / chunkSize) * chunkSize); });
   v.addEventListener('pause', () => { updateTimeLabel(); drawFrame(Math.floor((v.currentTime || 0) * (fps || 0))); });
   // ensure first draw when ready
-  v.addEventListener('canplay', () => { updateTimeLabel(); if (fps) drawFrame(Math.floor((v.currentTime || 0) * fps)); });
-  if (v.readyState >= 2) { updateTimeLabel(); if (fps) drawFrame(Math.floor((v.currentTime || 0) * fps)); }
+  v.addEventListener('canplay', () => { updateVideoDims(); updateTimeLabel(); if (fps) drawFrame(Math.floor((v.currentTime || 0) * fps)); });
+  if (v.readyState >= 2) { updateVideoDims(); updateTimeLabel(); if (fps) drawFrame(Math.floor((v.currentTime || 0) * fps)); }
 
   // Keyboard shortcuts
   const keyboardCfg = ((window.CHEESEPIE || {}).annotator || {}).keyboard || {};

@@ -1,5 +1,5 @@
 {% extends "base.html" %} {% block content %}
-<div class="panel">
+<div class="panel panel-importer">
   <div class="panel-header" style="display:flex; align-items:center; justify-content:space-between">
     <div class="header-left">
       <h1>Importer</h1>
@@ -260,6 +260,13 @@
         try { const cur = await fetch('/api/import/scan_prepare/current').then(r => r.json()).catch(() => null); if (cur && cur.ok && cur.job_id) jid = cur.job_id; } catch { }
         if (!jid) { try { jid = localStorage.getItem('cheesepie.scan_job') || ''; } catch { } }
         if (jid) {
+          const active = await isScanActive(jid);
+          if (!active) {
+            clearScanJob();
+            jid = null;
+          }
+        }
+        if (jid) {
           window.__SCAN_JOB_ID__ = jid;
           ensureScanPanel(); ensureDaysPanel();
           if (scanMode === "list") {
@@ -508,8 +515,6 @@
 
       if (sd) startDate.value = sd;
       if (ed) endDate.value = ed;
-      if (st) startTime.value = st;
-      if (et) endTime.value = et;
       ensureDefaultDates();
 
       if (fac && FACS[fac]) {
@@ -532,6 +537,8 @@
         } else {
           await refreshBatch();
         }
+        if (st) startTime.value = st;
+        if (et) endTime.value = et;
         updateUrl();
         validate();
       } else {
@@ -542,6 +549,8 @@
             refreshFacility();
           } catch (e) { }
         }
+        if (st) startTime.value = st;
+        if (et) endTime.value = et;
         updateUrl();
       }
     }
@@ -1124,11 +1133,30 @@
 
     let scanPollTimer = null;
     function stopScanPolling() { if (scanPollTimer) { clearInterval(scanPollTimer); scanPollTimer = null; } }
+    async function isScanActive(jobId) {
+      if (!jobId) return false;
+      try {
+        const r = await fetch(`/api/import/scan_prepare/status?job=${encodeURIComponent(jobId)}`);
+        const d = await r.json();
+        if (!r.ok || d.error) return false;
+        const status = String(d.status || "").toUpperCase();
+        return status === "RUNNING" || status === "QUEUED";
+      } catch {
+        return false;
+      }
+    }
+    function clearScanJob() {
+      try { localStorage.removeItem('cheesepie.scan_job'); } catch { }
+      try { window.__SCAN_JOB_ID__ = null; } catch { }
+    }
     async function pollScanStatus(jobId) {
       try {
         const r = await fetch(`/api/import/scan_prepare/status?job=${encodeURIComponent(jobId)}`);
         const d = await r.json();
-        if (!r.ok || d.error) { throw new Error(d && d.error || r.statusText); }
+        if (!r.ok || d.error) {
+          if (d && d.error) { try { clearScanJob(); } catch { } }
+          throw new Error(d && d.error || r.statusText);
+        }
         const status = String(d.status || "").toUpperCase();
         // Update Available Files table
         ensureScanPanel();
@@ -1275,9 +1303,13 @@
         try {
           const sjid = (window.__SCAN_JOB_ID__ || localStorage.getItem('cheesepie.scan_job') || '').trim();
           if (sjid) {
-            setScanPanelCollapsed(false, true);
-            setScanMeta("Scan already running. Use Cancel in Available Files.");
-            return;
+            const active = await isScanActive(sjid);
+            if (active) {
+              setScanPanelCollapsed(false, true);
+              setScanMeta("Scan already running. Use Cancel in Available Files.");
+              return;
+            }
+            clearScanJob();
           }
         } catch { }
         // Otherwise, start scan+prepare

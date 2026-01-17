@@ -1,0 +1,286 @@
+/* Preproc-specific layout and dialogs */
+.subpanel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.subpanel #pp-panes {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: transparent;
+  overflow: auto;
+}
+
+.subpanel #pp-panes>div {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background: transparent;
+}
+
+.subpanel .pane-next {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+  position: sticky;
+  bottom: 0;
+  background: var(--panel);
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.subpanel .pane-next .btn {
+  margin-left: 8px;
+}
+
+/* Ensure any tab content inherits panel background (remove grey tint) */
+#pane-arena,
+#pane-background,
+#pane-regions,
+#pane-colors,
+#pane-timing,
+#pane-save {
+  background: transparent;
+}
+
+/* Preproc: Arena mark button fixed width to avoid layout shift */
+#arena-mark {
+  min-width: 100px;
+}
+
+/* Preproc: Arena handles highlight */
+#pp-handle-tl,
+#pp-handle-br {
+  transition: box-shadow 0.12s ease, background 0.12s ease;
+  cursor: grab;
+}
+
+#pp-handle-tl.active,
+#pp-handle-br.active {
+  background: var(--primary);
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--primary);
+}
+
+#pp-handle-tl.dragging,
+#pp-handle-br.dragging {
+  cursor: grabbing;
+}
+
+.controls-trans {
+  display: grid;
+  gap: 12px;
+  align-items: start;
+  background: rgba(0, 0, 0, 0);
+  padding: 12px;
+  border: 0px;
+  border-radius: 12px;
+}
+
+/* Pane footers: subtle top separator + muted explanatory text */
+.pane-footer {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* Preproc: make right panel tabs fill the panel */
+#pp-right {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+}
+
+#pp-right #pp-panes {
+  position: relative;
+  flex: 1;
+  min-height: 280px;
+}
+
+#pp-right #pp-panes>div {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+}
+
+/* Preproc: Regions table hover affordances */
+#roi-table .roi-name {
+  user-select: none;
+}
+
+#roi-table tbody tr:hover .roi-name {
+  text-decoration: underline;
+  color: var(--primary);
+}
+
+#roi-table .roi-edit-hint {
+  opacity: 0;
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  transition: opacity 0.12s ease;
+}
+
+#roi-table tbody tr:hover .roi-edit-hint {
+  opacity: 1;
+}
+
+/* Save Preproc Dialog */
+.pp-save-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.pp-save-panel {
+  width: 720px;
+  max-width: 95%;
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 12px;
+  box-shadow: 0 12px 36px var(--shadow);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.pp-save-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pp-save-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.pp-save-close {
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.pp-save-body {
+  padding: 12px 16px;
+}
+
+.pp-save-intro {
+  margin-bottom: 10px;
+}
+
+.pp-save-group {
+  margin: 6px 0 10px 0;
+  font-weight: 600;
+}
+
+.pp-save-list {
+  max-height: 300px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px;
+  background: var(--surface);
+}
+
+.pp-save-row {
+  display: grid;
+  grid-template-columns: 24px 1fr 160px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.pp-save-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.pp-save-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pp-save-name {
+  font-weight: 600;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-save-times {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.pp-save-preview {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--border);
+  object-fit: contain;
+}
+
+.pp-save-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.pp-save-controls .left {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.pp-save-progress {
+  margin-top: 12px;
+  height: 10px;
+  background: var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.pp-save-progress .bar {
+  width: 0%;
+  height: 100%;
+  background: linear-gradient(90deg, #4f8cff, #7c4dff);
+}
+
+.pp-save-status {
+  margin-top: 8px;
+  min-height: 1.2em;
+}
+
+.pp-save-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}

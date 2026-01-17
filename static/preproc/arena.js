@@ -150,8 +150,28 @@
     } catch(e){}
   }
 
+  function isNearHandle(ctx, clientX, clientY, handleCorner){
+    try{
+      const h = handleCorner === 'tl' ? ctx.hTL : ctx.hBR;
+      if (!h || h.style.display === 'none') return false;
+      const hRect = h.getBoundingClientRect();
+      const cx = hRect.left + hRect.width / 2;
+      const cy = hRect.top + hRect.height / 2;
+      const dist = Math.sqrt(Math.pow(clientX - cx, 2) + Math.pow(clientY - cy, 2));
+      return dist <= 20; // 20px tolerance
+    }catch(e){ return false; }
+  }
+
   function handleClick(ctx, ev){
     if (!State.marking) return;
+    // Check if click is on a handle
+    const nearTL = isNearHandle(ctx, ev.clientX, ev.clientY, 'tl');
+    const nearBR = isNearHandle(ctx, ev.clientX, ev.clientY, 'br');
+    // If we have both handles defined and click is not on any handle, stop marking
+    if (State.tl && State.br && !nearTL && !nearBR){
+      setMarking(ctx, false);
+      return;
+    }
     const overlay = ctx.overlay;
     const v = ctx.video;
     const ob = overlay.getBoundingClientRect();
@@ -244,7 +264,12 @@
     }
     function onUp(){ dragging = false; el.classList.remove('dragging'); document.removeEventListener('mousemove', onMove); updateHandles(ctx); scheduleSave(ctx); }
     el.addEventListener('mousedown', onDown);
-    el.addEventListener('click', function(){ if (!State.marking) setMarking(ctx, true, {preserve:true}); ctx.activeHandle = corner; updateHandles(ctx); });
+    el.addEventListener('click', function(ev){ 
+      ev.stopPropagation(); // Prevent overlay click handler from firing
+      if (!State.marking) setMarking(ctx, true, {preserve:true}); 
+      ctx.activeHandle = corner; 
+      updateHandles(ctx); 
+    });
   }
 
   // Debounced save to backend

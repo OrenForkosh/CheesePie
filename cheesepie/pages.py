@@ -16,18 +16,18 @@ bp = Blueprint('pages', __name__)
 
 @bp.route('/')
 def home():
-    return render_template('browser.html', active_tab='browser')
+    return render_template('browser.html', active_tab='browser', page_css=['browser.css'])
 
 
 @bp.route('/browser')
 def browser():
-    return render_template('browser.html', active_tab='browser')
+    return render_template('browser.html', active_tab='browser', page_css=['browser.css'])
 
 
 @bp.route('/preproc')
 def preproc():
     video = request.args.get('video')
-    return render_template('preproc.html', active_tab='preproc', video=video)
+    return render_template('preproc.html', active_tab='preproc', video=video, page_css=['preproc.css'])
 
 
 @bp.route('/annotator')
@@ -41,6 +41,7 @@ def annotator():
         default_fps=cfg_default_fps(),
         default_types=cfg_default_types(),
         keyboard=cfg_keyboard(),
+        page_css=['annotator.css'],
     )
 
 @bp.route('/preview')
@@ -52,7 +53,7 @@ def preview():
 @bp.route('/importer')
 def importer():
     facilities = cfg_importer_facilities()
-    return render_template('importer.html', active_tab='importer', facilities=facilities)
+    return render_template('importer.html', active_tab='importer', facilities=facilities, page_css=['importer.css'])
 
 
 @bp.route('/settings')

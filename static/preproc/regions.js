@@ -315,9 +315,13 @@
   }
 
   function addRegion(ctx){
+    // If another region is being edited, exit that edit state first
+    if (ctx.editing) exitEdit(ctx);
     const name = uniqueRegionName(ctx, 'Region');
     ctx.regions[name] = { enabled: true, sheltered: false, type: 'Open', cells: [] };
     renderTable(ctx);
+    // Automatically enter edit state for the new region
+    enterEdit(ctx, name);
     if (ctx.showAll) try{ document.dispatchEvent(new CustomEvent('preproc:request-overlay-redraw')); }catch(e){}
     scheduleSave(ctx);
   }
@@ -382,13 +386,15 @@
   }
 
   function enterEdit(ctx, name){
+    // If another region is already being edited, exit that first
+    if (ctx.editing && ctx.editing !== name) exitEdit(ctx);
     ctx.editing = name;
     try{ document.dispatchEvent(new CustomEvent('preproc:regions-editing', { detail: { editing: true } })); }catch(e){}
     const overlay = U.$('#pp-overlay');
     if (overlay) overlay.style.pointerEvents = 'auto';
     // Add listeners
     if (!ctx._overlayClick){ ctx._overlayClick = (ev)=> toggleCellAtEvent(ctx, ev); }
-    if (!ctx._escKey){ ctx._escKey = (ev)=>{ if (ev.key==='Escape'){ exitEdit(ctx); } }; }
+    if (!ctx._escKey){ ctx._escKey = (ev)=>{ if (ev.key==='Escape' || ev.key==='Enter'){ exitEdit(ctx); } }; }
     overlay && overlay.addEventListener('click', ctx._overlayClick);
     window.addEventListener('keydown', ctx._escKey);
     drawRegionOverlay(ctx);
