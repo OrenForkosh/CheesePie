@@ -356,55 +356,120 @@
     drawMask();
   });
 
-  // ── Pixel inspection ──────────────────────────────────────────────────────
-  interactCanvas.addEventListener('click', (e) => {
+  // ── Pixel / area inspection ───────────────────────────────────────────────
+  // Click  → single pixel crosshair + exact RGB
+  // Drag   → selection rectangle + average RGB (always from raw image)
+
+  let _drag = null; // { x0, y0, x1, y1 } in canvas display coords
+
+  interactCanvas.addEventListener('mousedown', (e) => {
+    const r = interactCanvas.getBoundingClientRect();
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    _drag = { x0: x, y0: y, x1: x, y1: y };
+  });
+
+  interactCanvas.addEventListener('mousemove', (e) => {
+    if (!_drag) return;
+    const r = interactCanvas.getBoundingClientRect();
+    _drag.x1 = e.clientX - r.left;
+    _drag.y1 = e.clientY - r.top;
+    _drawSelectionRect(_drag);
+  });
+
+  // Finish on mouseup anywhere (handles releasing outside the canvas)
+  window.addEventListener('mouseup', (e) => {
+    if (!_drag) return;
+    const d = _drag;
+    _drag = null;
+
     const srcImg = state.mode === 'live' ? streamImg : frameImg;
     if (!srcImg.naturalWidth) return;
 
-    const rect   = interactCanvas.getBoundingClientRect();
-    const cx     = e.clientX - rect.left;
-    const cy     = e.clientY - rect.top;
-    const px     = Math.round((cx / rect.width)  * srcImg.naturalWidth);
-    const py     = Math.round((cy / rect.height) * srcImg.naturalHeight);
+    const r    = interactCanvas.getBoundingClientRect();
+    const dist = Math.max(Math.abs(d.x1 - d.x0), Math.abs(d.y1 - d.y0));
 
-    if (state.mode === 'live') {
-      // For live stream, grab a fresh snapshot to inspect the pixel
-      const tmp = new Image();
-      tmp.crossOrigin = 'anonymous';
-      tmp.onload = () => samplePixel(tmp, px, py, cx, cy, rect);
-      tmp.src    = snapshotUrl();
+    if (dist < 4) {
+      // ── Single pixel ──────────────────────────────────────────────
+      const cx = d.x0, cy = d.y0;
+      const px = Math.round((cx / r.width)  * srcImg.naturalWidth);
+      const py = Math.round((cy / r.height) * srcImg.naturalHeight);
+      _drawCrosshair(cx, cy);
+      const sample = (img) => {
+        const off = _offscreen(img);
+        try {
+          const p = off.getImageData(px, py, 1, 1).data;
+          _showPixelInfo(`(${px}, ${py})`, p[0], p[1], p[2]);
+        } catch { pixelCoords.textContent = `(${px}, ${py})`; pixelRgb.textContent = 'unavailable'; }
+        pixelBar.style.display = '';
+      };
+      if (state.mode === 'live') { const t = new Image(); t.onload = () => sample(t); t.src = snapshotUrl(); }
+      else sample(srcImg);
+
     } else {
-      samplePixel(srcImg, px, py, cx, cy, rect);
-    }
+      // ── Area selection ────────────────────────────────────────────
+      const x0 = Math.min(d.x0, d.x1), y0 = Math.min(d.y0, d.y1);
+      const x1 = Math.max(d.x0, d.x1), y1 = Math.max(d.y0, d.y1);
+      _drawSelectionRect({ x0, y0, x1, y1 }); // keep rect visible
 
-    // Draw crosshair
+      const scaleX = srcImg.naturalWidth  / r.width;
+      const scaleY = srcImg.naturalHeight / r.height;
+      const px0 = Math.round(x0 * scaleX), py0 = Math.round(y0 * scaleY);
+      const pw  = Math.max(1, Math.round((x1 - x0) * scaleX));
+      const ph  = Math.max(1, Math.round((y1 - y0) * scaleY));
+
+      const sampleArea = (img) => {
+        const off = _offscreen(img);
+        try {
+          const data = off.getImageData(px0, py0, pw, ph).data;
+          let rs = 0, gs = 0, bs = 0;
+          const n = pw * ph;
+          for (let i = 0; i < data.length; i += 4) { rs += data[i]; gs += data[i+1]; bs += data[i+2]; }
+          _showPixelInfo(`(${px0},${py0}) – (${px0+pw},${py0+ph})  ${pw}×${ph} px`,
+                         Math.round(rs/n), Math.round(gs/n), Math.round(bs/n), 'avg ');
+        } catch { pixelCoords.textContent = 'Area unavailable'; pixelRgb.textContent = ''; }
+        pixelBar.style.display = '';
+      };
+      if (state.mode === 'live') { const t = new Image(); t.onload = () => sampleArea(t); t.src = snapshotUrl(); }
+      else sampleArea(srcImg);
+    }
+  });
+
+  function _offscreen(img) {
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth || img.width; c.height = img.naturalHeight || img.height;
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return c.getContext('2d');
+  }
+
+  function _showPixelInfo(coords, r, g, b, prefix = '') {
+    pixelCoords.textContent      = coords;
+    pixelRgb.textContent         = `${prefix}R:${r}  G:${g}  B:${b}`;
+    pixelSwatch.style.background = `rgb(${r},${g},${b})`;
+  }
+
+  function _drawCrosshair(cx, cy) {
     const ctx = interactCanvas.getContext('2d');
     ctx.clearRect(0, 0, interactCanvas.width, interactCanvas.height);
     ctx.strokeStyle = 'rgba(255,255,80,0.9)';
     ctx.lineWidth   = 1;
     ctx.setLineDash([4, 3]);
-    ctx.beginPath(); ctx.moveTo(cx, 0);      ctx.lineTo(cx, interactCanvas.height); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(0,  cy);     ctx.lineTo(interactCanvas.width, cy);  ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, interactCanvas.height); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(interactCanvas.width, cy);  ctx.stroke();
     ctx.setLineDash([]);
-  });
+  }
 
-  function samplePixel(img, px, py, cx, cy, rect) {
-    const tmp = document.createElement('canvas');
-    tmp.width  = img.naturalWidth  || img.width;
-    tmp.height = img.naturalHeight || img.height;
-    const ctx  = tmp.getContext('2d');
-    ctx.drawImage(img, 0, 0, tmp.width, tmp.height);
-    try {
-      const d = ctx.getImageData(px, py, 1, 1).data;
-      const r = d[0], g = d[1], b = d[2];
-      pixelCoords.textContent = `(${px}, ${py})`;
-      pixelRgb.textContent    = `R:${r}  G:${g}  B:${b}`;
-      pixelSwatch.style.background = `rgb(${r},${g},${b})`;
-      pixelBar.style.display = '';
-    } catch (err) {
-      pixelCoords.textContent = `(${px}, ${py})`;
-      pixelRgb.textContent    = 'Pixel unavailable';
-    }
+  function _drawSelectionRect({ x0, y0, x1, y1 }) {
+    const ctx = interactCanvas.getContext('2d');
+    ctx.clearRect(0, 0, interactCanvas.width, interactCanvas.height);
+    const rx = Math.min(x0, x1), ry = Math.min(y0, y1);
+    const rw = Math.abs(x1 - x0),  rh = Math.abs(y1 - y0);
+    ctx.fillStyle   = 'rgba(255,255,80,0.08)';
+    ctx.fillRect(rx, ry, rw, rh);
+    ctx.strokeStyle = 'rgba(255,255,80,0.9)';
+    ctx.lineWidth   = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.strokeRect(rx + 0.5, ry + 0.5, rw, rh);
+    ctx.setLineDash([]);
   }
 
   // ── Histogram ─────────────────────────────────────────────────────────────
