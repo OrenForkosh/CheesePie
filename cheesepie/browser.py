@@ -36,16 +36,21 @@ def list_dir_contents(directory: Path, query: str | None = None) -> List[Dict[st
             if name_re is not None and not name_re.match(entry.name):
                 continue
         stat = entry.stat()
-        items.append(
-            {
-                "name": entry.name,
-                "path": str(entry.resolve()),
-                "is_dir": entry.is_dir(),
-                "size": stat.st_size,
-                "modified": stat.st_mtime,
-                "ext": entry.suffix.lower(),
-            }
-        )
+        item: Dict[str, Any] = {
+            "name": entry.name,
+            "path": str(entry.resolve()),
+            "is_dir": entry.is_dir(),
+            "size": stat.st_size,
+            "modified": stat.st_mtime,
+            "ext": entry.suffix.lower(),
+        }
+        if entry.is_file():
+            item["has_preproc"] = (
+                (entry.parent / f"{entry.name}.preproc.json").exists()
+                or entry.with_suffix(".preproc.json").exists()
+            )
+            item["has_annotations"] = entry.with_suffix(".json").exists()
+        items.append(item)
     return items
 
 

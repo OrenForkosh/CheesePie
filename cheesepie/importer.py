@@ -1392,6 +1392,122 @@ def api_import_next_batch():
 
 __all__ = ['bp']
 
+
+def _parse_date_folder(name: str) -> Optional[str]:
+    """Extract ISO date from folder names like YYYYMMDDXX → 'YYYY-MM-DD', or None."""
+    m = re.match(r'^(\d{4})(\d{2})(\d{2})', name)
+    if not m:
+        return None
+    try:
+        y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        datetime(y, mo, d)
+        return f"{y:04d}-{mo:02d}-{d:02d}"
+    except Exception:
+        return None
+
+
+@bp.route('/browse_source')
+def api_import_browse_source():
+    """Browse source directory: return camera folders and date subfolders with file counts."""
+    facility = str((request.args.get('facility') or '').strip().lower())
+    facs = cfg_importer_facilities()
+    if facility not in facs:
+        return jsonify({'error': 'Unknown facility'}), 400
+    fac = facs[facility]
+    source_dir = Path(fac.get('source_dir', '')).expanduser()
+    if not source_dir.exists() or not source_dir.is_dir():
+        return jsonify({'error': 'Source folder not found', 'path': str(source_dir)}), 400
+
+    exts = set(cfg_importer_source_exts())
+    cam_pat = str(fac.get('camera_pattern', '') or '')
+
+    try:
+        cam_list = [int(c) for c in (fac.get('camera_list') or [])]
+    except Exception:
+        cam_list = []
+    if not cam_list:
+        try:
+            n = int(fac.get('cameras') or 0)
+            cam_list = list(range(1, n + 1)) if n > 0 else []
+        except Exception:
+            cam_list = []
+
+    cameras = []
+    for cam in cam_list:
+        sub = _format_cam_glob(cam_pat or '{cam}', cam)
+        root = source_dir / sub
+        if not root.exists() or not root.is_dir():
+            cameras.append({'camera': cam, 'folder': sub, 'exists': False, 'date_folders': []})
+            continue
+
+        date_folders = []
+        try:
+            for child in sorted(root.iterdir()):
+                if not child.is_dir():
+                    continue
+                file_count = sum(
+                    1 for f in child.iterdir()
+                    if f.is_file() and f.suffix.lower() in exts
+                )
+                folder_date = _parse_date_folder(child.name)
+                date_folders.append({
+                    'name': child.name,
+                    'date': folder_date,
+                    'file_count': file_count,
+                })
+        except Exception:
+            pass
+
+        cameras.append({'camera': cam, 'folder': sub, 'exists': True, 'date_folders': date_folders})
+
+    return jsonify({'ok': True, 'source_dir': str(source_dir), 'cameras': cameras})
+
+
+@bp.route('/browse_folder')
+def api_import_browse_folder():
+    """List video files in source_dir/camera_folder/date_subfolder."""
+    facility = str((request.args.get('facility') or '').strip().lower())
+    try:
+        camera = int(request.args.get('camera', '0'))
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Invalid camera'}), 400
+    subfolder = str(request.args.get('subfolder') or '').strip()
+    if not subfolder:
+        return jsonify({'error': 'subfolder required'}), 400
+
+    facs = cfg_importer_facilities()
+    if facility not in facs:
+        return jsonify({'error': 'Unknown facility'}), 400
+    fac = facs[facility]
+    source_dir = Path(fac.get('source_dir', '')).expanduser()
+    cam_pat = str(fac.get('camera_pattern', '') or '')
+    cam_folder = _format_cam_glob(cam_pat or '{cam}', camera)
+    folder_path = source_dir / cam_folder / subfolder
+
+    if not folder_path.exists() or not folder_path.is_dir():
+        return jsonify({'error': 'Folder not found', 'path': str(folder_path)}), 400
+
+    exts = set(cfg_importer_source_exts())
+    files = []
+    try:
+        for p in sorted(folder_path.iterdir()):
+            if p.is_file() and p.suffix.lower() in exts:
+                ts = _parse_start_from_stem(p.stem)
+                try:
+                    size = p.stat().st_size
+                except OSError:
+                    size = None
+                files.append({
+                    'name': p.name,
+                    'size': size,
+                    'timestamp': ts.strftime('%H:%M:%S') if ts else None,
+                })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+    return jsonify({'ok': True, 'files': files, 'folder': str(folder_path)})
+
+
 @bp.route('/check_source')
 def api_import_check_source():
     """Verify that a facility's source_dir exists and is accessible."""

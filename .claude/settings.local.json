@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l /Users/forkosh/Documents/development/git/CheesePie/cheesepie/*.py)",
+      "Bash(/tmp/analyze.txt:*)",
+      "Read(//tmp/**)",
+      "Bash(python3:*)",
+      "Bash(pip show:*)",
+      "Bash(ffmpeg -version)"
+    ]
+  }
+}

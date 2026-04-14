@@ -1,33 +1,36 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="panel">
-  <div class="panel-header" style="display:flex; align-items:center; justify-content:space-between">
-    <div class="header-left">
-      <h1>Preview</h1>
-      <p class="muted">Preview a video with superimposed tracking.</p>
-    </div>
-    <div style="display:flex; gap:8px; align-items:center">
-      <button class="btn mini" id="preview-help-shortcuts" title="Show keyboard shortcuts">?</button>
-    </div>
-  </div>
-  <div style="padding: 8px 12px">
-    <div style="display:grid; grid-template-columns: 1fr; gap: 12px">
-      <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
-        <label for="an-name">Video</label>
-        <input type="text" id="an-name" value="{{ video or '' }}" readonly style="flex: 1" />
+<section class="panel panel--nochrome">
+  <div class="controls-trans" style="grid-template-columns: 1fr">
+    <div class="subpanel">
+      <div class="control-group header-left" style="margin-bottom: 8px">
+        <h1>Preview</h1>
+        <p class="muted">Preview a video with superimposed tracking.</p>
       </div>
-      <div class="video-wrap" style="max-height: calc(78vh);">
-        <div class="video-preview">
-          <div style="position:relative">
-            <video id="an-video" preload="metadata" controls
-              style="display:block; width:100%; height:auto; max-height: calc(78vh); object-fit:contain; background: var(--surface)"></video>
-            <canvas id="an-canvas"
-              style="position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none"></canvas>
+      <div class="control-group">
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
+          <div class="module-file-chip" data-module="preview" data-video="{{ video or '' }}" id="preview-chip" style="flex: 1; min-width: 0"></div>
+          <input type="text" id="an-name" value="{{ video or '' }}" readonly style="display:none" />
+          <button class="btn" id="preview-help-shortcuts" title="Show keyboard shortcuts">?</button>
+        </div>
+      </div>
+
+      <div class="control-group" style="margin-top: 12px">
+        <div class="video-wrap preview-video-wrap">
+          <div class="video-preview preview-drop-target" id="preview-drop-target">
+            <div class="preview-drop-overlay" id="preview-drop-overlay">Drop video to preview</div>
+            <div style="position:relative">
+              <video id="an-video" preload="metadata" controls
+                style="display:block; width:100%; height:auto; object-fit:contain; background: var(--surface)"></video>
+              <canvas id="an-canvas"
+                style="position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none"></canvas>
+            </div>
           </div>
         </div>
       </div>
-      <div class="muted" id="an-msg"></div>
-      <div class="detail-grid" style="grid-template-columns: auto 1fr auto 1fr;">
+
+      <div class="muted" id="an-msg" style="margin-top: 8px"></div>
+      <div class="detail-grid" style="grid-template-columns: auto 1fr auto 1fr; margin-top: 8px">
         <div class="key">Time</div>
         <div id="an-time">0:00.000</div>
         <div class="key">FPS</div>
@@ -38,18 +41,8 @@
     </div>
   </div>
 </section>
-<div id="preview-shortcuts-overlay" class="overlay" hidden>
-  <div class="overlay-panel">
-    <div class="overlay-header">
-      <h3>Keyboard Shortcuts</h3>
-      <button class="btn mini" id="preview-close-shortcuts">Close</button>
-    </div>
-    <div id="preview-shortcuts-content" class="shortcut-list"></div>
-  </div>
-</div>
-
 <script>
-  window.addEventListener('DOMContentLoaded', function () {
+  function initPreview() {
     let videoPath = {{ (video or '') | tojson }};
   const v = document.getElementById('an-video');
   const c = document.getElementById('an-canvas');
@@ -59,19 +52,128 @@
   const nameEl = document.getElementById('an-name');
   const timeEl = document.getElementById('an-time');
   const helpBtn = document.getElementById('preview-help-shortcuts');
-  const helpOverlay = document.getElementById('preview-shortcuts-overlay');
-  const helpClose = document.getElementById('preview-close-shortcuts');
-  const helpContent = document.getElementById('preview-shortcuts-content');
+  const dropTarget = document.getElementById('preview-drop-target');
   const facilitySel = document.getElementById('app-facility');
   let fac = facilitySel && facilitySel.value || '';
   document.addEventListener('app:facility-changed', (e) => { try { fac = (e && e.detail && e.detail.name) || ''; } catch { } })
+
+  function hasDragFiles(ev) {
+    try {
+      const types = ev && ev.dataTransfer && ev.dataTransfer.types;
+      if (types && Array.from(types).includes('Files')) return true;
+      return Boolean(ev && ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files.length);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function setDropActive(active) {
+    if (!dropTarget) return;
+    if (active) dropTarget.classList.add('drag-active');
+    else dropTarget.classList.remove('drag-active');
+  }
+
+  async function uploadDropFile(file) {
+    if (!file) return;
+    if (msgEl) msgEl.textContent = `Uploading ${file.name}...`;
+    const body = new FormData();
+    body.append('file', file);
+    let resp = null;
+    try {
+      resp = await fetch('/api/preview_upload', { method: 'POST', body });
+    } catch (e) {
+      if (msgEl) msgEl.textContent = 'Upload failed. Check connection.';
+      return;
+    }
+    if (!resp || !resp.ok) {
+      let errMsg = '';
+      try {
+        const err = await resp.json();
+        errMsg = err && err.error ? err.error : '';
+      } catch (_) {
+        try { errMsg = await resp.text(); } catch (_) { }
+      }
+      if (msgEl) msgEl.textContent = `Upload failed${errMsg ? `: ${errMsg}` : ''}.`;
+      return;
+    }
+    let data = null;
+    try { data = await resp.json(); } catch (_) { }
+    const newPath = data && data.path ? String(data.path) : '';
+    if (!newPath) {
+      if (msgEl) msgEl.textContent = 'Upload failed: no path returned.';
+      return;
+    }
+    if (nameEl) nameEl.value = newPath;
+    if (window.cheesepieSetModuleVideo) window.cheesepieSetModuleVideo('preview', newPath);
+    try { localStorage.setItem('cheesepie.preview.lastVideo', newPath); } catch (_) { }
+    if (msgEl) msgEl.textContent = 'Upload complete. Loading preview...';
+    window.location.href = '/preview?video=' + encodeURIComponent(newPath);
+  }
+
+  function setupDropTarget() {
+    if (!dropTarget) return;
+    let dragDepth = 0;
+    const onDragEnter = (e) => {
+      if (!hasDragFiles(e)) return;
+      e.preventDefault();
+      dragDepth += 1;
+      setDropActive(true);
+    };
+    const onDragOver = (e) => {
+      if (!hasDragFiles(e)) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+      setDropActive(true);
+    };
+    const onDragLeave = (e) => {
+      if (!hasDragFiles(e)) return;
+      e.preventDefault();
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (dragDepth === 0) setDropActive(false);
+    };
+    const onDrop = (e) => {
+      if (!hasDragFiles(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      dragDepth = 0;
+      setDropActive(false);
+      const files = e.dataTransfer && e.dataTransfer.files;
+      if (!files || !files.length) return;
+      uploadDropFile(files[0]);
+    };
+    dropTarget.addEventListener('dragenter', onDragEnter);
+    dropTarget.addEventListener('dragover', onDragOver);
+    dropTarget.addEventListener('dragleave', onDragLeave);
+    dropTarget.addEventListener('drop', onDrop);
+    if (!window.CHEESEPIE_PREVIEW_DROP_LISTENERS) {
+      window.CHEESEPIE_PREVIEW_DROP_LISTENERS = true;
+      document.addEventListener('dragover', (e) => {
+        if (window.cheesepieIsActivePage && !window.cheesepieIsActivePage('/preview')) return;
+        if (hasDragFiles(e)) e.preventDefault();
+      });
+      document.addEventListener('drop', (e) => {
+        if (window.cheesepieIsActivePage && !window.cheesepieIsActivePage('/preview')) return;
+        if (hasDragFiles(e)) e.preventDefault();
+      });
+    }
+  }
+
+  setupDropTarget();
 
   // Reuse last previewed video if none provided (remember across tabs)
   if (!videoPath) {
     try { videoPath = localStorage.getItem('cheesepie.preview.lastVideo') || ''; } catch (_) { videoPath = ''; }
     if (videoPath && nameEl) nameEl.value = videoPath;
   }
-  if (!videoPath) { msgEl.textContent = 'No video provided. Open from Browser → Preview.'; return; }
+  if (window.cheesepieSetModuleVideo) {
+    window.cheesepieSetModuleVideo('preview', videoPath || '');
+  } else {
+    try {
+      if (videoPath) localStorage.setItem('cheesepie.preview.video', videoPath);
+      else localStorage.removeItem('cheesepie.preview.video');
+    } catch {}
+  }
+  if (!videoPath) { msgEl.textContent = 'No video provided. Drag a video here or open from Browser → Preview.'; return; }
   try { localStorage.setItem('cheesepie.preview.lastVideo', videoPath); } catch (_) { }
   // Load video
   (function loadVideo() { try { const s = document.createElement('source'); s.src = '/media?path=' + encodeURIComponent(videoPath); v.appendChild(s); v.load(); } catch (e) { } })();
@@ -280,30 +382,24 @@
     const delta = dir / fps;
     seekSeconds(delta);
   }
-  function fmtKey(key) { return `<span class="kbd">${key}</span>`; }
-  function renderShortcuts() {
-    if (!helpContent) return;
-    const rows = [];
-    rows.push(`<div class="shortcut-item">${fmtKey('Space')} <span>Play / Pause</span></div>`);
-    rows.push(`<div class="shortcut-item">${fmtKey('←')} <span>Jump back ${jumpCfg.left || 0}s</span></div>`);
-    rows.push(`<div class="shortcut-item">${fmtKey('→')} <span>Jump forward ${jumpCfg.right || 0}s</span></div>`);
-    if (jumpCfg.shift) rows.push(`<div class="shortcut-item">${fmtKey('Shift + ←/→')} <span>Jump ${jumpCfg.shift}s</span></div>`);
-    if (jumpCfg.alt) rows.push(`<div class="shortcut-item">${fmtKey('Alt + ←/→')} <span>Jump ${jumpCfg.alt}s</span></div>`);
-    rows.push(`<div class="shortcut-item">${fmtKey(frameCfg.prev || '[')} <span>Previous frame</span></div>`);
-    rows.push(`<div class="shortcut-item">${fmtKey(frameCfg.next || ']')} <span>Next frame</span></div>`);
-    rows.push(`<div class="shortcut-item">${fmtKey('?')} <span>Show shortcuts</span></div>`);
-    helpContent.innerHTML = rows.join('');
+  function openShortcuts() {
+    if (window.CheesePieShortcuts && window.CheesePieShortcuts.renderPlaybackShortcuts) {
+      const rows = window.CheesePieShortcuts.renderPlaybackShortcuts();
+      window.CheesePieShortcuts.showOverlay('Keyboard Shortcuts', rows);
+      return;
+    }
   }
-  function openShortcuts() { renderShortcuts(); if (helpOverlay) helpOverlay.hidden = false; }
-  function closeShortcuts() { if (helpOverlay) helpOverlay.hidden = true; }
   helpBtn?.addEventListener('click', openShortcuts);
-  helpClose?.addEventListener('click', closeShortcuts);
-  helpOverlay?.addEventListener('click', (e) => { if (e.target === helpOverlay) closeShortcuts(); });
 
   document.addEventListener('keydown', (e) => {
+    if (window.cheesepieIsActivePage && !window.cheesepieIsActivePage('/preview')) return;
     const tag = (e.target && (e.target.tagName || '').toLowerCase());
     const isTyping = tag === 'input' || tag === 'textarea' || (e.target && e.target.isContentEditable);
-    if (helpOverlay && !helpOverlay.hidden && e.key === 'Escape') { e.preventDefault(); closeShortcuts(); return; }
+    const overlayOpen = window.CheesePieShortcuts && window.CheesePieShortcuts.isOverlayOpen && window.CheesePieShortcuts.isOverlayOpen();
+    if (overlayOpen) {
+      if (e.key === 'Escape') { return; }
+      return;
+    }
     if (isTyping) return;
     if (e.key === '?' || (e.key === '/' && e.shiftKey)) { e.preventDefault(); openShortcuts(); return; }
     if (e.code === 'Space' || e.key === ' ') { e.preventDefault(); if (v.paused) v.play(); else v.pause(); return; }
@@ -320,6 +416,11 @@
       seekSeconds(delta); return;
     }
   });
-  });
+  }
+  if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', initPreview);
+  } else {
+    initPreview();
+  }
 </script>
 {% endblock %}

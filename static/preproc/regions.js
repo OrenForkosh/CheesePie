@@ -394,7 +394,7 @@
     if (overlay) overlay.style.pointerEvents = 'auto';
     // Add listeners
     if (!ctx._overlayClick){ ctx._overlayClick = (ev)=> toggleCellAtEvent(ctx, ev); }
-    if (!ctx._escKey){ ctx._escKey = (ev)=>{ if (ev.key==='Escape' || ev.key==='Enter'){ exitEdit(ctx); } }; }
+    if (!ctx._escKey){ ctx._escKey = (ev)=>{ try{ if (window.cheesepieIsActivePage && !window.cheesepieIsActivePage('/preproc')) return; }catch(e){} if (ev.key==='Escape' || ev.key==='Enter'){ exitEdit(ctx); } }; }
     overlay && overlay.addEventListener('click', ctx._overlayClick);
     window.addEventListener('keydown', ctx._escKey);
     drawRegionOverlay(ctx);

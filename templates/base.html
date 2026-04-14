@@ -1,3 +1,7 @@
+{% macro render_layout(partial) %}
+{% if partial %}
+{{ caller() }}
+{% else %}
 <!doctype html>
 <html lang="en">
 
@@ -15,9 +19,9 @@
   </script>
   <link rel="stylesheet" href="/static/styles.css">
   {% if page_css %}
-    {% for css in page_css %}
-      <link rel="stylesheet" href="{{ url_for('static', filename=css) }}">
-    {% endfor %}
+  {% for css in page_css %}
+  <link rel="stylesheet" href="{{ url_for('static', filename=css) }}">
+  {% endfor %}
   {% endif %}
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
@@ -32,21 +36,22 @@
     <div class="brand">
       <div class="logo">🧀</div>
       <div class="title">
-        CheesePie
-        {% if app_version %}
-          <span class="version muted">{{ app_version }}</span>
+        CheeseIt! {% if app_version %}
+        <span class="version muted"> {{ app_version }}</span>
         {% endif %}
       </div>
     </div>
     <nav class="tabs">
       <a class="tab tab-browser {{ 'active' if active_tab == 'browser' else '' }}" href="/browser">Browser</a>
-      <a class="tab tab-preproc {{ 'active' if active_tab == 'preproc' else '' }}" href="/preproc">Preproc</a>
-      <a class="tab tab-annotator {{ 'active' if active_tab == 'annotator' else '' }}" href="/annotator">Annotator</a>
-      <a class="tab tab-preview {{ 'active' if active_tab == 'preview' else '' }}" href="/preview">Preview</a>
       <a class="tab tab-importer {{ 'active' if active_tab == 'importer' else '' }}" href="/importer">Importer</a>
-      <a class="tab tab-tasks {{ 'active' if active_tab == 'tasks' else '' }}" href="/tasks">Tasks</a>
-      <a class="tab tab-settings {{ 'active' if active_tab == 'settings' else '' }}" href="/settings" title="Settings"
-        aria-label="Settings">
+      <a class="tab tab-calibration {{ 'active' if active_tab == 'calibration' else '' }}" href="/calibration">Calibrate</a>
+      <span class="tab-separator" aria-hidden="true"></span>
+      <a class="tab tab-tasks {{ 'active' if active_tab == 'tasks' else '' }}" href="/tasks" aria-label="Tasks"
+        title="Tasks">
+        <span class="nav-icon icon-tasks" aria-hidden="true"></span>
+      </a>
+      <a class="tab tab-settings {{ 'active' if active_tab == 'settings' else '' }}" href="/settings"
+        aria-label="Settings" title="Settings">
         <span class="nav-icon icon-settings" aria-hidden="true"></span>
       </a>
       <span style="flex:1"></span>
@@ -60,9 +65,10 @@
     </nav>
   </header>
 
-  <main class="container">
-    {% block content %}{% endblock %}
+  <main class="container" id="app-main">
+    {{ caller() }}
   </main>
+  <div id="app-cache" hidden></div>
 
   <footer class="app-footer">
     <div class="footer-inner">
@@ -82,10 +88,34 @@
     </div>
   </footer>
 
+  <div id="module-modal" class="module-modal" hidden aria-modal="true" role="dialog">
+    <div class="module-modal-box">
+      <button class="module-modal-close" id="module-modal-close" title="Back to Browser" aria-label="Close">×</button>
+      <div class="module-modal-content" id="module-modal-content"></div>
+    </div>
+  </div>
+
+  <div id="app-shortcuts-overlay" class="overlay" hidden>
+    <div class="overlay-panel">
+      <div class="overlay-header">
+        <h3 id="app-shortcuts-title">Keyboard Shortcuts</h3>
+        <button class="btn mini" id="app-shortcuts-close">Close</button>
+      </div>
+      <div id="app-shortcuts-content" class="shortcut-list"></div>
+    </div>
+  </div>
+
   <script>
     window.CHEESEPIE = {{ public_config | tojson }};
   </script>
+  <script src="/static/shortcuts.js"></script>
   <script src="/static/app.js"></script>
 </body>
 
 </html>
+{% endif %}
+{% endmacro %}
+
+{% call render_layout(partial) %}
+{% block content %}{% endblock %}
+{% endcall %}

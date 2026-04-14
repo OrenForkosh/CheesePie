@@ -72,6 +72,13 @@
     "source_extensions": [".mp4", ".mkv", ".avi"],
     "working_dir": "./working"
   },
+  "calibration": {
+    "onvif_user": "admin",
+    "onvif_password": "12345",
+    "subnet": "10.0.0",
+    "onvif_port": 80,
+    "mask_path": "external/camera_calibration_mask.png"
+  },
   "matlab": {
     "binary": "/Applications/MATLAB_R2025a.app/bin/matlab",
     "enabled": false,

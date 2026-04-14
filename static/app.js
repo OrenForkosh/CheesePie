@@ -70,29 +70,486 @@
     /* no-op */
   }
   const $ = (sel, el = document) => el.querySelector(sel);
+  const mainEl = document.getElementById("app-main");
+  const cacheEl = document.getElementById("app-cache");
+  const pageCache = new Map();
+  let currentPage = null;
+  const loadedCss = new Set();
+  const loadedScripts = new Set();
+  const PAGE_CSS = {
+    "/browser": ["browser.css"],
+    "/preproc": ["preproc.css"],
+    "/annotator": ["annotator.css"],
+    "/importer": ["importer.css"],
+    "/calibration": ["calibration.css"],
+  };
+  const QUERY_SENSITIVE = new Set(["/preproc", "/annotator", "/preview"]);
+  const MODAL_PAGES = new Set(["/preproc", "/annotator", "/preview"]);
+  const MODULE_VIDEO_KEYS = {
+    preproc: "cheesepie.preproc.video",
+    annotator: "cheesepie.annotator.video",
+    preview: "cheesepie.preview.video",
+  };
+  const pageRefreshers = {};
+
+  function setActivePage(pathname) {
+    const active = normalizePath(pathname);
+    window.CHEESEPIE_ACTIVE_PAGE = active;
+    try { document.body.setAttribute("data-active-page", active); } catch { }
+    try { document.dispatchEvent(new CustomEvent("app:page-changed", { detail: { path: active } })); } catch { }
+  }
+
+  window.cheesepieIsActivePage = function (path) {
+    try {
+      const active = window.CHEESEPIE_ACTIVE_PAGE || normalizePath(window.location.pathname);
+      return normalizePath(path) === normalizePath(active);
+    } catch (e) {
+      return true;
+    }
+  };
+
+  window.cheesepieRegisterPageRefresher = function (name, fn) {
+    if (!name || typeof fn !== "function") return;
+    pageRefreshers[String(name)] = fn;
+  };
+
+  function refreshPage(pathname) {
+    const key = normalizePath(pathname).replace("/", "") || "browser";
+    const fn = pageRefreshers[key];
+    if (typeof fn === "function") {
+      try { fn(); } catch { }
+    }
+  }
+
+  function getModuleVideo(name) {
+    const key = MODULE_VIDEO_KEYS[name];
+    if (!key) return "";
+    try {
+      return (localStorage.getItem(key) || "").trim();
+    } catch {
+      return "";
+    }
+  }
+
+  function setModuleVideo(name, path) {
+    const key = MODULE_VIDEO_KEYS[name];
+    if (!key) return;
+    try {
+      const val = (path || "").trim();
+      if (val) {
+        localStorage.setItem(key, val);
+      } else {
+        localStorage.removeItem(key);
+      }
+    } catch { }
+    try { document.dispatchEvent(new CustomEvent("app:module-video-changed", { detail: { name, path } })); } catch { }
+  }
+
+  window.cheesepieSetModuleVideo = setModuleVideo;
+
+  function normalizePath(path) {
+    return path === "/" ? "/browser" : path;
+  }
+
+  function getPathInfo(url) {
+    const u = new URL(url, window.location.origin);
+    const pathname = normalizePath(u.pathname);
+    return { pathname, search: u.search, full: pathname + u.search };
+  }
+
+  function ensureCss(pathname) {
+    const files = PAGE_CSS[pathname] || [];
+    files.forEach((file) => {
+      const href = new URL(`/static/${file}`, window.location.origin).toString();
+      if (loadedCss.has(href)) return;
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = href;
+      document.head.appendChild(link);
+      loadedCss.add(href);
+    });
+  }
+
+  function primeCssCache() {
+    document.querySelectorAll('link[rel="stylesheet"]').forEach((link) => {
+      if (link && link.href) loadedCss.add(link.href);
+    });
+  }
+
+  function wrapInitialPage() {
+    if (!mainEl || !cacheEl) return;
+    const wrapper = document.createElement("div");
+    wrapper.className = "page-frame";
+    wrapper.dataset.pagePath = normalizePath(window.location.pathname);
+    wrapper.dataset.pageUrl = normalizePath(window.location.pathname) + window.location.search;
+    while (mainEl.firstChild) {
+      wrapper.appendChild(mainEl.firstChild);
+    }
+    mainEl.appendChild(wrapper);
+    pageCache.set(wrapper.dataset.pagePath, {
+      node: wrapper,
+      url: wrapper.dataset.pageUrl,
+      scrollY: window.scrollY || 0,
+    });
+    currentPage = wrapper.dataset.pagePath;
+    setActivePage(wrapper.dataset.pagePath);
+    ensureCss(wrapper.dataset.pagePath);
+  }
+
+  function updateActiveTab(pathname) {
+    setActivePage(pathname);
+    const target = normalizePath(pathname);
+    const tabs = document.querySelectorAll("nav.tabs .tab");
+    tabs.forEach((tab) => tab.classList.remove("active"));
+    const selectors = {
+      "/browser": ".tab-browser",
+      "/preproc": ".tab-preproc",
+      "/annotator": ".tab-annotator",
+      "/preview": ".tab-preview",
+      "/importer": ".tab-importer",
+      "/calibration": ".tab-calibration",
+      "/tasks": ".tab-tasks",
+      "/settings": ".tab-settings",
+    };
+    const sel = selectors[target];
+    const el = sel ? document.querySelector(sel) : null;
+    if (el) el.classList.add("active");
+    refreshPage(pathname);
+  }
+
+  function parseFragment(html) {
+    const tpl = document.createElement("template");
+    tpl.innerHTML = html.trim();
+    const fragment = tpl.content;
+    const scripts = Array.from(fragment.querySelectorAll("script"));
+    scripts.forEach((script) => script.remove());
+    return { fragment, scripts };
+  }
+
+  function loadScriptTag(script) {
+    return new Promise((resolve, reject) => {
+      const src = script.getAttribute("src");
+      if (src) {
+        const abs = new URL(src, window.location.origin).toString();
+        if (loadedScripts.has(abs)) {
+          resolve();
+          return;
+        }
+        const tag = document.createElement("script");
+        tag.src = abs;
+        if (script.type) tag.type = script.type;
+        tag.async = false;
+        tag.onload = () => {
+          loadedScripts.add(abs);
+          resolve();
+        };
+        tag.onerror = () => reject(new Error(`Failed to load ${abs}`));
+        document.body.appendChild(tag);
+      } else {
+        const tag = document.createElement("script");
+        if (script.type) tag.type = script.type;
+        tag.textContent = script.textContent || "";
+        document.body.appendChild(tag);
+        document.body.removeChild(tag);
+        resolve();
+      }
+    });
+  }
+
+  async function runScripts(scripts) {
+    for (const script of scripts) {
+      try {
+        await loadScriptTag(script);
+      } catch (e) {
+        throw e;
+      }
+    }
+  }
+
+  // Like loadScriptTag but always re-executes even if already loaded.
+  // Used for modal pages whose init() must run on every open.
+  function loadScriptTagForce(script) {
+    return new Promise((resolve, reject) => {
+      const src = script.getAttribute("src");
+      if (src) {
+        const abs = new URL(src, window.location.origin).toString();
+        const tag = document.createElement("script");
+        tag.src = abs;
+        if (script.type) tag.type = script.type;
+        tag.async = false;
+        tag.onload = () => { loadedScripts.add(abs); resolve(); };
+        tag.onerror = () => reject(new Error(`Failed to load ${abs}`));
+        document.body.appendChild(tag);
+      } else {
+        const tag = document.createElement("script");
+        if (script.type) tag.type = script.type;
+        tag.textContent = script.textContent || "";
+        document.body.appendChild(tag);
+        document.body.removeChild(tag);
+        resolve();
+      }
+    });
+  }
+
+  async function runScriptsForModal(scripts) {
+    for (const script of scripts) {
+      try {
+        await loadScriptTagForce(script);
+      } catch (e) {
+        throw e;
+      }
+    }
+  }
+
+  function cacheEntry(pathname) {
+    return pageCache.get(pathname);
+  }
+
+  function showPage(pathname) {
+    if (!mainEl || !cacheEl) return;
+    if (currentPage && currentPage !== pathname) {
+      const current = cacheEntry(currentPage);
+      if (current && current.node) {
+        current.scrollY = window.scrollY || 0;
+        cacheEl.appendChild(current.node);
+      }
+    }
+    const entry = cacheEntry(pathname);
+    if (!entry || !entry.node) return;
+    mainEl.appendChild(entry.node);
+    currentPage = pathname;
+    updateActiveTab(pathname);
+    const scrollY = entry.scrollY || 0;
+    window.scrollTo(0, scrollY);
+  }
+
+  async function fetchPartial(url, pathname, search) {
+    const partialUrl = `/partials${pathname}${search || ""}`;
+    const resp = await fetch(partialUrl, { headers: { "X-Requested-With": "cheesepie" } });
+    if (!resp.ok) {
+      throw new Error(`Failed to load ${partialUrl}`);
+    }
+    const html = await resp.text();
+    const { fragment, scripts } = parseFragment(html);
+    const wrapper = document.createElement("div");
+    wrapper.className = "page-frame";
+    wrapper.dataset.pagePath = pathname;
+    wrapper.dataset.pageUrl = pathname + (search || "");
+    wrapper.appendChild(fragment);
+    pageCache.set(pathname, {
+      node: wrapper,
+      url: wrapper.dataset.pageUrl,
+      scrollY: 0,
+    });
+    showPage(pathname);
+    await runScripts(scripts);
+    refreshPage(pathname);
+  }
+
+  function shouldSoftNavigate(url) {
+    if (!mainEl || !cacheEl) return false;
+    const u = new URL(url, window.location.origin);
+    const pathname = normalizePath(u.pathname);
+    const allowed = new Set([
+      "/browser",
+      "/preproc",
+      "/annotator",
+      "/preview",
+      "/importer",
+      "/calibration",
+      "/tasks",
+      "/settings",
+    ]);
+    if (!allowed.has(pathname)) return false;
+    if (u.pathname.startsWith("/auth")) return false;
+    return true;
+  }
+
+  function closeModuleModal() {
+    const modal = document.getElementById("module-modal");
+    if (!modal || modal.hidden) return;
+    modal.hidden = true;
+    document.body.classList.remove("modal-open");
+  }
+
+  async function openModuleModal(pathname, search, full, opts) {
+    const modal = document.getElementById("module-modal");
+    const content = document.getElementById("module-modal-content");
+    if (!modal || !content) { window.location.href = full; return; }
+    ensureCss(pathname);
+    content.innerHTML = '<div class="placeholder muted" style="padding:48px;text-align:center">Loading…</div>';
+    modal.hidden = false;
+    document.body.classList.add("modal-open");
+    try {
+      const partialUrl = `/partials${pathname}${search || ""}`;
+      const resp = await fetch(partialUrl, { headers: { "X-Requested-With": "cheesepie" } });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const html = await resp.text();
+      const { fragment, scripts } = parseFragment(html);
+      content.innerHTML = "";
+      content.appendChild(fragment);
+      await runScriptsForModal(scripts);
+      refreshPage(pathname);
+    } catch (e) {
+      content.innerHTML = `<div class="muted" style="padding:48px;text-align:center">Failed to load. <a href="${full}">Open directly</a></div>`;
+    }
+    updateActiveTab(pathname);
+    if (!opts.fromPop) {
+      history.pushState({ url: full, isModal: true }, "", full);
+    }
+  }
+
+  async function navigateSoft(url, opts = {}) {
+    if (!shouldSoftNavigate(url)) {
+      window.location.href = url;
+      return;
+    }
+    const { pathname, search, full } = getPathInfo(url);
+
+    // Modal pages: render in overlay, keep background page intact
+    if (MODAL_PAGES.has(pathname)) {
+      await openModuleModal(pathname, search, full, opts);
+      return;
+    }
+
+    // Non-modal navigation: close any open modal first
+    closeModuleModal();
+
+    const existing = cacheEntry(pathname);
+    if (QUERY_SENSITIVE.has(pathname) && existing && existing.url !== full) {
+      window.location.href = url;
+      return;
+    }
+    if (existing && existing.url !== full) {
+      try {
+        if (existing.node && existing.node.parentElement) {
+          existing.node.parentElement.removeChild(existing.node);
+        }
+      } catch { }
+      pageCache.delete(pathname);
+    }
+    ensureCss(pathname);
+    if (existing && existing.url === full) {
+      showPage(pathname);
+    } else {
+      try {
+        await fetchPartial(url, pathname, search);
+      } catch (e) {
+        window.location.href = url;
+        return;
+      }
+    }
+    if (!opts.fromPop) {
+      if (opts.replace) history.replaceState({ url: full }, "", full);
+      else history.pushState({ url: full }, "", full);
+    }
+  }
+
+  function initSoftNav() {
+    if (!mainEl || !cacheEl) return;
+    primeCssCache();
+    wrapInitialPage();
+    const nav = document.querySelector("nav.tabs");
+    if (nav) {
+      nav.addEventListener("click", (e) => {
+        if (e.defaultPrevented) return;
+        const link = e.target && e.target.closest ? e.target.closest("a.tab") : null;
+        if (!link) return;
+        if (link.getAttribute("aria-disabled") === "true") return;
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        const href = link.getAttribute("href");
+        if (!href || href.startsWith("#") || href.startsWith("mailto:")) return;
+        if (!shouldSoftNavigate(href)) return;
+        e.preventDefault();
+        navigateSoft(href);
+      });
+    }
+    window.addEventListener("popstate", () => {
+      const pathname = normalizePath(window.location.pathname);
+      if (MODAL_PAGES.has(pathname)) {
+        // Forward navigation into a modal URL
+        navigateSoft(window.location.pathname + window.location.search, { fromPop: true });
+      } else {
+        // Back navigation out of a modal - close it, then show the target page
+        closeModuleModal();
+        navigateSoft(window.location.pathname + window.location.search, { fromPop: true, replace: true });
+      }
+    });
+
+    // Modal close button
+    const modalCloseBtn = document.getElementById("module-modal-close");
+    if (modalCloseBtn && !modalCloseBtn.dataset.bound) {
+      modalCloseBtn.addEventListener("click", () => history.back());
+      modalCloseBtn.dataset.bound = "1";
+    }
+
+    // Backdrop click closes modal
+    const modalEl = document.getElementById("module-modal");
+    if (modalEl && !modalEl.dataset.bound) {
+      modalEl.addEventListener("click", (e) => {
+        if (e.target === modalEl) history.back();
+      });
+      modalEl.dataset.bound = "1";
+    }
+
+    // Escape key closes modal (but not if the shortcuts overlay is open)
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        if (window.CheesePieShortcuts && window.CheesePieShortcuts.isOverlayOpen()) return;
+        const m = document.getElementById("module-modal");
+        if (m && !m.hidden) history.back();
+      }
+    });
+  }
   // Global MATLAB status indicator in header
   const mlDot = $("#ml-dot");
-  const listEl = $("#file-list");
+  let listEl = $("#file-list");
   // App-level script runs on all pages; guard browser-only bits.
-  const detailsEl = $("#details");
-  const actionsEl = $("#actions");
-  const sidebarEl = $("#sidebar");
-  const dirInput = $("#dir-input");
-  const searchInput = $("#search-input");
-  const clearBtn = $("#clear-search");
-  const loadBtn = $("#load-btn");
-  const upBtn = $("#up-btn");
+  let detailsEl = $("#details");
+  let actionsEl = $("#actions");
+  let sidebarEl = $("#sidebar");
+  let searchInput = $("#search-input");
+  let clearBtn = $("#clear-search");
   const themeSelect = document.querySelector("#theme-select");
   const applyThemeBtn = document.querySelector("#apply-theme");
+  initSoftNav();
+  window.cheesepieNavigate = function (url) { navigateSoft(url); };
+
+  function updateLayoutVars() {
+    try {
+      const header = document.querySelector(".app-header");
+      const footer = document.querySelector(".app-footer");
+      if (header) document.documentElement.style.setProperty("--header-height", `${header.offsetHeight}px`);
+      if (footer) document.documentElement.style.setProperty("--footer-height", `${footer.offsetHeight}px`);
+    } catch { }
+  }
+  updateLayoutVars();
+  let layoutTimer = null;
+  window.addEventListener("resize", () => {
+    if (layoutTimer) clearTimeout(layoutTimer);
+    layoutTimer = setTimeout(updateLayoutVars, 120);
+  });
+
+  function refreshBrowserRefs() {
+    listEl = $("#file-list");
+    detailsEl = $("#details");
+    actionsEl = $("#actions");
+    sidebarEl = $("#sidebar");
+    searchInput = $("#search-input");
+    clearBtn = $("#clear-search");
+  }
 
   let currentDir = "";
   let currentFacility = "";
   let facilityBaseDir = "";
+  let facilitySourceDir = "";
   let currentSelection = null; // last focused row for range
   let selectedSet = new Set(); // of row DOM nodes
   let lastAnchorIndex = -1; // for shift range
   let debounceTimer = null;
   const LS_KEY = "cheesepie.lastDir";
+  let browserFacilityBound = false;
+  let desiredSelectPath = null;
 
   function humanSize(bytes) {
     const thresh = 1024;
@@ -106,9 +563,19 @@
     return bytes.toFixed(1) + " " + units[u];
   }
 
+  const dateTimeFormatter = new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+
   function fmtTime(ts) {
     const d = new Date(ts * 1000);
-    return d.toLocaleString();
+    return Number.isNaN(d.getTime()) ? "—" : dateTimeFormatter.format(d);
   }
 
   function updateNavAvailability() {
@@ -126,6 +593,73 @@
   // Initial check
   updateNavAvailability();
 
+  function resolveFacilityConfig(name) {
+    try {
+      const cfg = window.CHEESEPIE || {};
+      const facs = (cfg.importer && cfg.importer.facilities) || {};
+      return name ? facs[name] : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function resolveFacilityBase(name) {
+    const fc = resolveFacilityConfig(name);
+    return (fc && fc.output_dir) || "";
+  }
+
+  function resolveFacilitySource(name) {
+    const fc = resolveFacilityConfig(name);
+    return (fc && fc.source_dir) || "";
+  }
+
+  function syncFacilityBase() {
+    const facilitySel = document.getElementById("app-facility");
+    const name = facilitySel ? facilitySel.value : "";
+    if (name) currentFacility = String(name);
+    const out = resolveFacilityBase(name);
+    const src = resolveFacilitySource(name);
+    if (out) facilityBaseDir = out;
+    facilitySourceDir = src || "";
+    return { name, out, src };
+  }
+
+  function applyFacilityBase(name, opts = {}) {
+    const out = resolveFacilityBase(name);
+    const src = resolveFacilitySource(name);
+    if (!out) return false;
+    currentFacility = String(name || "");
+    facilityBaseDir = out;
+    facilitySourceDir = src || "";
+    if (opts.setDir) {
+      currentDir = out;
+      persistCurrentDir(out);
+    }
+    if (opts.load && listEl) {
+      loadList();
+    }
+    return true;
+  }
+
+  function setupBrowserFacilityListener() {
+    if (browserFacilityBound) return;
+    browserFacilityBound = true;
+    document.addEventListener("app:facility-changed", function (ev) {
+      try {
+        const name = ev && ev.detail && ev.detail.name;
+        applyFacilityBase(name, { setDir: true, load: !!listEl });
+      } catch (e) { }
+    });
+  }
+
+  function persistCurrentDir(dir = currentDir) {
+    const next = String(dir || "").trim();
+    if (!next) return;
+    try {
+      localStorage.setItem(LS_KEY, next);
+    } catch { }
+  }
+
   function clearSelections() {
     selectedSet.forEach((row) => row.classList.remove("active"));
     selectedSet.clear();
@@ -134,6 +668,7 @@
   }
 
   function rowIndexOf(el) {
+    if (!listEl) return -1;
     return Array.prototype.indexOf.call(listEl.children, el);
   }
 
@@ -180,6 +715,7 @@
   }
 
   function renderList(items) {
+    if (!listEl) return;
     clearSelections();
     if (!items || items.length === 0) {
       listEl.innerHTML = '<div class="placeholder muted">No items found.</div>';
@@ -202,6 +738,25 @@
       meta.textContent = `${size} · ${fmtTime(item.modified)}`;
       row.appendChild(icon);
       row.appendChild(name);
+      if (!item.is_dir && (item.has_preproc || item.has_annotations)) {
+        const badges = document.createElement("div");
+        badges.className = "file-badges";
+        if (item.has_preproc) {
+          const b = document.createElement("span");
+          b.className = "file-badge badge-preproc";
+          b.title = "Preprocessing done";
+          b.textContent = "P";
+          badges.appendChild(b);
+        }
+        if (item.has_annotations) {
+          const b = document.createElement("span");
+          b.className = "file-badge badge-annot";
+          b.title = "Annotations exist";
+          b.textContent = "A";
+          badges.appendChild(b);
+        }
+        row.appendChild(badges);
+      }
       row.appendChild(meta);
       row.addEventListener("click", (ev) => {
         if (ev.shiftKey) {
@@ -219,24 +774,26 @@
       });
       row.addEventListener("dblclick", () => {
         if (row.dataset.isdir === "1") {
-          const next = row.dataset.path;
-          if (facilityBaseDir && !isUnderBase(next, facilityBaseDir)) {
-            currentDir = facilityBaseDir;
-          } else {
-            currentDir = next;
-          }
-          if (dirInput) dirInput.value = currentDir;
-          try {
-            localStorage.setItem(LS_KEY, currentDir);
-          } catch { }
-          loadList();
+          navigateToDir(row.dataset.path);
         }
       });
       listEl.appendChild(row);
     });
+    if (desiredSelectPath) {
+      const target = Array.from(listEl.children).find(
+        (r) => r.dataset && r.dataset.path === desiredSelectPath
+      );
+      if (target) {
+        selectRow(target, false);
+        target.scrollIntoView({ block: "nearest" });
+        updateSelectionDetails();
+      }
+      desiredSelectPath = null;
+    }
   }
 
   function updateSelectionDetails() {
+    if (!detailsEl || !actionsEl) return;
     const rows = Array.from(selectedSet);
     const placeholder = document.getElementById("details-placeholder");
     if (rows.length === 0) {
@@ -259,6 +816,11 @@
             localStorage.setItem("cheesepie.lastVideo", info.path);
             updateNavAvailability();
           } catch { }
+          if (!info.is_dir) {
+            setModuleVideo("preproc", info.path);
+            setModuleVideo("annotator", info.path);
+            setModuleVideo("preview", info.path);
+          }
           renderDetails(info);
           updateActionsPanel(info);
         })
@@ -277,47 +839,25 @@
       .slice(0, 6)
       .map((r) => {
         const name = r.dataset.path.split(/[/\\]/).pop();
-        return `<div class="muted">${name}</div>`;
+        return `<div class="muted browser-summary-item">${name}</div>`;
       })
       .join("");
     detailsEl.innerHTML = `
-      <div style="margin:10px 0 12px"><span class="badge"><span class="dot"></span>${rows.length
-      } selected</span></div>
-      <div class="detail-grid">
-        <div class="key">Files</div><div>${files.length}</div>
-        <div class="key">Folders</div><div>${dirs}</div>
-      </div>
-      <div style="margin-top:10px">${listHtml}${rows.length > 6 ? '<div class="muted">…</div>' : ""
+      <div class="browser-summary">
+        <div class="browser-summary-head">
+          <span class="badge"><span class="dot"></span>${rows.length} selected</span>
+        </div>
+        <div class="detail-grid">
+          <div class="key">Files</div><div>${files.length}</div>
+          <div class="key">Folders</div><div>${dirs}</div>
+        </div>
+        <div class="browser-summary-list">${listHtml}${rows.length > 6 ? '<div class="muted browser-summary-item">…</div>' : ""
       }</div>
+      </div>
     `;
     if (placeholder) placeholder.style.display = "none";
     updateActionsPanel();
   }
-
-  // When facility changes, set Browser folder to facility.output_dir
-  (function hookBrowserToFacility() {
-    try {
-      if (!listEl) return; // only on Browser page
-      document.addEventListener("app:facility-changed", function (ev) {
-        try {
-          const cfg = window.CHEESEPIE || {};
-          const facs = (cfg.importer && cfg.importer.facilities) || {};
-          const name = ev && ev.detail && ev.detail.name;
-          const fc = name ? facs[name] : null;
-          const out = (fc && fc.output_dir) || "";
-          if (!out) return;
-          currentFacility = String(name || "");
-          facilityBaseDir = out;
-          currentDir = out;
-          if (dirInput) dirInput.value = out;
-          try {
-            localStorage.setItem(LS_KEY, out);
-          } catch { }
-          loadList();
-        } catch (e) { }
-      });
-    } catch (e) { }
-  })();
 
   function renderDetails(info) {
     if (!info || info.error) {
@@ -357,13 +897,15 @@
     updateActionsPanel(info);
 
     const html = `
-      <div style="margin:10px 0 12px">${badge}</div>
-      <div class="detail-grid">
-        <div class="key">Type</div><div>${info.mime || info.ext || "—"}</div>
-        <div class="key">Size</div><div>${size}</div>
-        <div class="key">Modified</div><div>${fmtTime(info.modified)}</div>
+      <div class="browser-detail-block">
+        <div class="browser-summary-head">${badge}</div>
+        <div class="detail-grid">
+          <div class="key">Type</div><div>${info.mime || info.ext || "—"}</div>
+          <div class="key">Size</div><div>${size}</div>
+          <div class="key">Modified</div><div>${fmtTime(info.modified)}</div>
+        </div>
+        ${video}
       </div>
-      ${video}
     `;
     detailsEl.innerHTML = html;
     const detailsPlaceholder = document.getElementById("details-placeholder");
@@ -373,6 +915,29 @@
     }
 
     // Wire up buttons handled in updateActionsPanel
+  }
+
+  function updateSelectedVideoPanel() {
+    if (!actionsEl) return;
+    if (selectedSet && selectedSet.size > 0) return;
+    const ph = document.getElementById("actions-placeholder");
+    const modules = [
+      { label: "Preproc", key: "preproc" },
+      { label: "Annotator", key: "annotator" },
+      { label: "Preview", key: "preview" },
+    ];
+    const rows = modules
+      .map((m) => {
+        const v = getModuleVideo(m.key);
+        const fname = v ? v.split(/[/\\]/).pop() : "";
+        return `<div class="mod-row">
+          <div class="mod-label">${m.label}</div>
+          <div class="mod-file${fname ? "" : " muted"}" title="${v || ""}">${fname || "—"}</div>
+        </div>`;
+      })
+      .join("");
+    if (ph) ph.style.display = "none";
+    actionsEl.innerHTML = `<div class="mod-state"><div class="mod-heading">Active files</div>${rows}</div>`;
   }
 
   function updateActionsPanel(currentInfo) {
@@ -388,13 +953,15 @@
     const selFiles = rows.filter((r) => r.dataset.isdir === "0");
     if (selFiles.length > 1) {
       actionsEl.innerHTML = `
-        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px">
-          <button class="btn mini" id="clear-selection">Clear</button>
-          <span class="muted">${rows.length} selected</span>
-        </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px">
-          <button class="btn themed-track" id="act-track">Track</button>
-          <button class="btn themed-preview" id="act-preview">Preview</button>
+        <div class="browser-action-stack">
+          <div class="browser-action-toolbar">
+            <button class="btn mini" id="clear-selection">Clear</button>
+            <span class="muted">${rows.length} selected</span>
+          </div>
+          <div class="browser-action-buttons">
+            <button class="btn themed-track" id="act-track">Track</button>
+            <button class="btn themed-preview" id="act-preview">Preview</button>
+          </div>
         </div>
       `;
       if (placeholder) placeholder.style.display = "none";
@@ -418,20 +985,25 @@
       const ext = (currentInfo.ext || "").toLowerCase();
       const isSupportedVideo = VISIBLE_EXTS.includes(ext);
       const topBar = `
-        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px">
+        <div class="browser-action-toolbar">
           <button class="btn mini" id="clear-selection">Clear</button>
           <span class="muted">1 selected</span>
         </div>`;
       const annotatePart = isSupportedVideo
         ? `<button class=\"btn themed-annotator\" id=\"open-annotator\" title=\"Annotate selected video\">Annotate</button>`
         : isVideo
-          ? `<div class=\"muted\">Only ${VISIBLE_EXTS.join(
+          ? `<div class=\"muted browser-action-note\">Only ${VISIBLE_EXTS.join(
             ", "
           )} videos can be opened in the Annotator for now.</div>`
           : "";
       const preprocPart = `<button class=\"btn themed-preproc\" id=\"act-preproc\">Preproc</button>`;
       const trackAnalyze = `<button class=\"btn themed-track\" id=\"act-track\">Track</button><button class=\"btn themed-preview\" id=\"act-preview\">Preview</button>`;
-      actionsEl.innerHTML = `${topBar}<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px">${annotatePart} ${preprocPart} ${trackAnalyze}</div>`;
+      actionsEl.innerHTML = `
+        <div class="browser-action-stack">
+          ${topBar}
+          <div class="browser-action-buttons">${annotatePart} ${preprocPart} ${trackAnalyze}</div>
+        </div>
+      `;
       if (placeholder) placeholder.style.display = "none";
       const clearBtn = document.getElementById("clear-selection");
       clearBtn?.addEventListener("click", () => {
@@ -447,7 +1019,8 @@
           const url = `/annotator?video=${encodeURIComponent(
             currentInfo.path
           )}`;
-          window.location.href = url;
+          setModuleVideo("annotator", currentInfo.path);
+          navigateSoft(url);
         });
       }
       const preprocBtn = document.getElementById("act-preproc");
@@ -462,7 +1035,8 @@
           } catch { }
           const url = `/preproc?video=${encodeURIComponent(currentInfo.path)}${step ? `&step=${encodeURIComponent(step)}` : ""
             }`;
-          window.location.href = url;
+          setModuleVideo("preproc", currentInfo.path);
+          navigateSoft(url);
         });
       }
       const analyzeBtn = document.getElementById("act-preview");
@@ -472,7 +1046,8 @@
             localStorage.setItem("cheesepie.lastVideo", currentInfo.path);
           } catch { }
           const url = `/preview?video=${encodeURIComponent(currentInfo.path)}`;
-          window.location.href = url;
+          setModuleVideo("preview", currentInfo.path);
+          navigateSoft(url);
         });
       }
       const trackBtn = document.getElementById("act-track");
@@ -484,9 +1059,8 @@
       }
       return;
     }
-    // Default: clear actions
-    actionsEl.innerHTML = "";
-    if (placeholder) placeholder.style.display = "";
+    // Default: show module state in idle sidebar
+    updateSelectedVideoPanel();
   }
 
   function formatDuration(sec) {
@@ -506,7 +1080,7 @@
   function ensureBrowserTrackPanel() {
     const panel = document.getElementById("browser-track");
     if (panel) {
-      panel.style.display = "";
+      panel.hidden = false;
     }
   }
 
@@ -517,7 +1091,7 @@
     body.innerHTML = files
       .map(
         (f) =>
-          `<tr data-file="${f}"><td style="padding:6px 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${f}</td><td style="padding:6px 4px">PENDING</td><td style="padding:6px 4px">—</td><td style="padding:6px 4px">0/0</td><td style="padding:6px 4px"><a href="/media?path=${encodeURIComponent(
+          `<tr data-file="${f}"><td class="browser-track-file">${f}</td><td>PENDING</td><td>—</td><td>0/0</td><td><a href="/media?path=${encodeURIComponent(
             f + ".log"
           )}" target="_blank" rel="noopener">Show</a></td></tr>`
       )
@@ -592,7 +1166,6 @@
 
   function startTracking(files) {
     if (!Array.isArray(files) || files.length === 0) return;
-    ensureBrowserTrackPanel();
     ensureBrowserTrackPanel();
     populateTrackRows(files);
     fetch("/api/track/start", {
@@ -802,11 +1375,104 @@
     }
   }
 
+  function describeFsPath(path) {
+    const raw = String(path || "").trim();
+    const isWindows = /^[A-Za-z]:/.test(raw);
+    let normalized = raw.replace(/\\/g, "/");
+    if (isWindows) {
+      normalized = normalized.replace(/\/+$/, "");
+      if (/^[A-Za-z]:$/.test(normalized)) normalized += "/";
+    } else {
+      if (!normalized.startsWith("/")) normalized = "/" + normalized;
+      if (normalized !== "/") normalized = normalized.replace(/\/+$/, "");
+    }
+    const root = isWindows ? normalized.slice(0, 2) : "/";
+    const rest = isWindows
+      ? normalized.slice(2).replace(/^\/+/, "")
+      : normalized.replace(/^\/+/, "");
+    const parts = rest ? rest.split("/").filter(Boolean) : [];
+    return { raw, normalized, isWindows, root, parts };
+  }
+
+  function buildFsPath(info, parts) {
+    if (info.isWindows) {
+      return parts.length ? `${info.root}\\${parts.join("\\")}` : `${info.root}\\`;
+    }
+    return parts.length ? `/${parts.join("/")}` : "/";
+  }
+
+  function buildBreadcrumbEntries(dir) {
+    const current = describeFsPath(dir);
+    if (!current.raw) return [];
+    const useBase =
+      facilityBaseDir &&
+      isUnderBase(current.normalized, facilityBaseDir);
+    if (useBase) {
+      const base = describeFsPath(facilityBaseDir);
+      const baseParts = base.parts.slice();
+      const relParts = current.parts.slice(baseParts.length);
+      const rootLabel = baseParts.length > 0
+        ? baseParts[baseParts.length - 1]
+        : (base.isWindows ? base.root : "/");
+      const crumbs = [{
+        label: rootLabel,
+        path: buildFsPath(base, baseParts),
+      }];
+      relParts.forEach((part, i) => {
+        const fullParts = baseParts.concat(relParts.slice(0, i + 1));
+        crumbs.push({ label: part, path: buildFsPath(base, fullParts) });
+      });
+      return crumbs;
+    }
+    // No base dir known yet — show only the current folder name, never the full path
+    const label = current.parts.length > 0
+      ? current.parts[current.parts.length - 1]
+      : (current.isWindows ? current.root : "/");
+    return [{ label, path: dir }];
+  }
+
+  function renderBreadcrumb(dir) {
+    const bar = document.getElementById("breadcrumb-bar");
+    if (!bar) return;
+    updateBrowserNavControls();
+    if (!dir) {
+      bar.innerHTML = '<span class="bc-empty muted">Select a facility to browse files.</span>';
+      return;
+    }
+    const crumbs = buildBreadcrumbEntries(dir);
+    bar.innerHTML = "";
+    crumbs.forEach((c, i) => {
+      const isLast = i === crumbs.length - 1;
+      if (i > 0) {
+        const sep = document.createElement("span");
+        sep.className = "bc-sep";
+        sep.textContent = "›";
+        sep.setAttribute("aria-hidden", "true");
+        bar.appendChild(sep);
+      }
+      const seg = document.createElement(isLast ? "span" : "button");
+      if (seg.tagName === "BUTTON") seg.type = "button";
+      seg.className = isLast ? "bc-segment bc-current" : "bc-segment bc-link";
+      seg.textContent = c.label;
+      seg.title = c.path;
+      if (!isLast) {
+        seg.addEventListener("click", () => {
+          navigateToDir(c.path);
+        });
+      } else {
+        seg.setAttribute("aria-current", "location");
+      }
+      bar.appendChild(seg);
+    });
+  }
+
   function loadList() {
-    const q = searchInput.value || "";
+    if (!listEl) return;
+    renderBreadcrumb(currentDir);
+    const q = searchInput ? (searchInput.value || "") : "";
     if (!currentDir) {
       listEl.innerHTML =
-        '<div class="placeholder muted">Enter a folder path and click Load.</div>';
+        '<div class="placeholder muted">Select a facility to load files.</div>';
       return;
     }
     listEl.innerHTML = '<div class="placeholder muted">Loading…</div>';
@@ -873,39 +1539,26 @@
     }
   }
 
-  function setDirAndLoad(dir) {
-    const d = (dir || "").trim();
-    if (!d) {
-      listEl.innerHTML =
-        '<div class="placeholder muted">Please enter a valid folder path.</div>';
-      return;
-    }
+  function clampDirToBase(dir) {
+    const d = String(dir || "").trim();
+    if (!d) return "";
     if (facilityBaseDir && !isUnderBase(d, facilityBaseDir)) {
-      currentDir = facilityBaseDir;
-      if (dirInput) dirInput.value = facilityBaseDir;
-    } else {
-      currentDir = d;
-      if (dirInput) dirInput.value = currentDir;
+      return facilityBaseDir;
     }
-    try {
-      localStorage.setItem(LS_KEY, currentDir);
-    } catch { }
-    loadList();
+    return d;
   }
 
-  loadBtn?.addEventListener("click", () => {
-    setDirAndLoad(dirInput?.value || "");
-  });
+  function updateBrowserNavControls() {
+    // no-op: up button removed
+  }
 
-  // Pressing Enter in the Folder path field triggers Load
-  dirInput?.addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter") {
-      ev.preventDefault();
-      setDirAndLoad(dirInput.value || "");
+  function navigateToDir(dir) {
+    currentDir = clampDirToBase(dir);
+    if (currentDir) {
+      persistCurrentDir(currentDir);
     }
-  });
-
-  searchInput?.addEventListener("input", debounce(loadList, 150));
+    loadList();
+  }
 
   // clear search 'x'
   function toggleClear() {
@@ -913,85 +1566,77 @@
     const hasText = (searchInput?.value || "").length > 0;
     clearBtn.hidden = !hasText;
   }
-  searchInput?.addEventListener("input", toggleClear);
-  clearBtn?.addEventListener("click", () => {
-    if (!searchInput) return;
-    searchInput.value = "";
+
+  function bindBrowserControls() {
+    if (!listEl) return;
+    if (searchInput && !searchInput.dataset.bound) {
+      searchInput.addEventListener("input", debounce(loadList, 150));
+      searchInput.addEventListener("input", toggleClear);
+      searchInput.dataset.bound = "1";
+    }
+
+    if (clearBtn && !clearBtn.dataset.bound) {
+      clearBtn.addEventListener("click", () => {
+        if (!searchInput) return;
+        searchInput.value = "";
+        toggleClear();
+        loadList();
+      });
+      clearBtn.dataset.bound = "1";
+    }
+
     toggleClear();
-    loadList();
-  });
+    renderBreadcrumb(currentDir);
+  }
 
-  upBtn?.addEventListener("click", () => {
-    const current = (dirInput?.value || currentDir || "").trim();
-    if (!current) return;
-    const parent = parentDir(current);
-    if (!parent || parent === current) return;
-    const next =
-      facilityBaseDir && !isUnderBase(parent, facilityBaseDir)
-        ? facilityBaseDir
-        : parent;
-    currentDir = next;
-    if (dirInput) dirInput.value = next;
+  function initialBrowserLoad() {
+    if (!listEl) return;
+    syncFacilityBase();
     try {
-      localStorage.setItem(LS_KEY, currentDir);
-    } catch { }
-    loadList();
-  });
-
-  // load last context (prefer last selected video)
-  try {
-    if (listEl) {
-      // Defer initial load until facility event sets base/currentDir
-      document.addEventListener("app:facility-changed", function onFirst(ev) {
-        document.removeEventListener("app:facility-changed", onFirst);
+      const lastVideo = localStorage.getItem("cheesepie.lastVideo");
+      if (lastVideo) {
+        const pdir = parentDir(lastVideo);
+        if (pdir && (!facilityBaseDir || isUnderBase(pdir, facilityBaseDir))) {
+          currentDir = pdir;
+          persistCurrentDir(pdir);
+        } else if (facilityBaseDir) {
+          currentDir = facilityBaseDir;
+        }
+        desiredSelectPath = lastVideo;
+        loadList();
+        return;
+      }
+      const last = localStorage.getItem(LS_KEY);
+      if (last && (!facilityBaseDir || isUnderBase(last, facilityBaseDir))) {
+        currentDir = last;
+        loadList();
+      } else if (facilityBaseDir) {
+        currentDir = facilityBaseDir;
+        loadList();
+      } else {
         try {
-          const lastVideo = localStorage.getItem("cheesepie.lastVideo");
-          if (lastVideo) {
-            const pdir = parentDir(lastVideo);
-            if (
-              pdir &&
-              (!facilityBaseDir || isUnderBase(pdir, facilityBaseDir))
-            ) {
-              currentDir = pdir;
-              if (dirInput) dirInput.value = pdir;
-              try {
-                localStorage.setItem(LS_KEY, pdir);
-              } catch { }
-            } else if (facilityBaseDir) {
-              currentDir = facilityBaseDir;
-              if (dirInput) dirInput.value = facilityBaseDir;
-            }
-            desiredSelectPath = lastVideo;
+          const cfg = window.CHEESEPIE || {};
+          const def = (cfg.browser && cfg.browser.default_dir) || "";
+          if (def) {
+            currentDir = def;
             loadList();
-            return;
-          }
-          const last = localStorage.getItem(LS_KEY);
-          if (
-            last &&
-            (!facilityBaseDir || isUnderBase(last, facilityBaseDir))
-          ) {
-            currentDir = last;
-            if (dirInput) dirInput.value = currentDir;
-            loadList();
-          } else if (facilityBaseDir) {
-            currentDir = facilityBaseDir;
-            if (dirInput) dirInput.value = facilityBaseDir;
-            loadList();
-          } else {
-            try {
-              const cfg = window.CHEESEPIE || {};
-              const def = (cfg.browser && cfg.browser.default_dir) || "";
-              if (def) {
-                currentDir = def;
-                if (dirInput) dirInput.value = def;
-                loadList();
-              }
-            } catch (e) { }
           }
         } catch (e) { }
-      });
+      }
+    } catch (e) { }
+  }
+
+  function initBrowserPage() {
+    refreshBrowserRefs();
+    if (!listEl) return;
+    setupBrowserFacilityListener();
+    bindBrowserControls();
+    updateSelectedVideoPanel();
+    if (!listEl.dataset.bound) {
+      listEl.dataset.bound = "1";
+      initialBrowserLoad();
     }
-  } catch { }
+  }
 
   // Enhance top nav: disable Preproc/Annotator/Preview when no selected video
   function updateModuleTabsDisabled() {
@@ -999,11 +1644,6 @@
       const annTab = document.querySelector('a.tab[href="/annotator"]');
       const ppTab = document.querySelector('a.tab[href="/preproc"]');
       const anTab = document.querySelector('a.tab[href="/preview"]');
-      let v = "";
-      try {
-        v = localStorage.getItem("cheesepie.lastVideo") || "";
-      } catch { }
-      const has = !!v;
       const step = (() => {
         try {
           return localStorage.getItem("cheesepie.preproc.step") || "";
@@ -1011,9 +1651,9 @@
           return "";
         }
       })();
-      const setState = (el, hrefWhenHas, baseHref) => {
+      const setState = (el, video, hrefWhenHas, baseHref) => {
         if (!el) return;
-        if (has) {
+        if (video) {
           el.setAttribute("aria-disabled", "false");
           el.removeAttribute("tabindex");
           el.style.pointerEvents = "";
@@ -1031,18 +1671,27 @@
           el.setAttribute("href", baseHref);
         }
       };
+      const annVideo = getModuleVideo("annotator");
+      const ppVideo = getModuleVideo("preproc");
+      const prevVideo = getModuleVideo("preview");
       setState(
         annTab,
-        `/annotator?video=${encodeURIComponent(v)}`,
+        annVideo,
+        `/annotator?video=${encodeURIComponent(annVideo)}`,
         "/annotator"
       );
       setState(
         ppTab,
-        `/preproc?video=${encodeURIComponent(v)}${step ? `&step=${encodeURIComponent(step)}` : ""
-        }`,
+        ppVideo,
+        `/preproc?video=${encodeURIComponent(ppVideo)}${step ? `&step=${encodeURIComponent(step)}` : ""}`,
         "/preproc"
       );
-      setState(anTab, `/preview?video=${encodeURIComponent(v)}`, "/preview");
+      setState(
+        anTab,
+        prevVideo,
+        `/preview?video=${encodeURIComponent(prevVideo)}`,
+        "/preview"
+      );
     } catch (e) { }
   }
   try {
@@ -1058,10 +1707,13 @@
       updateSelectedVideoPanel();
       updateModuleTabsDisabled();
     });
+    document.addEventListener("app:module-video-changed", () => {
+      updateModuleTabsDisabled();
+    });
   } catch { }
 
-  // Settings page: theme handling
-  function applyTheme(theme) {
+  // Settings page handlers (rebind on soft navigation)
+  function applyTheme(theme, selectEl) {
     const allowed = [
       "dark",
       "light",
@@ -1076,62 +1728,71 @@
     try {
       localStorage.setItem("cheesepie.theme", t);
     } catch { }
-    if (themeSelect) themeSelect.value = t;
+    if (selectEl) selectEl.value = t;
+    else if (themeSelect) themeSelect.value = t;
   }
-  if (themeSelect) {
+
+  function initThemeControls() {
+    const selectEl = document.getElementById("theme-select");
+    const applyBtnEl = document.getElementById("apply-theme");
+    if (!selectEl) return;
     try {
       const saved = localStorage.getItem("cheesepie.theme") || "dark";
-      themeSelect.value = saved;
+      applyTheme(saved, selectEl);
     } catch { }
+    if (!selectEl.dataset.bound) {
+      selectEl.addEventListener("change", () => {
+        applyTheme(selectEl.value, selectEl);
+      });
+      selectEl.dataset.bound = "1";
+    }
+    if (applyBtnEl && !applyBtnEl.dataset.bound) {
+      applyBtnEl.addEventListener("click", () => {
+        applyTheme(selectEl.value || "dark", selectEl);
+      });
+      applyBtnEl.dataset.bound = "1";
+    }
   }
-  themeSelect?.addEventListener("change", () => {
-    applyTheme(themeSelect.value);
-  });
-  applyThemeBtn?.addEventListener("click", () => {
-    applyTheme(themeSelect?.value || "dark");
-  });
 
-  // Settings page: config file handling
-  (function setupConfigSwitcher() {
-    try {
-      const select = document.getElementById("cfg-select");
-      const btn = document.getElementById("apply-config");
-      const resetBtn = document.getElementById("reset-config");
-      const status = document.getElementById("cfg-status");
-      if (!select || !btn) return;
-      let cfgList = { items: [], current: "", origin: "default" };
-      // Load available configs and current selection
-      fetch("/api/config/list")
-        .then((r) => r.json())
-        .then((d) => {
-          if (!d || d.error) return;
-          cfgList = d;
-          const items = d.items || [];
-          const cur = d.current || "";
-          const origin = d.origin || "default";
-          select.innerHTML = "";
-          items.forEach((it) => {
-            const opt = document.createElement("option");
-            opt.value = String(it.path || "");
-            opt.textContent = String(it.label || it.path || "");
-            select.appendChild(opt);
-          });
-          // If current path is not in the list, append a custom option
-          if (cur && !Array.from(select.options).some((o) => o.value === cur)) {
-            const opt = document.createElement("option");
-            opt.value = cur;
-            opt.textContent = (cur.split("/").pop() || cur) + " (custom)";
-            select.insertBefore(opt, select.firstChild);
-          }
-          if (cur) {
-            select.value = cur;
-          }
-          if (status) {
-            status.textContent = `Using ${origin === "env" ? "override" : "default"
-              } config`;
-          }
-        })
-        .catch(() => { });
+  function loadConfigList(select, status) {
+    fetch("/api/config/list")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d || d.error) return;
+        select._cfgList = d;
+        const items = d.items || [];
+        const cur = d.current || "";
+        const origin = d.origin || "default";
+        select.innerHTML = "";
+        items.forEach((it) => {
+          const opt = document.createElement("option");
+          opt.value = String(it.path || "");
+          opt.textContent = String(it.label || it.path || "");
+          select.appendChild(opt);
+        });
+        if (cur && !Array.from(select.options).some((o) => o.value === cur)) {
+          const opt = document.createElement("option");
+          opt.value = cur;
+          opt.textContent = (cur.split("/").pop() || cur) + " (custom)";
+          select.insertBefore(opt, select.firstChild);
+        }
+        if (cur) {
+          select.value = cur;
+        }
+        if (status) {
+          status.textContent = `Using ${origin === "env" ? "override" : "default"} config`;
+        }
+      })
+      .catch(() => { });
+  }
+
+  function initConfigSwitcher() {
+    const select = document.getElementById("cfg-select");
+    const btn = document.getElementById("apply-config");
+    const resetBtn = document.getElementById("reset-config");
+    const status = document.getElementById("cfg-status");
+    if (!select || !btn) return;
+    if (!select.dataset.bound) {
       btn.addEventListener("click", () => {
         const path = (select.value || "").trim();
         if (!path) {
@@ -1167,10 +1828,10 @@
           });
       });
 
-      // Reset to default config.json
       if (resetBtn) {
         resetBtn.addEventListener("click", () => {
           try {
+            const cfgList = select._cfgList || { items: [] };
             const def = (cfgList.items || []).find((it) => it && it.default);
             if (!def || !def.path) {
               status.textContent = "Default config not found.";
@@ -1208,226 +1869,276 @@
           }
         });
       }
-    } catch (e) { }
-  })();
+      select.dataset.bound = "1";
+    }
+    loadConfigList(select, status);
+  }
 
-  // Settings page: restart server
-  (function setupRestartServer() {
-    try {
-      const btn = document.getElementById("restart-app");
-      const status = document.getElementById("restart-status");
-      if (!btn) return;
-      btn.addEventListener("click", () => {
-        if (!confirm("Restart the CheesePie server now?")) return;
-        btn.disabled = true;
-        if (status) status.textContent = "Restarting…";
-        fetch("/api/config/restart", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ confirm: true }),
-        })
-          .then((r) => r.json().then((d) => ({ ok: r.ok && d && !d.error, d })))
-          .then((res) => {
-            if (!res.ok) {
-              if (status) status.textContent = "Error: " + (res.d && res.d.error);
-              btn.disabled = false;
-              return;
-            }
-            if (status) status.textContent = "Restart requested. Reconnecting…";
-            setTimeout(() => {
-              location.reload();
-            }, 4000);
-          })
-          .catch((e) => {
-            if (status) status.textContent = "Error: " + e;
+  function initRestartControl() {
+    const btn = document.getElementById("restart-app");
+    const status = document.getElementById("restart-status");
+    if (!btn) return;
+    if (btn.dataset.bound) return;
+    btn.addEventListener("click", () => {
+      if (!confirm("Restart the CheesePie server now?")) return;
+      btn.disabled = true;
+      if (status) status.textContent = "Restarting…";
+      fetch("/api/config/restart", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: true }),
+      })
+        .then((r) => r.json().then((d) => ({ ok: r.ok && d && !d.error, d })))
+        .then((res) => {
+          if (!res.ok) {
+            if (status) status.textContent = "Error: " + (res.d && res.d.error);
             btn.disabled = false;
-          });
-      });
-    } catch (e) { }
-  })();
+            return;
+          }
+          if (status) status.textContent = "Restart requested. Reconnecting…";
+          setTimeout(() => {
+            location.reload();
+          }, 4000);
+        })
+        .catch((e) => {
+          if (status) status.textContent = "Error: " + e;
+          btn.disabled = false;
+        });
+    });
+    btn.dataset.bound = "1";
+  }
 
-  // Settings page: update from GitHub
-  (function setupUpdateServer() {
-    try {
-      const btn = document.getElementById("update-app");
-      const status = document.getElementById("update-status");
-      if (!btn) return;
-      btn.addEventListener("click", () => {
-        const msg =
-          "Pull latest code from GitHub and restart the server?\n" +
-          "This will fail if there are local changes.";
-        if (!confirm(msg)) return;
-        btn.disabled = true;
-        if (status) status.textContent = "Updating…";
-        fetch("/api/config/update", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ confirm: true }),
-        })
-          .then((r) => r.json().then((d) => ({ ok: r.ok && d && !d.error, d })))
-          .then((res) => {
-            if (!res.ok) {
-              if (status) status.textContent = "Error: " + (res.d && res.d.error);
-              btn.disabled = false;
-              return;
-            }
-            if (status) {
-              const out = (res.d && res.d.output) || "Update complete.";
-              status.textContent = out + " Restarting…";
-            }
-            setTimeout(() => {
-              location.reload();
-            }, 5000);
-          })
-          .catch((e) => {
-            if (status) status.textContent = "Error: " + e;
+  function initUpdateControl() {
+    const btn = document.getElementById("update-app");
+    const status = document.getElementById("update-status");
+    if (!btn) return;
+    if (btn.dataset.bound) return;
+    btn.addEventListener("click", () => {
+      const msg =
+        "Pull latest code from GitHub and restart the server?\n" +
+        "This will fail if there are local changes.";
+      if (!confirm(msg)) return;
+      btn.disabled = true;
+      if (status) status.textContent = "Updating…";
+      fetch("/api/config/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: true }),
+      })
+        .then((r) => r.json().then((d) => ({ ok: r.ok && d && !d.error, d })))
+        .then((res) => {
+          if (!res.ok) {
+            if (status) status.textContent = "Error: " + (res.d && res.d.error);
             btn.disabled = false;
-          });
+            return;
+          }
+          if (status) {
+            const out = (res.d && res.d.output) || "Update complete.";
+            status.textContent = out + " Restarting…";
+          }
+          setTimeout(() => {
+            location.reload();
+          }, 5000);
+        })
+        .catch((e) => {
+          if (status) status.textContent = "Error: " + e;
+          btn.disabled = false;
+        });
+    });
+    btn.dataset.bound = "1";
+  }
+
+  function initSettingsPage() {
+    initThemeControls();
+    initConfigSwitcher();
+    initRestartControl();
+    initUpdateControl();
+  }
+
+  function initModuleFileChip() {
+    const chip = document.querySelector(".module-file-chip[data-module]");
+    if (!chip) return;
+    const moduleKey = chip.dataset.module;
+
+    function getPath() {
+      const v = getModuleVideo(moduleKey);
+      if (v) return v;
+      return chip.dataset.video || "";
+    }
+
+    function render() {
+      const path = getPath();
+      const fname = path ? path.split(/[/\\]/).pop() : "";
+      chip.innerHTML = "";
+      if (path) {
+        const icon = document.createElement("span");
+        icon.className = "mfc-icon";
+        chip.appendChild(icon);
+        const name = document.createElement("span");
+        name.className = "mfc-name";
+        name.textContent = fname;
+        name.title = path;
+        chip.appendChild(name);
+      } else {
+        const empty = document.createElement("span");
+        empty.className = "mfc-empty muted";
+        empty.textContent = "No file selected";
+        chip.appendChild(empty);
+      }
+      const browse = document.createElement("button");
+      browse.className = "mfc-browse btn mini";
+      browse.textContent = "Browse";
+      browse.type = "button";
+      browse.addEventListener("click", () => {
+        const inModal = !!chip.closest("#module-modal-content");
+        if (inModal) {
+          history.back();
+        } else if (window.cheesepieNavigate) {
+          window.cheesepieNavigate("/browser");
+        } else {
+          window.location.href = "/browser";
+        }
       });
-    } catch (e) { }
-  })();
+      chip.appendChild(browse);
+    }
+
+    render();
+    if (!chip.dataset.chipBound) {
+      chip.dataset.chipBound = "1";
+      document.addEventListener("app:module-video-changed", (e) => {
+        if (e && e.detail && e.detail.name === moduleKey) {
+          chip.dataset.video = e.detail.path || "";
+          render();
+        }
+      });
+    }
+  }
+
+  function initPreprocVideoControls() {
+    try {
+      const v = document.getElementById("pp-video");
+      const playBtn = document.getElementById("pp-play");
+      const seek = document.getElementById("pp-seek");
+      const timeLbl = document.getElementById("pp-time");
+      const timeCur = document.getElementById("pp-time-cur");
+      const timeDur = document.getElementById("pp-time-dur");
+      if (!v || !playBtn || !seek || (!timeLbl && !(timeCur && timeDur))) return;
+      if (v.dataset.controlsBound) return;
+      v.dataset.controlsBound = "1";
+      const fmt = (sec) => {
+        if (!isFinite(sec)) return "00:00.000";
+        const h = Math.floor(sec / 3600);
+        const m = Math.floor((sec % 3600) / 60);
+        const s = Math.floor(sec % 60);
+        const ms = Math.floor((sec - Math.floor(sec)) * 1000);
+        const pad2 = (n) => String(n).padStart(2, "0");
+        const pad3 = (n) => String(n).padStart(3, "0");
+        return h
+          ? `${h}:${pad2(m)}:${pad2(s)}.${pad3(ms)}`
+          : `${pad2(m)}:${pad2(s)}.${pad3(ms)}`;
+      };
+      const parse = (str) => {
+        try {
+          const s = String(str || "").trim();
+          if (!s) return null;
+          const m = s.match(/^(\d+)(?::(\d+))?(?::(\d+))?(?:\.(\d{1,3}))?$/);
+          if (!m) return null;
+          let h = 0, mi = 0, se = 0, ms = 0;
+          if (m[3] != null) {
+            h = parseInt(m[1], 10) || 0;
+            mi = parseInt(m[2], 10) || 0;
+            se = parseInt(m[3], 10) || 0;
+          } else if (m[2] != null) {
+            mi = parseInt(m[1], 10) || 0;
+            se = parseInt(m[2], 10) || 0;
+          } else {
+            se = parseFloat(m[1]) || 0;
+          }
+          if (m[4] != null) {
+            ms = parseInt(String(m[4]).padEnd(3, "0"), 10) || 0;
+          }
+          return h * 3600 + mi * 60 + se + ms / 1000;
+        } catch (e) {
+          return null;
+        }
+      };
+      const updateTime = () => {
+        const cur = Number(v.currentTime || 0);
+        const dur = Number(v.duration || 0);
+        if (timeCur && timeDur) {
+          timeCur.value = fmt(cur);
+          timeDur.textContent = fmt(dur);
+          try {
+            const durRect = timeDur.getBoundingClientRect();
+            const padLeft = parseFloat(getComputedStyle(timeCur).paddingLeft || "0") || 0;
+            const padRight = parseFloat(getComputedStyle(timeCur).paddingRight || "0") || 0;
+            const extra = Math.ceil(padLeft + padRight + 2);
+            timeCur.style.width = Math.max(60, Math.ceil(durRect.width) + extra) + "px";
+          } catch (e) { }
+        } else if (timeLbl) {
+          timeLbl.textContent = `${fmt(cur)} / ${fmt(dur)}`;
+        }
+        if (!seek.dragging) seek.value = String(cur);
+      };
+      const updateMax = () => {
+        try {
+          seek.max = String(Math.max(0, Number(v.duration || 0)));
+          updateTime();
+        } catch { }
+      };
+      const updatePlayUI = () => {
+        const paused = !!v.paused;
+        playBtn.textContent = paused ? "▶" : "⏸";
+        playBtn.title = paused ? "Play" : "Pause";
+        playBtn.setAttribute("aria-label", paused ? "Play" : "Pause");
+      };
+      v.addEventListener("loadedmetadata", updateMax);
+      v.addEventListener("durationchange", updateMax);
+      v.addEventListener("timeupdate", updateTime);
+      v.addEventListener("play", updatePlayUI);
+      v.addEventListener("pause", updatePlayUI);
+      playBtn.addEventListener("click", () => {
+        try { v.paused ? v.play() : v.pause(); } catch { }
+      });
+      seek.addEventListener("input", () => {
+        seek.dragging = true;
+        try { v.currentTime = Number(seek.value || 0); } catch { }
+      });
+      seek.addEventListener("change", () => { seek.dragging = false; });
+      if (timeCur) {
+        const jump = () => {
+          try {
+            const t = parse(timeCur.value);
+            if (t == null) return;
+            const target = Math.min(Math.max(0, t), Math.max(0, Number(v.duration || 0) - 1e-6));
+            try { v.pause(); } catch (e) { }
+            v.currentTime = target;
+            updateTime();
+          } catch (e) { }
+        };
+        timeCur.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); jump(); } });
+        timeCur.addEventListener("blur", jump);
+      }
+      if (v.readyState >= 1) { updateMax(); updatePlayUI(); }
+    } catch { }
+  }
+
+  initBrowserPage();
+  initSettingsPage();
+  initModuleFileChip();
+  initPreprocVideoControls();
+  window.cheesepieRegisterPageRefresher?.("browser", initBrowserPage);
+  window.cheesepieRegisterPageRefresher?.("settings", initSettingsPage);
+  window.cheesepieRegisterPageRefresher?.("preproc", function () { initModuleFileChip(); initPreprocVideoControls(); });
+  window.cheesepieRegisterPageRefresher?.("annotator", initModuleFileChip);
+  window.cheesepieRegisterPageRefresher?.("preview", initModuleFileChip);
+  document.addEventListener("app:page-changed", (e) => {
+    const path = e && e.detail && e.detail.path;
+    if (path === "/settings") initSettingsPage();
+    if (path === "/browser") initBrowserPage();
+  });
 
   // MATLAB status polling removed
-})();
-
-// Bootstrap Preproc video controls defensively in case template script fails
-(function () {
-  try {
-    const v = document.getElementById("pp-video");
-    const playBtn = document.getElementById("pp-play");
-    const seek = document.getElementById("pp-seek");
-    const timeLbl = document.getElementById("pp-time");
-    const timeCur = document.getElementById("pp-time-cur");
-    const timeDur = document.getElementById("pp-time-dur");
-    if (!v || !playBtn || !seek || (!timeLbl && !(timeCur && timeDur))) return;
-    const fmt = (sec) => {
-      if (!isFinite(sec)) return "00:00.000";
-      const h = Math.floor(sec / 3600);
-      const m = Math.floor((sec % 3600) / 60);
-      const s = Math.floor(sec % 60);
-      const ms = Math.floor((sec - Math.floor(sec)) * 1000);
-      const pad2 = (n) => String(n).padStart(2, "0");
-      const pad3 = (n) => String(n).padStart(3, "0");
-      return h
-        ? `${h}:${pad2(m)}:${pad2(s)}.${pad3(ms)}`
-        : `${pad2(m)}:${pad2(s)}.${pad3(ms)}`;
-    };
-    const parse = (str) => {
-      try {
-        const s = String(str || "").trim();
-        if (!s) return null;
-        // Accept flexible forms: ss(.mmm), mm:ss(.mmm), hh:mm:ss(.mmm)
-        const m = s.match(/^(\d+)(?::(\d+))?(?::(\d+))?(?:\.(\d{1,3}))?$/);
-        if (!m) return null;
-        let h = 0,
-          mi = 0,
-          se = 0,
-          ms = 0;
-        if (m[3] != null) {
-          // hh:mm:ss[.mmm]
-          h = parseInt(m[1], 10) || 0;
-          mi = parseInt(m[2], 10) || 0;
-          se = parseInt(m[3], 10) || 0;
-        } else if (m[2] != null) {
-          // mm:ss[.mmm]
-          mi = parseInt(m[1], 10) || 0;
-          se = parseInt(m[2], 10) || 0;
-        } else {
-          // ss[.mmm]
-          se = parseFloat(m[1]) || 0;
-        }
-        if (m[4] != null) {
-          ms = parseInt(String(m[4]).padEnd(3, "0"), 10) || 0;
-        }
-        return h * 3600 + mi * 60 + se + ms / 1000;
-      } catch (e) {
-        return null;
-      }
-    };
-    const updateTime = () => {
-      const cur = Number(v.currentTime || 0);
-      const dur = Number(v.duration || 0);
-      if (timeCur && timeDur) {
-        timeCur.value = fmt(cur);
-        timeDur.textContent = fmt(dur);
-        // Match input width to duration label width (max possible)
-        try {
-          // Force same font on both and measure duration width
-          const durRect = timeDur.getBoundingClientRect();
-          // Add small padding to account for input padding
-          const padLeft =
-            parseFloat(getComputedStyle(timeCur).paddingLeft || "0") || 0;
-          const padRight =
-            parseFloat(getComputedStyle(timeCur).paddingRight || "0") || 0;
-          const extra = Math.ceil(padLeft + padRight + 2); // +2 for caret space
-          timeCur.style.width =
-            Math.max(60, Math.ceil(durRect.width) + extra) + "px";
-        } catch (e) { }
-      } else if (timeLbl) {
-        timeLbl.textContent = `${fmt(cur)} / ${fmt(dur)}`;
-      }
-      if (!seek.dragging) seek.value = String(cur);
-    };
-    const updateMax = () => {
-      try {
-        seek.max = String(Math.max(0, Number(v.duration || 0)));
-        updateTime();
-      } catch { }
-    };
-    const updatePlayUI = () => {
-      const paused = !!v.paused;
-      playBtn.textContent = paused ? "▶" : "⏸";
-      playBtn.title = paused ? "Play" : "Pause";
-      playBtn.setAttribute("aria-label", paused ? "Play" : "Pause");
-    };
-    v.addEventListener("loadedmetadata", updateMax);
-    v.addEventListener("durationchange", updateMax);
-    v.addEventListener("timeupdate", updateTime);
-    v.addEventListener("play", updatePlayUI);
-    v.addEventListener("pause", updatePlayUI);
-    playBtn.addEventListener("click", () => {
-      try {
-        v.paused ? v.play() : v.pause();
-      } catch { }
-    });
-    seek.addEventListener("input", () => {
-      seek.dragging = true;
-      try {
-        v.currentTime = Number(seek.value || 0);
-      } catch { }
-    });
-    seek.addEventListener("change", () => {
-      seek.dragging = false;
-    });
-    if (timeCur) {
-      const jump = () => {
-        try {
-          const t = parse(timeCur.value);
-          if (t == null) return;
-          const target = Math.min(
-            Math.max(0, t),
-            Math.max(0, Number(v.duration || 0) - 1e-6)
-          );
-          try {
-            v.pause();
-          } catch (e) { }
-          v.currentTime = target;
-          updateTime();
-        } catch (e) { }
-      };
-      timeCur.addEventListener("keydown", (ev) => {
-        if (ev.key === "Enter") {
-          ev.preventDefault();
-          jump();
-        }
-      });
-      timeCur.addEventListener("blur", jump);
-    }
-    if (v.readyState >= 1) {
-      updateMax();
-      updatePlayUI();
-    }
-  } catch { }
 })();
 // Header Facility selector: populate and broadcast changes
 (function headerFacility() {

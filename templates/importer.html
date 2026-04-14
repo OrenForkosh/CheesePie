@@ -1,143 +1,137 @@
 {% extends "base.html" %} {% block content %}
-<div class="panel panel-importer">
-  <div class="panel-header" style="display:flex; align-items:center; justify-content:space-between">
-    <div class="header-left">
-      <h1>Importer</h1>
-      <div class="muted">
-        Configure facility, experiment, dates, times, and cameras.
+<section class="panel panel--nochrome" id="importer">
+  <div class="controls-trans importer-layout">
+    <div class="subpanel">
+      <div class="control-group header-left" style="margin-bottom: 16px">
+        <h1>Importer</h1>
+        <p class="muted">Configure facility, experiment, dates, times, and cameras.</p>
       </div>
-    </div>
-  </div>
-  <div class="controls">
-    <div class="control-group">
-      <label for="source-dir">Source Folder</label>
-      <div style="display: flex; gap: 8px; align-items: center">
-        <input id="source-dir" type="text" readonly placeholder="Select a facility" style="flex: 1" />
-        <button class="btn" id="list-btn" title="List all files per camera with progress">
-          List
-        </button>
-      </div>
-    </div>
 
-    <div class="control-group">
-      <label for="experiment-select">Experiment</label>
-      <select id="experiment-select" disabled></select>
-    </div>
-    <div class="control-group">
-      <label for="treatment-select">Treatment</label>
-      <select id="treatment-select" disabled></select>
-    </div>
-
-    <div class="control-group">
-      <label for="batch-input">Batch</label>
-      <input id="batch-input" type="number" min="0" step="1" value="1" />
-      <div id="batch-hint" class="muted" style="margin-top: 4px"></div>
-    </div>
-
-    <div class="control-group">
-      <label for="start-date">Start Date</label>
-      <input id="start-date" type="date" />
-    </div>
-    <div class="control-group">
-      <label for="end-date">End Date</label>
-      <input id="end-date" type="date" />
-    </div>
-
-    <div class="control-group">
-      <label for="start-time">Start Time</label>
-      <input id="start-time" type="time" placeholder="20:00" />
-    </div>
-    <div class="control-group">
-      <label for="end-time">End Time</label>
-      <input id="end-time" type="time" />
-    </div>
-
-    <div class="control-group" style="grid-column: 1 / -1">
-      <label>Cameras</label>
-      <div id="cameras-wrap">
-        <div id="cams-topline" style="
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            flex-wrap: wrap;
-          ">
-          <div class="cam-toolbar" id="cams-toolbar" hidden>
-            <button type="button" class="btn mini" id="cams-all">All</button>
-            <button type="button" class="btn mini" id="cams-none">None</button>
-            <div class="cam-row" id="cams-row"></div>
-          </div>
-          <div style="
-              display: flex;
-              align-items: center;
-              gap: 8px;
-              flex-wrap: wrap;
-            ">
-            <button class="btn" id="list-import-btn" title="List files that match your selection">
-              List
-            </button>
-            <button class="btn primary" id="open-import" title="Open import dialog">
-              Import
-            </button>
+      <div class="importer-grid">
+        <div class="control-group" style="grid-column: 1 / -1">
+          <label for="source-dir">Source Folder</label>
+          <div style="display: flex; gap: 8px; align-items: center">
+            <input id="source-dir" type="text" readonly placeholder="Select a facility" style="flex: 1" />
+            <button class="btn" id="list-btn" title="List all files per camera with progress">List</button>
           </div>
         </div>
+
+        <div class="control-group" style="grid-column: span 2">
+          <label for="experiment-select">Experiment</label>
+          <select id="experiment-select" disabled></select>
+        </div>
+        <div class="control-group">
+          <label for="treatment-select">Treatment</label>
+          <select id="treatment-select" disabled></select>
+        </div>
+
+        <div class="control-group">
+          <label for="batch-input">Batch</label>
+          <input id="batch-input" type="number" min="0" step="1" value="1" />
+          <div id="batch-hint" class="muted" style="margin-top: 4px"></div>
+        </div>
+
+        <div class="control-group">
+          <label for="start-date">Start Date</label>
+          <input id="start-date" type="date" />
+        </div>
+        <div class="control-group">
+          <label for="end-date">End Date</label>
+          <input id="end-date" type="date" />
+        </div>
+
+        <div class="control-group">
+          <label for="start-time">Start Time</label>
+          <input id="start-time" type="time" placeholder="20:00" />
+        </div>
+        <div class="control-group">
+          <label for="end-time">End Time</label>
+          <input id="end-time" type="time" />
+        </div>
+
+        <div class="control-group" style="grid-column: 1 / -1">
+          <label>Cameras</label>
+          <div id="cameras-wrap">
+            <div id="cams-topline" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap">
+              <div class="cam-toolbar" id="cams-toolbar" hidden>
+                <button type="button" class="btn mini" id="cams-all">All</button>
+                <button type="button" class="btn mini" id="cams-none">None</button>
+                <div class="cam-row" id="cams-row"></div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+                <button class="btn" id="list-import-btn" title="List files that match your selection">List</button>
+                <button class="btn primary" id="open-import" title="Open import dialog">Import</button>
+              </div>
+            </div>
+          </div>
+          <div class="muted" id="cameras-hint" style="margin-top: 6px">Select a facility to load available cameras.</div>
+        </div>
       </div>
-      <div class="muted" id="cameras-hint" style="margin-top: 6px">
-        Select a facility to load available cameras.
+    </div>
+
+    <!-- Column-view source browser + Day Preparation -->
+    <div class="subpanel importer-browser" id="importer-browser" style="display:none">
+      <div class="importer-browser-header">
+        <span style="font-size:13px; font-weight:600">Source</span>
+        <span id="importer-browser-status" class="muted" style="font-size:11px"></span>
+      </div>
+      <div class="importer-browser-cols" id="importer-browser-cols">
+        <div class="importer-col" id="importer-col-cams">
+          <div class="importer-col-empty muted">Select a facility</div>
+        </div>
+        <div class="importer-col" id="importer-col-dates">
+          <div class="importer-col-empty muted">Select a camera</div>
+        </div>
+        <div class="importer-col" id="importer-col-files">
+          <div class="importer-col-empty muted">Select a date folder</div>
+        </div>
+      </div>
+
+      <!-- Day Preparation — hidden until scan produces a plan -->
+      <div id="sb-days-section" style="display:none">
+        <div class="sb-section-divider">Day Preparation</div>
+        <div id="encode-progress" style="display:none; margin:4px 16px 8px">
+          <div id="encode-text" class="muted" style="font-size:12px">Idle</div>
+          <div class="progress"><div id="encode-bar" class="bar" style="width:0%"></div></div>
+        </div>
+        <div class="sb-days-table-wrap">
+          <table id="days-table" style="width:100%; border-collapse:collapse; font-size:12px">
+            <thead>
+              <tr>
+                <th style="text-align:left; padding:5px 8px">Cam</th>
+                <th style="text-align:left; padding:5px 8px">Day</th>
+                <th style="text-align:left; padding:5px 8px">Segs</th>
+                <th style="text-align:left; padding:5px 8px; min-width:120px">Path</th>
+                <th style="text-align:left; padding:5px 8px">Duration</th>
+                <th style="text-align:left; padding:5px 8px">Status</th>
+                <th style="text-align:left; padding:5px 8px">Health</th>
+              </tr>
+            </thead>
+            <tbody id="days-body"></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
-</div>
+</section>
 
 <!-- Import Modal -->
-<div id="import-modal" style="
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.4);
-    z-index: 1000;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-  ">
-  <div class="panel" style="
-      margin: 0;
-      width: min(1100px, 96vw);
-      max-height: 90vh;
-      overflow: auto;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
-      border-radius: 10px;
-    ">
-    <div class="panel-header" style="display: flex; align-items: center; justify-content: space-between">
-      <div style="display: flex; align-items: center; gap: 8px">
-        <button class="btn" id="import-close" title="Close" style="
-            font-weight: 700;
-            width: 32px;
-            height: 32px;
-            padding: 0;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-          ">
-          ✕
-        </button>
-        <h1 style="margin: 0">Import</h1>
-      </div>
+<div id="import-modal" class="import-modal-wrap" style="display: none">
+  <div class="overlay-panel" style="width: min(1100px, 96vw); max-height: 90vh; overflow: auto">
+    <div class="overlay-header">
+      <h3 style="margin: 0">Import</h3>
       <div style="display: flex; gap: 8px; align-items: center">
-        <button class="btn primary" id="import-btn" disabled title="Complete selections to enable scan">
-          Rescan
-        </button>
-        <button class="btn" id="run-btn" disabled title="Run is available after a successful scan">
-          Run
-        </button>
+        <button class="btn primary" id="import-btn" disabled title="Complete selections to enable scan">Rescan</button>
+        <button class="btn" id="run-btn" disabled title="Run is available after a successful scan">Run</button>
+        <button class="btn mini" id="import-close" title="Close">✕</button>
       </div>
     </div>
-    <div id="import-modal-body" style="padding: 8px 12px"></div>
+    <div id="import-modal-body" style="padding: 4px 0 0"></div>
   </div>
 </div>
 
 <script>
-  window.addEventListener("DOMContentLoaded", function () {
+  function initImporter() {
     const CFG = window.CHEESEPIE || {};
     const FACS = (CFG.importer && CFG.importer.facilities) || {};
 
@@ -163,6 +157,9 @@
     const listImportBtn = document.getElementById("list-import-btn");
     const openImportBtn = document.getElementById('open-import');
     const runTopBtn = document.getElementById("run-btn");
+    let _ibData = null;
+    let _ibCam  = null;
+    let _ibDate = null;
     let scanController = null;
     let scanAnimTimer = null;
     let scanDotsTimer = null;
@@ -330,7 +327,7 @@
         eb.style.cssText =
           "display:none; margin:10px 0; padding:8px 12px; border-radius:6px; background:#ffebee; color:#b71c1c; border:1px solid #ef9a9a;";
         const container =
-          document.querySelector(".panel .controls") || document.body;
+          document.querySelector("#importer .importer-grid") || document.body;
         container.parentElement.insertBefore(eb, container);
       }
       return eb;
@@ -488,10 +485,8 @@
 
     function ensureDefaultDates() {
       const today = new Date();
-      const start = new Date(today);
-      start.setDate(today.getDate() - 4);
       if (!endDate.value) endDate.value = formatDate(today);
-      if (!startDate.value) startDate.value = formatDate(start);
+      if (!startDate.value) startDate.value = "2020-01-01";
     }
 
     async function initFromUrl() {
@@ -588,6 +583,7 @@
         }
         validate();
         updateUrl();
+        loadImporterBrowser(fac);
       } catch (e) { }
     }
     document.addEventListener("app:facility-changed", function () {
@@ -686,7 +682,7 @@
           : Array.from({ length: n }, (_, i) => i + 1);
       items.forEach((camNum) => {
         const btn = document.createElement("div");
-        btn.className = "cam-btn";
+        btn.className = "cam-btn active";
         btn.dataset.cam = String(camNum);
         btn.textContent = String(camNum);
         btn.addEventListener("click", () => {
@@ -801,6 +797,7 @@
       refreshBatch();
       validate();
       updateUrl();
+      loadImporterBrowser(fac);
     });
     experimentSel.addEventListener("change", () => {
       populateTreatments(facilitySel.value, experimentSel.value);
@@ -824,10 +821,12 @@
     startDate.addEventListener("change", () => {
       validate();
       updateUrl();
+      refreshIBDateHighlights();
     });
     endDate.addEventListener("change", () => {
       validate();
       updateUrl();
+      refreshIBDateHighlights();
     });
     startTime.addEventListener("change", () => {
       validate();
@@ -1059,8 +1058,8 @@
             await onRunEncode();
             // Bring Day Preparation into focus
             try {
-              const dp = document.getElementById("days-status");
-              if (dp) dp.scrollIntoView({ behavior: "smooth", block: "start" });
+              const dp = document.getElementById("sb-days-section");
+              if (dp) dp.scrollIntoView({ behavior: "smooth", block: "nearest" });
             } catch { }
           } catch (e) {
             showError("Prepare error", e);
@@ -1330,53 +1329,188 @@
       } catch (e) { try { showError('Import start error', e); } catch { } }
     });
 
+    // ── Importer Column Browser ──────────────────────────────────────────────
+
+    function _ibDateRange() {
+      try {
+        const s = startDate && startDate.value ? new Date(startDate.value + "T00:00:00") : null;
+        const e = endDate && endDate.value ? new Date(endDate.value + "T00:00:00") : null;
+        return { start: s, end: e };
+      } catch { return { start: null, end: null }; }
+    }
+
+    function _ibFolderClass(folderDate) {
+      if (!folderDate) return "";
+      const { start, end } = _ibDateRange();
+      if (!start && !end) return "";
+      try {
+        const d = new Date(folderDate + "T00:00:00");
+        if (isNaN(d)) return "";
+        if (start && end) {
+          if (d >= start && d <= end) return "in-range";
+          const bs = new Date(start); bs.setDate(bs.getDate() - 1);
+          const be = new Date(end);   be.setDate(be.getDate() + 1);
+          if (d >= bs && d <= be) return "buffer";
+          return "out-of-range";
+        }
+        const ref = start || end;
+        const bs = new Date(ref); bs.setDate(bs.getDate() - 1);
+        const be = new Date(ref); be.setDate(be.getDate() + 1);
+        if (d.getTime() === ref.getTime()) return "in-range";
+        if (d >= bs && d <= be) return "buffer";
+        return "out-of-range";
+      } catch { return ""; }
+    }
+
+    async function loadImporterBrowser(fac) {
+      const panel = document.getElementById("importer-browser");
+      const status = document.getElementById("importer-browser-status");
+      if (!panel) return;
+      if (!fac) { panel.style.display = "none"; return; }
+      panel.style.display = "";
+      _ibData = null; _ibCam = null; _ibDate = null;
+      if (status) status.textContent = "Loading…";
+      const colCams  = document.getElementById("importer-col-cams");
+      const colDates = document.getElementById("importer-col-dates");
+      const colFiles = document.getElementById("importer-col-files");
+      if (colCams)  colCams.innerHTML  = `<div class="importer-col-empty muted">Loading…</div>`;
+      if (colDates) colDates.innerHTML = `<div class="importer-col-empty muted">Select a camera</div>`;
+      if (colFiles) colFiles.innerHTML = `<div class="importer-col-empty muted">Select a date folder</div>`;
+      try {
+        const r = await fetch(`/api/import/browse_source?facility=${encodeURIComponent(fac)}`);
+        const d = await r.json().catch(() => ({}));
+        if (!d.ok) throw new Error(d.error || "Browse failed");
+        _ibData = d;
+        if (status) status.textContent = "";
+        renderIBCams();
+        // Auto-select first camera that exists
+        const first = (_ibData.cameras || []).find(c => c.exists);
+        if (first) selectIBCamera(first.camera);
+      } catch (e) {
+        if (status) status.textContent = String(e.message || e);
+        if (colCams) colCams.innerHTML = `<div class="importer-col-empty muted">Could not load source.</div>`;
+      }
+    }
+
+    function renderIBCams() {
+      const col = document.getElementById("importer-col-cams");
+      if (!col || !_ibData) return;
+      col.innerHTML = "";
+      (_ibData.cameras || []).forEach(cam => {
+        const item = document.createElement("div");
+        item.className = "importer-col-item" + (cam.camera === _ibCam ? " active" : "");
+        if (!cam.exists) item.style.opacity = "0.4";
+        const label = cam.folder || `Cam ${cam.camera}`;
+        const count = cam.exists ? cam.date_folders.length : 0;
+        item.innerHTML = `<span class="ic-name">${label}</span><span class="ic-meta">${count}</span>`;
+        item.title = cam.exists ? `${count} date folder(s)` : "Folder not found";
+        item.addEventListener("click", () => { if (cam.exists) selectIBCamera(cam.camera); });
+        col.appendChild(item);
+      });
+    }
+
+    function selectIBCamera(camIdx) {
+      _ibCam = camIdx;
+      _ibDate = null;
+      // Update active state in col 1
+      const col1 = document.getElementById("importer-col-cams");
+      if (col1) col1.querySelectorAll(".importer-col-item").forEach((el, i) => {
+        const cam = (_ibData.cameras || [])[i];
+        el.classList.toggle("active", cam && cam.camera === camIdx);
+      });
+      // Clear cols 2 & 3
+      const col3 = document.getElementById("importer-col-files");
+      if (col3) col3.innerHTML = `<div class="importer-col-empty muted">Select a date folder</div>`;
+      renderIBDates();
+    }
+
+    function renderIBDates() {
+      const col = document.getElementById("importer-col-dates");
+      if (!col || !_ibData) return;
+      const camData = (_ibData.cameras || []).find(c => c.camera === _ibCam);
+      if (!camData || !camData.exists) {
+        col.innerHTML = `<div class="importer-col-empty muted">Camera not found</div>`;
+        return;
+      }
+      col.innerHTML = "";
+      (camData.date_folders || []).forEach(df => {
+        const cls = _ibFolderClass(df.date);
+        const item = document.createElement("div");
+        item.className = "importer-col-item" + (cls ? " " + cls : "") + (df.name === _ibDate ? " active" : "");
+        item.dataset.folder = df.name;
+        item.innerHTML = `<span class="ic-name">${df.name}</span><span class="ic-meta">${df.file_count}</span>`;
+        item.title = df.date ? `${df.date} — ${df.file_count} file(s)` : `${df.file_count} file(s)`;
+        item.addEventListener("click", () => selectIBDate(df.name));
+        col.appendChild(item);
+      });
+      if (!camData.date_folders || camData.date_folders.length === 0) {
+        col.innerHTML = `<div class="importer-col-empty muted">No subfolders found</div>`;
+      }
+    }
+
+    async function selectIBDate(folderName) {
+      _ibDate = folderName;
+      // Update active state in col 2
+      const col2 = document.getElementById("importer-col-dates");
+      if (col2) col2.querySelectorAll(".importer-col-item").forEach(el => {
+        el.classList.toggle("active", el.dataset.folder === folderName);
+      });
+      const col3 = document.getElementById("importer-col-files");
+      const fac = facilitySel && facilitySel.value;
+      if (!col3 || !fac || _ibCam == null) return;
+      col3.innerHTML = `<div class="importer-col-empty muted">Loading…</div>`;
+      try {
+        const url = `/api/import/browse_folder?facility=${encodeURIComponent(fac)}&camera=${encodeURIComponent(_ibCam)}&subfolder=${encodeURIComponent(folderName)}`;
+        const r = await fetch(url);
+        const d = await r.json().catch(() => ({}));
+        if (!d.ok) throw new Error(d.error || "Failed");
+        renderIBFiles(d.files || []);
+      } catch (e) {
+        col3.innerHTML = `<div class="importer-col-empty muted">${e.message || "Error"}</div>`;
+      }
+    }
+
+    function renderIBFiles(files) {
+      const col = document.getElementById("importer-col-files");
+      if (!col) return;
+      col.innerHTML = "";
+      if (!files.length) {
+        col.innerHTML = `<div class="importer-col-empty muted">No files</div>`;
+        return;
+      }
+      files.forEach(f => {
+        const item = document.createElement("div");
+        item.className = "importer-col-item";
+        item.innerHTML = `<span class="ic-name">${f.name}</span><span class="ic-meta">${f.timestamp || ""}</span>`;
+        col.appendChild(item);
+      });
+    }
+
+    function refreshIBDateHighlights() {
+      if (!_ibData || _ibCam == null) return;
+      const col2 = document.getElementById("importer-col-dates");
+      if (!col2) return;
+      const camData = (_ibData.cameras || []).find(c => c.camera === _ibCam);
+      if (!camData || !camData.exists) return;
+      col2.querySelectorAll(".importer-col-item").forEach((el, i) => {
+        const df = (camData.date_folders || [])[i];
+        if (!df) return;
+        el.className = "importer-col-item";
+        if (df.name === _ibDate) el.classList.add("active");
+        const cls = _ibFolderClass(df.date);
+        if (cls) el.classList.add(cls);
+      });
+    }
+
+    // ── End Importer Column Browser ───────────────────────────────────────────
+
     // Kick resume once UI is ready
     resumeJobs();
 
-    // Day Preparation panel
+    // Day Preparation — elements live inside #importer-browser; just ensure panel is visible
     function ensureDaysPanel() {
-      let panel = document.getElementById("days-status");
-      if (!panel) {
-        panel = document.createElement("div");
-        panel.id = "days-status";
-        panel.className = "panel";
-        panel.style.marginTop = "16px";
-        // Hidden by default; shown when there are rows in days-table
-        panel.style.display = "none";
-        panel.innerHTML = `
-        <div class=\"panel-header\" style=\"display:flex; align-items:center; justify-content:space-between; padding:8px 16px;\">\n          <h1>Day Preparation</h1>\n          <div style=\"display:flex; gap:8px; align-items:center\">\n            <button class=\"btn\" id=\"stop-btn\" disabled>Stop</button>\n          </div>\n        </div>
-        <div class="table-wrap">
-          <div id="encode-progress" style="display:none; margin:8px 0">
-            <div id="encode-text" class="muted">Idle</div>
-            <div class="progress"><div id="encode-bar" class="bar" style="width:0%"></div></div>
-          </div>
-          <table id="days-table" style="width:100%; border-collapse:collapse; font-size:13px">
-            <thead>
-              <tr>
-                <th style="text-align:left; padding:6px 4px">Camera</th>
-                <th style="text-align:left; padding:6px 4px">Day</th>
-                <th style="text-align:left; padding:6px 4px">Segs</th>
-                <th style="text-align:left; padding:6px 4px">Path</th>
-                <th style="text-align:left; padding:6px 4px">Duration</th>
-                <th style="text-align:left; padding:6px 4px">Status</th>
-                <th style="text-align:left; padding:6px 4px">Health</th>
-              </tr>
-            </thead>
-            <tbody id="days-body"></tbody>
-          </table>
-        </div>`;
-        const ctrl = document.querySelector(".panel .controls");
-        if (ctrl && ctrl.parentElement) {
-          ctrl.parentElement.insertAdjacentElement("afterend", panel);
-        }
-        // Run button is placed next to Scan at the top
-        const stopBtn = document.getElementById("stop-btn");
-        if (stopBtn) {
-          // Hide legacy Stop button; Run button toggles to Stop in dialog header
-          stopBtn.style.display = "none";
-        }
-        // Details/Retry controls removed
-      }
+      const panel = document.getElementById("importer-browser");
+      if (panel) panel.style.display = "";
     }
 
     // Simple status panel under the form
@@ -1401,7 +1535,7 @@
             <tbody id="status-body"></tbody>
           </table>
         </div>`;
-        document.querySelector(".panel .controls").after(panel);
+        document.getElementById("importer").after(panel);
         try {
           const hdr = panel.querySelector(".panel-header");
           if (hdr) {
@@ -1436,7 +1570,7 @@
           <div id="scan-meta" class="muted" style="margin: 8px 0"></div>
           <div id="scan-list" style="max-height: 320px; overflow:auto;"></div>
         </div>`;
-        document.querySelector(".panel .controls").after(panel);
+        document.getElementById("importer").after(panel);
         // Setup collapse/expand toggle
         const scanToggleBtn = document.getElementById("scan-toggle-btn");
         const scanHeader = document.getElementById("scan-header");
@@ -1771,12 +1905,8 @@
         ensureScanPanel();
         ensureDaysPanel();
         const scanPanel = document.getElementById("import-scan");
-        const daysPanel = document.getElementById("days-status");
         if (scanPanel && modalBody && scanPanel.parentElement !== modalBody) {
           modalBody.appendChild(scanPanel);
-        }
-        if (daysPanel && modalBody && daysPanel.parentElement !== modalBody) {
-          modalBody.appendChild(daysPanel);
         }
         modal.style.display = "flex";
         // Add Escape-to-close
@@ -2090,14 +2220,19 @@
     // Retry-failed functionality removed
 
     //
-  });
+  }
+  if (document.readyState === "loading") {
+    window.addEventListener("DOMContentLoaded", initImporter);
+  } else {
+    initImporter();
+  }
 
   // Renders the Day Preparation plan into the table and updates controls
   function renderDaysPlan(data) {
     try {
       // Ensure the panel exists
       (function ensure() {
-        if (!document.getElementById("days-status")) {
+        if (!document.getElementById("days-body")) {
           if (typeof ensureDaysPanel === "function") ensureDaysPanel();
         }
       })();
@@ -2188,10 +2323,10 @@
       }
       // Update table body
       body.innerHTML = rows || '';
-      // Toggle panel visibility based on presence of rows
+      // Toggle day section visibility based on presence of rows
       try {
-        const panel = document.getElementById('days-status');
-        if (panel) panel.style.display = rows ? '' : 'none';
+        const daysSection = document.getElementById('sb-days-section');
+        if (daysSection) daysSection.style.display = rows ? '' : 'none';
       } catch { }
 
       // No separate overall progress UI; status is reflected per row

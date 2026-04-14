@@ -1,0 +1,116 @@
+{% extends "base.html" %} {% block content %}
+<section class="panel panel--nochrome" id="calibration-panel">
+  <div class="cal-layout">
+
+    <!-- ── Left sidebar: controls ──────────────────────────────────── -->
+    <div class="subpanel cal-sidebar">
+
+      <div class="control-group header-left" style="margin-bottom:12px">
+        <h1>Calibrate</h1>
+        <p class="muted">Align cameras to the arena mask.</p>
+      </div>
+
+      <!-- Camera discovery -->
+      <div class="control-group">
+        <label>Cameras</label>
+        <button class="btn" id="cal-scan-btn">Scan Network</button>
+        <div id="cal-scan-status" class="muted" style="margin-top:6px;font-size:12px"></div>
+        <ul id="cal-camera-list" class="cal-camera-list"></ul>
+      </div>
+
+      <!-- Profile selection -->
+      <div class="control-group" id="cal-profile-group" style="display:none">
+        <label for="cal-profile-select">Video Profile</label>
+        <select id="cal-profile-select"></select>
+      </div>
+
+      <!-- Preview controls -->
+      <div class="control-group" id="cal-preview-controls" style="display:none">
+        <label>Preview</label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn" id="cal-grab-btn">Grab Frame</button>
+          <button class="btn" id="cal-auto-btn">Auto</button>
+          <button class="btn" id="cal-live-btn">Live</button>
+        </div>
+        <div id="cal-preview-status" class="muted" style="margin-top:6px;font-size:12px"></div>
+      </div>
+
+      <!-- Mask overlay -->
+      <div class="control-group" id="cal-mask-group" style="display:none">
+        <label>Mask Opacity</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="range" id="cal-mask-opacity" min="0" max="1" step="0.05" value="0.4" style="flex:1">
+          <span id="cal-mask-opacity-val" class="muted" style="font-size:12px;width:32px">40%</span>
+        </div>
+      </div>
+
+      <!-- PTZ controls -->
+      <div class="control-group" id="cal-ptz-group" style="display:none">
+        <label>Camera Control</label>
+        <div class="cal-ptz-section">
+          <div class="cal-ptz-row">
+            <span class="muted" style="font-size:11px;width:52px">Zoom</span>
+            <button class="btn mini cal-ptz-btn" data-action="zoom_out" title="Zoom out">−</button>
+            <button class="btn mini cal-ptz-btn" data-action="zoom_in"  title="Zoom in">+</button>
+          </div>
+          <div class="cal-ptz-row">
+            <span class="muted" style="font-size:11px;width:52px">Focus</span>
+            <button class="btn mini cal-ptz-btn" data-action="focus_near" title="Focus near">Near</button>
+            <button class="btn mini cal-ptz-btn" data-action="focus_far"  title="Focus far">Far</button>
+          </div>
+        </div>
+        <div id="cal-ptz-status" class="muted" style="margin-top:4px;font-size:11px"></div>
+      </div>
+
+    </div>
+
+    <!-- ── Right panel: preview + histogram ────────────────────────── -->
+    <div class="cal-main">
+
+      <!-- Video / frame preview -->
+      <div class="subpanel" style="flex:1;min-width:0">
+        <div class="cal-preview-wrap" id="cal-preview-wrap">
+          <!-- Placeholder shown when no frame loaded -->
+          <div class="cal-placeholder" id="cal-placeholder">
+            <span class="muted">Select a camera and grab a frame.</span>
+          </div>
+          <!-- Frame layers (hidden until first frame) -->
+          <div class="cal-layers" id="cal-layers" style="display:none">
+            <!-- Snapshot mode: <img> -->
+            <img id="cal-frame-img" class="cal-frame-img" alt="">
+            <!-- Live mode: MJPEG <img> hidden behind canvas -->
+            <img id="cal-stream-img" class="cal-frame-img" alt="" style="display:none">
+            <!-- Mask overlay canvas -->
+            <canvas id="cal-mask-canvas" class="cal-overlay-canvas"></canvas>
+            <!-- Interaction canvas (topmost, handles clicks) -->
+            <canvas id="cal-interact-canvas" class="cal-overlay-canvas cal-crosshair"></canvas>
+          </div>
+        </div>
+
+        <!-- Pixel info bar -->
+        <div id="cal-pixel-bar" class="cal-pixel-bar" style="display:none">
+          <span id="cal-pixel-coords" class="cal-pixel-chip"></span>
+          <span id="cal-pixel-rgb"    class="cal-pixel-chip"></span>
+          <span id="cal-pixel-swatch" class="cal-pixel-swatch"></span>
+        </div>
+      </div>
+
+      <!-- Histogram -->
+      <div class="subpanel cal-hist-panel" id="cal-hist-panel" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <span style="font-size:12px;font-weight:600">Histogram</span>
+          <div style="display:flex;gap:6px">
+            <label class="cal-ch-toggle"><input type="checkbox" id="cal-ch-lum" checked><span style="color:#ccc">L</span></label>
+            <label class="cal-ch-toggle"><input type="checkbox" id="cal-ch-r"   checked><span style="color:#f76">R</span></label>
+            <label class="cal-ch-toggle"><input type="checkbox" id="cal-ch-g"   checked><span style="color:#6f6">G</span></label>
+            <label class="cal-ch-toggle"><input type="checkbox" id="cal-ch-b"   checked><span style="color:#68f">B</span></label>
+          </div>
+        </div>
+        <canvas id="cal-hist-canvas" class="cal-hist-canvas"></canvas>
+      </div>
+
+    </div><!-- .cal-main -->
+  </div><!-- .cal-layout -->
+</section>
+<script src="/static/calibration.js"></script>
+{% endblock %}

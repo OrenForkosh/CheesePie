@@ -56,6 +56,16 @@ def importer():
     return render_template('importer.html', active_tab='importer', facilities=facilities, page_css=['importer.css'])
 
 
+@bp.route('/calibration')
+def calibration():
+    return render_template('calibration.html', active_tab='calibration', page_css=['calibration.css'])
+
+
+@bp.route('/partials/calibration')
+def calibration_partial():
+    return render_template('calibration.html', active_tab='calibration', partial=True, page_css=['calibration.css'])
+
+
 @bp.route('/settings')
 def settings():
     return render_template('settings.html', active_tab='settings')
@@ -64,6 +74,55 @@ def settings():
 @bp.route('/tasks')
 def tasks():
     return render_template('tasks.html', active_tab='tasks')
+
+
+@bp.route('/partials/browser')
+def browser_partial():
+    return render_template('browser.html', active_tab='browser', partial=True, page_css=['browser.css'])
+
+
+@bp.route('/partials/preproc')
+def preproc_partial():
+    video = request.args.get('video')
+    return render_template('preproc.html', active_tab='preproc', video=video, partial=True, page_css=['preproc.css'])
+
+
+@bp.route('/partials/annotator')
+def annotator_partial():
+    video = request.args.get('video')
+    return render_template(
+        'annotator.html',
+        active_tab='annotator',
+        video=video,
+        default_mice=cfg_default_animals(),
+        default_fps=cfg_default_fps(),
+        default_types=cfg_default_types(),
+        keyboard=cfg_keyboard(),
+        partial=True,
+        page_css=['annotator.css'],
+    )
+
+
+@bp.route('/partials/preview')
+def preview_partial():
+    video = request.args.get('video')
+    return render_template('preview.html', active_tab='preview', video=video, partial=True)
+
+
+@bp.route('/partials/importer')
+def importer_partial():
+    facilities = cfg_importer_facilities()
+    return render_template('importer.html', active_tab='importer', facilities=facilities, partial=True, page_css=['importer.css'])
+
+
+@bp.route('/partials/tasks')
+def tasks_partial():
+    return render_template('tasks.html', active_tab='tasks', partial=True)
+
+
+@bp.route('/partials/settings')
+def settings_partial():
+    return render_template('settings.html', active_tab='settings', partial=True)
 
 # Temporary compatibility: redirect old Analyze URL to Preview
 @bp.route('/analyze')

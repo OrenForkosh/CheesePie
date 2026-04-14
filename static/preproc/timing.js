@@ -154,25 +154,63 @@
     function cfgFps(){
       try{ const cfg = window.CHEESEPIE || {}; const afps = (cfg.annotator && cfg.annotator.default_fps) || 30; const n = parseInt(afps,10)||30; return Math.max(1, Math.min(300, n)); }catch(e){ return 30; }
     }
+    function keyboardCfg(){
+      try{ const cfg = window.CHEESEPIE || {}; return (cfg.annotator && cfg.annotator.keyboard) || {}; }catch(e){ return {}; }
+    }
+    function updateShortcutLabels(){
+      try{
+        const kb = keyboardCfg();
+        const frame = kb.frame_step_keys || { prev: '[', next: ']' };
+        const jumps = kb.jump_seconds || { left: 1, right: 1, shift: 0, alt: 0 };
+        const prevEl = document.getElementById('timing-frame-prev');
+        const nextEl = document.getElementById('timing-frame-next');
+        if (prevEl && frame.prev) prevEl.textContent = frame.prev;
+        if (nextEl && frame.next) nextEl.textContent = frame.next;
+        const leftEl = document.getElementById('timing-jump-left');
+        const rightEl = document.getElementById('timing-jump-right');
+        const shiftEl = document.getElementById('timing-jump-shift');
+        const altEl = document.getElementById('timing-jump-alt');
+        const shiftRow = document.getElementById('timing-jump-shift-row');
+        const altRow = document.getElementById('timing-jump-alt-row');
+        const leftVal = Number(jumps.left || 0);
+        const rightVal = Number(jumps.right || 0);
+        const shiftVal = Number(jumps.shift || 0);
+        const altVal = Number(jumps.alt || 0);
+        if (leftEl) leftEl.textContent = String(leftVal || 0);
+        if (rightEl) rightEl.textContent = String(rightVal || 0);
+        if (shiftEl) shiftEl.textContent = String(shiftVal || 0);
+        if (altEl) altEl.textContent = String(altVal || 0);
+        if (shiftRow) shiftRow.style.display = shiftVal ? '' : 'none';
+        if (altRow) altRow.style.display = altVal ? '' : 'none';
+      }catch(e){}
+    }
     function paneActive(){ try{ return pane && pane.style.display !== 'none'; }catch(e){ return false; } }
     function isTypingTarget(t){ try{ if(!t) return false; const tag = (t.tagName||'').toLowerCase(); return tag==='input' || tag==='textarea' || t.isContentEditable; }catch(e){ return false; } }
     document.addEventListener('keydown', function(ev){
       try{
         if (!paneActive()) return;
+        if (window.cheesepieIsActivePage && !window.cheesepieIsActivePage('/preproc')) return;
         if (!video || !isFinite(video.duration)) return;
         if (isTypingTarget(ev.target)) return; // don't hijack while typing
         const k = ev.key;
         const code = ev.code;
+        const kb = keyboardCfg();
+        const frameCfg = kb.frame_step_keys || { prev: '[', next: ']' };
+        const jumpCfg = kb.jump_seconds || { left: 5, right: 5, shift: 1, alt: 0.5 };
+        const baseLeft = Number(jumpCfg.left || 0);
+        const baseRight = Number(jumpCfg.right || 0);
+        const shift = Number(jumpCfg.shift || 0);
+        const alt = Number(jumpCfg.alt || 0);
         let dt = null; // seconds delta
         // [ / ] step by one frame
-        if (k === '[' || code === 'BracketLeft'){
+        if (k === (frameCfg.prev || '[') || code === 'BracketLeft'){
           dt = -1 / cfgFps();
-        } else if (k === ']' || code === 'BracketRight'){
+        } else if (k === (frameCfg.next || ']') || code === 'BracketRight'){
           dt = +1 / cfgFps();
-        } else if (k === 'ArrowLeft' || k === 'ArrowRight'){
-          // Arrow keys jump seconds: 1s, or 5s with Shift
-          const jump = ev.shiftKey ? 5 : 1;
-          dt = (k === 'ArrowRight' ? +jump : -jump);
+        } else if (k === 'ArrowLeft'){
+          dt = -(ev.shiftKey && shift ? shift : (ev.altKey && alt ? alt : baseLeft));
+        } else if (k === 'ArrowRight'){
+          dt = (ev.shiftKey && shift ? shift : (ev.altKey && alt ? alt : baseRight));
         } else {
           return;
         }
@@ -183,6 +221,7 @@
         video.currentTime = t;
       }catch(e){}
     });
+    updateShortcutLabels();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

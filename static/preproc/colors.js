@@ -63,10 +63,28 @@
     const snapshotDataURL = ()=>{ if(!v||!v.videoWidth) return {frame:null,width:0,height:0}; const bg=document.getElementById('bg-canvas'); const tw=(bg&&bg.width)||v.videoWidth; const th=(bg&&bg.height)||v.videoHeight; const c=document.createElement('canvas'); c.width=tw; c.height=th; const ctx=c.getContext('2d'); try{ ctx.drawImage(v,0,0,tw,th);}catch(e){} return { frame:c.toDataURL('image/png'), width:tw, height:th}; };
     const fitRect = (sw,sh,dw,dh)=>{ if(!sw||!sh||!dw||!dh) return {dx:0,dy:0,dw:dw,dh:dh}; const s=Math.min(dw/sw, dh/sh); const rw=Math.round(sw*s), rh=Math.round(sh*s); return { dx:Math.floor((dw-rw)/2), dy:Math.floor((dh-rh)/2), dw:rw, dh:rh } };
 
-    function renderMouseSelection(){ if (!mouseChips) return; mouseChips.querySelectorAll('button[data-mouse]')?.forEach(btn=>{ const m=btn.getAttribute('data-mouse'); if(m===currentMouse) btn.classList.add('primary'); else btn.classList.remove('primary'); }); }
+    function renderMouseSelection(){
+      if (mouseChips) {
+        mouseChips.querySelectorAll('button[data-mouse]').forEach(btn=>{
+          btn.classList.toggle('active', btn.getAttribute('data-mouse') === currentMouse);
+        });
+      }
+      if (histEl) {
+        histEl.querySelectorAll('button[data-mouse]').forEach(btn=>{
+          btn.classList.toggle('active', btn.getAttribute('data-mouse') === currentMouse);
+        });
+      }
+      try {
+        const dock = document.getElementById('pp-color-dock');
+        if (dock) dock.querySelectorAll('.pp-marker[data-mouse]').forEach(el=>{
+          const isActive = el.getAttribute('data-mouse') === currentMouse;
+          el.style.boxShadow = isActive ? '0 0 0 2px #fff, 0 1px 4px rgba(0,0,0,0.5)' : '0 1px 4px rgba(0,0,0,0.35)';
+        });
+      } catch(e) {}
+    }
     function setMouse(m){ currentMouse=m; renderMouseSelection(); }
     mouseChips?.addEventListener('click',(ev)=>{ const t=ev.target.closest('button[data-mouse]'); if(!t) return; setMouse(t.getAttribute('data-mouse')||'R'); });
-    document.addEventListener('keydown',(ev)=>{ if(!pane||pane.style.display==='none') return; const k=ev.key; if(k==='1') setMouse('R'); else if(k==='2') setMouse('G'); else if(k==='3') setMouse('B'); else if(k==='4') setMouse('Y'); else if(k==='0') setMouse('BG'); else if(k===' '){ ev.preventDefault(); if (v && isFinite(v.duration) && v.duration>0){ autoSaveIfNeeded?.(); const t = Math.random()*Math.max(0.1, v.duration-0.2)+0.1; v.currentTime = t; } } });
+    document.addEventListener('keydown',(ev)=>{ if (window.cheesepieIsActivePage && !window.cheesepieIsActivePage('/preproc')) return; if(!pane||pane.style.display==='none') return; const k=ev.key; if(k==='1') setMouse('R'); else if(k==='2') setMouse('G'); else if(k==='3') setMouse('B'); else if(k==='4') setMouse('Y'); else if(k==='0') setMouse('BG'); else if(k===' '){ ev.preventDefault(); if (v && isFinite(v.duration) && v.duration>0){ autoSaveIfNeeded?.(); const t = Math.random()*Math.max(0.1, v.duration-0.2)+0.1; v.currentTime = t; } } });
 
     // ---- Drag markers dock (top-left) ----
     const host = document.getElementById('pp-vwrap');
@@ -109,34 +127,24 @@
           dock.appendChild(el);
           homeOf[d.id] = null; // relative inside dock; restore by re-append
 
-          let dragging = false; let startX=0, startY=0; let origLeft=0, origTop=0; let ghost = null;
+          let dragging = false; let drag = null;
           function onDown(ev){
             try{ ev.preventDefault(); }catch(e){}
             dragging = true; el.style.cursor = 'grabbing';
             const hostRect = host.getBoundingClientRect();
             const px = (ev.touches? ev.touches[0].clientX : ev.clientX);
             const py = (ev.touches? ev.touches[0].clientY : ev.clientY);
-            startX = px; startY = py;
-            // Create ghost absolutely positioned within host
-            ghost = document.createElement('div');
-            ghost.style.position = 'absolute';
-            ghost.style.left = (hostRect.left)+'px';
-            ghost.style.top = (hostRect.top)+'px';
-            ghost.style.width = (hostRect.width)+'px';
-            ghost.style.height = (hostRect.height)+'px';
-            ghost.style.zIndex='11';
-            ghost.style.pointerEvents='none';
-            document.body.appendChild(ghost);
-            // Clone visual for dragging within host
-            const drag = el.cloneNode(true); drag.style.position='absolute';
-            // initial position at dock icon location
+            // Create drag clone directly inside host so it stays inside the modal stacking context
+            drag = el.cloneNode(true);
+            drag.style.position = 'absolute';
+            drag.style.pointerEvents = 'none';
+            drag.style.zIndex = '20';
+            drag.style.cursor = 'grabbing';
+            drag.style.margin = '0';
             const elRect = el.getBoundingClientRect();
-            // position relative to ghost/host
             drag.style.left = (elRect.left - hostRect.left) + 'px';
             drag.style.top  = (elRect.top  - hostRect.top)  + 'px';
-            drag.style.transform = 'translate(0,0)';
-            drag.classList.add('dragging');
-            ghost.appendChild(drag);
+            host.appendChild(drag);
             state[d.id] = { dragEl: drag };
             window.addEventListener('mousemove', onMove);
             window.addEventListener('mouseup', onUp);
@@ -146,9 +154,10 @@
           function onMove(ev){ if (!dragging) return; try{ ev.preventDefault(); }catch(e){}
             const px = (ev.touches? ev.touches[0].clientX : ev.clientX);
             const py = (ev.touches? ev.touches[0].clientY : ev.clientY);
-            const dx = px - startX; const dy = py - startY;
-            const drag = state[d.id] && state[d.id].dragEl; if (!drag) return;
-            drag.style.transform = `translate(${dx}px, ${dy}px)`;
+            const hostRect = host.getBoundingClientRect();
+            const dragEl = state[d.id] && state[d.id].dragEl; if (!dragEl) return;
+            dragEl.style.left = (px - hostRect.left - 9) + 'px';
+            dragEl.style.top  = (py - hostRect.top  - 9) + 'px';
           }
           function onUp(ev){ if (!dragging) return; dragging=false; el.style.cursor='grab';
             window.removeEventListener('mousemove', onMove);
@@ -174,7 +183,7 @@
               if (lab === 0){ // small neighborhood search
                 const rad = 2; outer: for(let dy=-rad;dy<=rad;dy++){ for(let dx=-rad;dx<=rad;dx++){ const l2=labelAt(lx+dx,ly+dy); if(l2>0){ lab=l2; break outer; } } }
               }
-              if (lab === 0){ cleanup(false); setStatus('Drop onto a segment'); return; }
+              if (lab === 0){ cleanup(false); return; }
               // Use drop location as the anchor point (so the marker stays where dropped)
               const cx = lx, cy = ly;
               const t = timeKey(); if (!marks[t]) marks[t]=[]; marks[t] = marks[t].filter(m=> m.segment_label !== lab);
@@ -183,7 +192,7 @@
               cleanup(true);
             } catch(e){ cleanup(false); }
           }
-          function cleanup(ok){ try{ const drag=state[d.id] && state[d.id].dragEl; if (drag && drag.parentNode) drag.parentNode.remove(); }catch(e){} state[d.id]=null; if (!ok){ /* revert: nothing to do since we used ghost */ } }
+          function cleanup(ok){ try{ const dragEl=state[d.id] && state[d.id].dragEl; if (dragEl && dragEl.parentNode) dragEl.parentNode.removeChild(dragEl); }catch(e){} state[d.id]=null; }
           el.addEventListener('mousedown', onDown); el.addEventListener('touchstart', onDown, {passive:false});
         });
       }catch(e){}
@@ -388,15 +397,19 @@
         return counts;
       }catch(e){ return {R:0,G:0,B:0,Y:0,BG:0}; }
     }
+    const _chipKeyHint = {R:'1', G:'2', B:'3', Y:'4', BG:'0'};
+    histEl?.addEventListener('click', (ev)=>{ const t=ev.target.closest('button[data-mouse]'); if(!t) return; setMouse(t.getAttribute('data-mouse')||'R'); });
     function renderHistogram(){ try{
       if(!histEl) return; const counts=computeHistogramCounts(); const order=['R','G','B','Y','BG']; const max=Math.max(1,...order.map(k=>counts[k]||0));
       let html='';
       for(let i=0;i<order.length;i++){
         const k=order[i]; const n=counts[k]||0; const pct = Math.round((n/max)*100);
-        const color = (k==='BG') ? '#999' : markColor(k);
+        const color = (k==='BG') ? '#888' : markColor(k);
+        const active = k===currentMouse ? ' active' : '';
         html += `<div style="display:flex; align-items:center; gap:8px; margin:2px 0">
-          <div style="width:18px; height:18px; border-radius:50%; background:${color}; border:2px solid #fff; box-shadow:0 1px 2px rgba(0,0,0,.2)"></div>
-          <div style="width:100px; font-weight:600">${k}</div>
+          <button class="btn pp-mouse-chip${active}" data-mouse="${k}" style="min-width:80px">
+            <span class="pp-mouse-dot" style="background:${color}"></span>${k}<span class="muted" style="font-size:10px;margin-left:3px">(${_chipKeyHint[k]})</span>
+          </button>
           <div style="flex:1; height:8px; background:var(--border); border-radius:4px; overflow:hidden">
             <div style="width:${pct}%; height:100%; background:${color}; opacity:0.8"></div>
           </div>

@@ -3,10 +3,13 @@ from __future__ import annotations
 import json
 import mimetypes
 import subprocess
+import tempfile
+import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 from flask import Blueprint, jsonify, request, Response, send_file
+from werkzeug.utils import secure_filename
 
 
 bp = Blueprint('media_api', __name__)
@@ -169,6 +172,26 @@ def media():
     rv = send_file(str(path), mimetype=mime or 'application/octet-stream', conditional=True)
     rv.headers.add('Accept-Ranges', 'bytes')
     return rv
+
+
+@bp.route('/api/preview_upload', methods=['POST'])
+def preview_upload():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+    upload = request.files['file']
+    if not upload or not upload.filename:
+        return jsonify({'error': 'No file provided'}), 400
+    safe_name = secure_filename(upload.filename) or 'upload'
+    tmp_root = Path('/tmp')
+    if not tmp_root.exists() or not tmp_root.is_dir():
+        tmp_root = Path(tempfile.gettempdir())
+    try:
+        tmp_root.mkdir(parents=True, exist_ok=True)
+        dest = tmp_root / f"cheesepie_preview_{uuid.uuid4().hex}_{safe_name}"
+        upload.save(dest)
+    except Exception as e:
+        return jsonify({'error': f'Failed to save upload: {e}'}), 500
+    return jsonify({'ok': True, 'path': str(dest), 'name': safe_name, 'size': dest.stat().st_size})
 
 
 __all__ = ['bp', 'probe_media']

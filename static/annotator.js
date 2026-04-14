@@ -6,6 +6,14 @@
   if (!root) return; // Only on annotator page
 
   const videoPath = (root.dataset.video || '').trim();
+  if (window.cheesepieSetModuleVideo) {
+    window.cheesepieSetModuleVideo('annotator', videoPath);
+  } else {
+    try {
+      if (videoPath) localStorage.setItem('cheesepie.annotator.video', videoPath);
+      else localStorage.removeItem('cheesepie.annotator.video');
+    } catch {}
+  }
   let defaultMice;
   try {
     defaultMice = JSON.parse(root.dataset.defaultMice || '[]');
@@ -43,9 +51,6 @@
     } catch {}
   }
   const helpBtn = byId('help-shortcuts');
-  const helpOverlay = byId('shortcuts-overlay');
-  const helpClose = byId('close-shortcuts');
-  const helpContent = byId('shortcuts-content');
   const timelineCanvas = byId('timeline');
   const legendEl = byId('legend');
   const detailsEl = byId('event-details');
@@ -195,6 +200,22 @@
     }
     resizeCanvas();
   }, {once:true});
+
+  // Handle space in the capture phase so it fires before native video control keyboard handling.
+  // Using capture + stopImmediatePropagation means the bubble-phase document handler never sees
+  // the space key, eliminating the double-toggle.
+  document.addEventListener('keydown', (e) => {
+    if (window.cheesepieIsActivePage && !window.cheesepieIsActivePage('/annotator')) return;
+    const overlayOpen = window.CheesePieShortcuts?.isOverlayOpen?.();
+    if (overlayOpen) return;
+    const tag = ((e.target && e.target.tagName) || '').toLowerCase();
+    const isTyping = tag === 'input' || tag === 'textarea' || !!(e.target && e.target.isContentEditable);
+    if (!isTyping && (e.code === 'Space' || e.key === ' ')) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (videoEl.paused) videoEl.play(); else videoEl.pause();
+    }
+  }, true); // capture phase
 
   // Save context on changes
   videoEl.addEventListener('timeupdate', saveCtxDebounced);
@@ -349,7 +370,21 @@
   });
 
   function showShortcuts(){
-    if (!helpOverlay || !helpContent) return;
+    if (window.CheesePieShortcuts && window.CheesePieShortcuts.renderPlaybackShortcuts) {
+      const lines = window.CheesePieShortcuts.renderPlaybackShortcuts({ includeHelp: false });
+      lines.push(`<div class=\"shortcut-item\"><span class=\"kbd\">Enter</span> <span>Finish current event</span></div>`);
+      lines.push(`<div class=\"shortcut-item\"><span class=\"kbd\">Esc</span> <span>Cancel current event</span></div>`);
+      lines.push(`<div class=\"shortcut-item\"><span class=\"kbd\">1..9</span> <span>Select mice while editing (dyadic/agonistic: first press sets first, second sets second)</span></div>`);
+      state.types.forEach(t => {
+        if (!t.key) return;
+        lines.push(`<div class=\"shortcut-item\"><span class=\"kbd\">${String(t.key).toUpperCase()}</span> <span>Start/stop ${t.name}</span></div>`);
+      });
+      lines.push(`<div class=\"shortcut-item\"><span class=\"kbd\">Timeline click</span> <span>Seek to clicked time</span></div>`);
+      lines.push(`<div class=\"shortcut-item\"><span class=\"kbd\">Event click</span> <span>Select event and jump to start</span></div>`);
+      lines.push(`<div class=\"shortcut-item\"><span class=\"kbd\">Row double-click</span> <span>Jump to event start</span></div>`);
+      window.CheesePieShortcuts.showOverlay('Keyboard Shortcuts', lines);
+      return;
+    }
     const frame = (keyboardCfg && keyboardCfg.frame_step_keys) || {prev:'[', next:']'};
     const jumps = (keyboardCfg && keyboardCfg.jump_seconds) || {left:300, right:300, shift:60, alt:10};
     const lines = [];
@@ -371,13 +406,11 @@
     lines.push(`<div class="shortcut-item"><span class="kbd">Timeline click</span> <span>Seek to clicked time</span></div>`);
     lines.push(`<div class="shortcut-item"><span class="kbd">Event click</span> <span>Select event and jump to start</span></div>`);
     lines.push(`<div class="shortcut-item"><span class="kbd">Row double-click</span> <span>Jump to event start</span></div>`);
-    helpContent.innerHTML = lines.join('');
-    helpOverlay.hidden = false;
+    if (window.CheesePieShortcuts && window.CheesePieShortcuts.showOverlay) {
+      window.CheesePieShortcuts.showOverlay('Keyboard Shortcuts', lines);
+    }
   }
-  function hideShortcuts(){ if (helpOverlay) helpOverlay.hidden = true; }
   helpBtn?.addEventListener('click', showShortcuts);
-  helpClose?.addEventListener('click', hideShortcuts);
-  helpOverlay?.addEventListener('click', (e) => { if (e.target === helpOverlay) hideShortcuts(); });
 
   // Types management
   function renderTypes(){
@@ -460,6 +493,12 @@
 
   // Modal keyboard shortcuts: Enter = save, Esc = cancel
   document.addEventListener('keydown', (e) => {
+    if (window.cheesepieIsActivePage && !window.cheesepieIsActivePage('/annotator')) return;
+    const overlayOpen = window.CheesePieShortcuts && window.CheesePieShortcuts.isOverlayOpen && window.CheesePieShortcuts.isOverlayOpen();
+    if (overlayOpen) {
+      if (e.key === 'Escape') { return; }
+      return;
+    }
     if (!typeOverlay || typeOverlay.hidden) return;
     if (e.key === 'Escape') { e.preventDefault(); closeTypeModal(); return; }
     if (e.key === 'Enter') { e.preventDefault(); typeSaveBtn?.click(); return; }
@@ -472,11 +511,18 @@
 
   // Keyboard shortcuts
   document.addEventListener('keydown', (e) => {
+    if (window.cheesepieIsActivePage && !window.cheesepieIsActivePage('/annotator')) return;
+    const overlayOpen = window.CheesePieShortcuts && window.CheesePieShortcuts.isOverlayOpen && window.CheesePieShortcuts.isOverlayOpen();
+    if (overlayOpen) {
+      if (e.key === 'Escape') { return; }
+      return;
+    }
     const tag = (e.target && (e.target.tagName || '').toLowerCase());
     const isTyping = tag === 'input' || tag === 'textarea' || e.target.isContentEditable;
-    // Space toggles play/pause
-    if (!isTyping && (e.code === 'Space' || e.key === ' ')) {
-      e.preventDefault(); if (videoEl.paused) videoEl.play(); else videoEl.pause(); return;
+    if (!isTyping && (e.key === '?' || (e.key === '/' && e.shiftKey))) {
+      e.preventDefault();
+      showShortcuts();
+      return;
     }
     if (!isTyping) {
       // Finish/cancel current open event

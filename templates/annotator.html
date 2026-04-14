@@ -1,32 +1,29 @@
 {% extends 'base.html' %}
 {% block content %}
-<section class="panel" id="annotator" data-video="{{ video|default('') }}" data-default-mice='{{ default_mice|tojson }}'
+<section class="panel panel--nochrome" id="annotator" data-video="{{ video|default('') }}" data-default-mice='{{ default_mice|tojson }}'
   data-default-fps='{{ default_fps|tojson }}' data-default-types='{{ default_types|tojson }}'
   data-keyboard='{{ keyboard|tojson }}'>
-  <div class="panel-header">
-    <div class="header-left">
-      <h1>Annotator</h1>
-      <p class="muted">Annotate behaviors by type with precise timing.</p>
-    </div>
-  </div>
-
-  <!-- <div class="controls" style="grid-template-columns: 1fr"> -->
-  <div class="control-group" style="padding: 8px 12px">
-    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
-      <label for="annotator-video-path">Video</label>
-
-      <input type="text" id="annotator-video-path" value="{{ video or '' }}" readonly style="flex: 1" />
-
-      <!-- <input type="text" id="annotator-video-path" value="{{ video or '' }}" readonly /> -->
-    </div>
-  </div>
-  <!-- </div> -->
-
-  <div class="annotator-layout">
-    <div class="viewer-column">
-      <div class="video-wrap">
-        <video id="ann-video" controls preload="metadata"></video>
+  <div class="controls-trans" style="grid-template-columns: 3fr 2fr">
+    <div class="subpanel">
+      <div class="control-group header-left" style="margin-bottom: 8px">
+        <h1>Annotator</h1>
+        <p class="muted">Annotate behaviors by type with precise timing.</p>
       </div>
+      <div class="control-group">
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
+          <div class="module-file-chip" data-module="annotator" data-video="{{ video|default('') }}" id="annotator-chip" style="flex: 1; min-width: 0"></div>
+          <input type="text" id="annotator-video-path" value="{{ video or '' }}" readonly style="display:none" />
+          <button class="btn" id="help-shortcuts" title="Show keyboard shortcuts">?</button>
+          <button class="btn" id="export-json">Save</button>
+        </div>
+      </div>
+
+      <div class="control-group" style="margin-top: 12px">
+        <div class="video-wrap">
+          <video id="ann-video" controls preload="metadata"></video>
+        </div>
+      </div>
+
       <div class="controls-row">
         <label class="rate-label">Rate</label>
         <div class="rate-wrap">
@@ -40,9 +37,6 @@
           <button class="chip" data-rate="1.5">1.5×</button>
           <button class="chip" data-rate="2">2×</button>
         </div>
-        <span class="fill"></span>
-        <button class="btn" id="help-shortcuts" title="Show keyboard shortcuts">?</button>
-        <button class="btn" id="export-json">Save</button>
       </div>
 
       <div class="timeline-wrap">
@@ -51,7 +45,7 @@
       </div>
     </div>
 
-    <aside class="side-column">
+    <aside class="subpanel">
       <div class="side-section">
         <div style="display:flex; align-items:center; justify-content:space-between">
           <h3 style="margin:0">Behavior Types</h3>
@@ -72,34 +66,28 @@
     </aside>
   </div>
 
-  <div class="table-wrap">
-    <h3>Events</h3>
-    <div class="muted" style="margin:-6px 0 10px">Click an event to select. Double-click to jump to start.</div>
-    <table id="events-table">
-      <thead>
-        <tr>
-          <th>Type</th>
-          <th>Start</th>
-          <th>End</th>
-          <th>Duration</th>
-          <th>Animals</th>
-          <th>Note</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+  <div style="padding: 0 12px 12px">
+    <div class="subpanel">
+      <h3 style="margin: 0 0 4px">Events</h3>
+      <div class="muted" style="margin: 0 0 10px">Click an event to select. Double-click to jump to start.</div>
+      <table id="events-table">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Start</th>
+            <th>End</th>
+            <th>Duration</th>
+            <th>Animals</th>
+            <th>Note</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </div>
 </section>
-<div id="shortcuts-overlay" class="overlay" hidden>
-  <div class="overlay-panel">
-    <div class="overlay-header">
-      <h3>Keyboard Shortcuts</h3>
-      <button class="btn mini" id="close-shortcuts">Close</button>
-    </div>
-    <div id="shortcuts-content" class="shortcut-list"></div>
-  </div>
-</div>
+
 <div id="type-overlay" class="overlay" hidden>
   <div class="overlay-panel">
     <div class="overlay-header">

@@ -1,0 +1,53 @@
+{
+  "build": {
+    "beforeDevCommand": "",
+    "beforeBuildCommand": "",
+    "devPath": "../src",
+    "distDir": "../src"
+  },
+  "package": {
+    "productName": "CheesePie Tracker Preview",
+    "version": "0.1.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "dialog": {
+        "open": true
+      },
+      "fs": {
+        "all": true
+      },
+      "path": {
+        "all": true
+      },
+      "window": {
+        "all": true
+      }
+    },
+    "windows": [
+      {
+        "title": "Tracker Preview",
+        "width": 1200,
+        "height": 800
+      }
+    ],
+    "security": {
+      "csp": null
+    },
+    "bundle": {
+      "active": true,
+      "targets": "all",
+      "identifier": "com.cheesepie.trackerpreview",
+      "fileAssociations": [
+        {
+          "ext": ["obj.mat"],
+          "name": "Tracking Data",
+          "description": "CheesePie tracking output",
+          "role": "Viewer",
+          "mimeType": "application/x-obj-mat"
+        }
+      ]
+    }
+  }
+}

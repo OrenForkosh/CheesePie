@@ -341,6 +341,8 @@
       // Keyboard nudging
       window.addEventListener('keydown', function(ev){
         try{
+          if (window.cheesepieIsActivePage && !window.cheesepieIsActivePage('/preproc')) return;
+          if (ctx._activeTab && ctx._activeTab !== 'arena' && ctx._activeTab !== 'regions') return;
           var tag = (ev.target && ev.target.tagName || '').toLowerCase();
           if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
           // Escape cancels marking mode

@@ -17,8 +17,8 @@
       Object.keys(panes).forEach(k => { if (panes[k]) panes[k].style.display = (k===name?'':'none'); });
     },
     setActiveTab(name, tabs){
-      Object.keys(tabs).forEach(k => { if (tabs[k]) tabs[k].classList.remove('primary'); });
-      if (tabs[name]) tabs[name].classList.add('primary');
+      Object.keys(tabs).forEach(k => { if (tabs[k]) tabs[k].classList.remove('active'); });
+      if (tabs[name]) tabs[name].classList.add('active');
     },
     clamp(v, a, b){ return Math.max(a, Math.min(b, v)); },
   };

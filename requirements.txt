@@ -5,3 +5,6 @@ scikit-image>=0.19
 pydantic>=2.0
 h5py>=3.8
 scipy>=1.9
+onvif-zeep>=0.2.12
+opencv-python-headless>=4.8
+requests>=2.28

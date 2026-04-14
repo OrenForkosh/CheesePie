@@ -10,6 +10,14 @@
     } catch (e) {
       S.videoPath = "";
     }
+    try {
+      if (window.cheesepieSetModuleVideo) {
+        window.cheesepieSetModuleVideo('preproc', S.videoPath || '');
+      } else {
+        if (S.videoPath) localStorage.setItem('cheesepie.preproc.video', S.videoPath);
+        else localStorage.removeItem('cheesepie.preproc.video');
+      }
+    } catch (e) { }
     var v = U.$("#pp-video");
     var overlay = U.$("#pp-overlay");
     var markBtn = U.$("#arena-mark");

@@ -1,0 +1,198 @@
+/* ── Calibration module ─────────────────────────────────────────────────── */
+
+/* Active tab accent */
+.tab.tab-calibration.active {
+  background: linear-gradient(180deg, #00b894, #007a5e);
+  color: #fff;
+  border-color: transparent;
+}
+
+/* Layout ------------------------------------------------------------------- */
+.cal-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 14px;
+  padding: 14px;
+  align-items: start;
+  min-height: 0;
+}
+
+.cal-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.cal-main {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* Camera list -------------------------------------------------------------- */
+.cal-camera-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cal-camera-item {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.1s, border-color 0.1s;
+  background: var(--surface);
+}
+
+.cal-camera-item:hover {
+  border-color: var(--primary);
+}
+
+.cal-camera-item.active {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.cal-camera-item .cal-cam-name {
+  font-weight: 600;
+}
+
+.cal-camera-item .cal-cam-ip {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: 'Roboto Mono', monospace;
+}
+
+/* Preview area ------------------------------------------------------------- */
+.cal-preview-wrap {
+  position: relative;
+  width: 100%;
+  background: #0a0d14;
+  border-radius: 6px;
+  overflow: hidden;
+  min-height: 160px;
+}
+
+.cal-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+}
+
+.cal-layers {
+  position: relative;
+  width: 100%;
+}
+
+.cal-frame-img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.cal-overlay-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.cal-crosshair {
+  cursor: crosshair;
+  pointer-events: auto;
+  z-index: 3;
+}
+
+/* Pixel info bar ----------------------------------------------------------- */
+.cal-pixel-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 12px;
+  font-family: 'Roboto Mono', monospace;
+}
+
+.cal-pixel-chip {
+  color: var(--muted);
+}
+
+.cal-pixel-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* Histogram ---------------------------------------------------------------- */
+.cal-hist-panel {
+  flex-shrink: 0;
+}
+
+.cal-hist-canvas {
+  display: block;
+  width: 100%;
+  height: 100px;
+  border-radius: 4px;
+  background: #0a0d14;
+}
+
+.cal-ch-toggle {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.cal-ch-toggle input {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  cursor: pointer;
+}
+
+/* PTZ controls ------------------------------------------------------------- */
+.cal-ptz-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.cal-ptz-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cal-ptz-btn {
+  flex: 1;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 12px;
+  user-select: none;
+}
+
+.cal-ptz-btn:active {
+  opacity: 0.7;
+}
+
+/* Responsive --------------------------------------------------------------- */
+@media (max-width: 720px) {
+  .cal-layout {
+    grid-template-columns: 1fr;
+  }
+}

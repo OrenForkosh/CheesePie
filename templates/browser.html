@@ -1,35 +1,29 @@
 {% extends 'base.html' %} {% block content %}
-<section class="panel">
-  <div class="panel-header">
-    <div class="header-left">
-      <h1>File Browser</h1>
-      <p class="muted">
-        Browse experiment videos, filter, and inspect details.
-      </p>
-    </div>
-    <div class="header-controls">
-      <div class="inline">
-        <input id="dir-input" type="text" placeholder="/path/to/videos" spellcheck="false" autocomplete="off" />
-        <button id="up-btn" class="btn" title="Up one folder" aria-label="Up one folder">
-          ↑
-        </button>
-        <button id="load-btn" class="btn primary">Load</button>
-      </div>
-    </div>
-  </div>
+<section class="panel panel-browser">
 
   <div class="layout">
     <div class="browser-main">
-      <div class="search-bar-area">
-        <div class="search-wrap">
-          <input id="search-input" type="text" placeholder="Type to filter (e.g. session1, .mp4)" />
-          <button id="clear-search" class="clear-x" title="Clear" aria-label="Clear search" hidden>
-            ×
-          </button>
+      <div class="panel-header">
+        <div class="header-left">
+          <h1>File Browser</h1>
+          <p class="muted">
+            Browse experiment videos, filter, and inspect details.
+          </p>
+        </div>
+      </div>
+      <div class="header-controls">
+        <div class="inline browser-nav-row">
+          <div id="breadcrumb-bar" class="breadcrumb-bar" aria-label="Current path"></div>
+          <div class="search-wrap">
+            <input id="search-input" type="text" placeholder="Filter…" />
+            <button id="clear-search" class="clear-x" title="Clear" aria-label="Clear search" hidden>
+              ×
+            </button>
+          </div>
         </div>
       </div>
       <div class="file-list" id="file-list">
-        <div class="placeholder muted">Enter a folder path and click Load.</div>
+        <div class="placeholder muted">Select a facility to load files.</div>
       </div>
     </div>
     <aside class="sidebar" id="sidebar">
@@ -44,27 +38,27 @@
   </div>
 </section>
 
-<section id="browser-track" class="panel" style="margin-top: 16px; display: none;">
-  <div class="panel-header" style="display:flex; align-items:center; justify-content:space-between; padding:8px 16px;">
-    <h1 style="margin:0">Tracking</h1>
-    <div style="display:flex; align-items:center; gap:16px">
+<section id="browser-track" class="panel browser-track-panel" hidden>
+  <div class="browser-track-header">
+    <h1>Tracking</h1>
+    <div class="browser-track-meta">
       <div class="muted" id="track-status">Idle</div>
-      <div style="display:flex; gap:8px; align-items:center">
+      <div class="browser-track-actions">
         <button class="btn mini" id="track-cancel" disabled>Cancel</button>
         <button class="btn mini" id="track-retry" disabled>Retry failed</button>
       </div>
     </div>
   </div>
   <div id="track-panel">
-    <div class="table-wrap" style="margin-top:8px">
-      <table id="track-table" style="width:100%; border-collapse:collapse; font-size:13px">
+    <div class="table-wrap browser-track-table-wrap">
+      <table id="track-table">
         <thead>
           <tr>
-            <th style="text-align:left; padding:6px 4px">File</th>
-            <th style="text-align:left; padding:6px 4px; width: 10ch; text-align: center;">Status</th>
-            <th style="text-align:left; padding:6px 4px; width: 10ch; text-align: center;">Step</th>
-            <th style="text-align:left; padding:6px 4px; width: 10ch; text-align: center;">Progress</th>
-            <th style="text-align:left; padding:6px 4px; width: 10ch; text-align: center;">Log</th>
+            <th>File</th>
+            <th class="browser-track-col">Status</th>
+            <th class="browser-track-col">Step</th>
+            <th class="browser-track-col">Progress</th>
+            <th class="browser-track-col">Log</th>
           </tr>
         </thead>
         <tbody id="track-body"></tbody>

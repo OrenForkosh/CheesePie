@@ -1,5 +1,5 @@
 {% extends "base.html" %} {% block content %}
-<section class="panel panel--nochrome">
+<section class="panel panel--nochrome" id="preproc">
   <div class="controls-trans" style="grid-template-columns: 3fr 2fr">
     <div class="subpanel" id="pp-right">
       <div class="control-group header-left" style="margin-bottom: 8px">
@@ -10,8 +10,9 @@
       </div>
       <div class="control-group">
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
-          <label>Video</label> <input type="text" id="preproc-video-path" value="{{ video or '' }}" readonly
-            style="flex: 1" />
+          <div class="module-file-chip" data-module="preproc" data-video="{{ video or '' }}" id="preproc-chip"
+            style="flex: 1; min-width: 0"></div>
+          <input type="text" id="preproc-video-path" value="{{ video or '' }}" readonly style="display:none" />
           <button class="btn" id="pp-open-save" title="Save preproc to multiple days">
             Save…
           </button>
@@ -19,7 +20,7 @@
         </div>
       </div>
 
-      <div class="control-group" style="margin-top: 12px">
+      <div class="control-group" id="pp-video-group" style="margin-top: 12px">
         <div class="video-wrap">
           <div class="video-preview">
             <div id="pp-vwrap" style="position: relative">
@@ -135,27 +136,19 @@
               Apply
             </button>
             <button class="btn mini" id="pp-save-setup" title="Save current settings as a setup (overwrite or add new)">
-              Save...
+              Save
             </button>
           </div>
           <div class="k"></div>
           <div class="v"><span id="pp-setup-status" class="muted"></span></div>
         </div>
-        <div class="tabs small" style="
-            display: flex;
-            gap: 8px;
-            margin-bottom: 8px;
-            align-items: center;
-            justify-content: flex-start;
-          ">
-          <div style="display: flex; gap: 8px; align-items: center">
-            <button class="btn mini" id="tab-info">Info</button>
-            <button class="btn mini" id="tab-arena">Arena</button>
-            <button class="btn mini" id="tab-timing">Timing</button>
-            <button class="btn mini" id="tab-background">Background</button>
-            <button class="btn mini" id="tab-regions">Regions</button>
-            <button class="btn mini" id="tab-colors">Colors</button>
-          </div>
+        <div class="pp-tab-bar">
+          <button class="pp-tab" id="tab-info">Info</button>
+          <button class="pp-tab" id="tab-arena">Arena</button>
+          <button class="pp-tab" id="tab-timing">Timing</button>
+          <button class="pp-tab" id="tab-background">Background</button>
+          <button class="pp-tab" id="tab-regions">Regions</button>
+          <button class="pp-tab" id="tab-colors">Colors</button>
         </div>
         <div id="pp-panes" style="position: relative">
           <div id="pane-info">
@@ -325,6 +318,7 @@
             <div class="pane-footer" style="min-height: 200px"></div>
           </div>
           <div id="pane-colors" style="display: none">
+            <div id="pp-mouse-chips" style="display:none"></div>
             <div class="controls-row" style="
                 align-items: center;
                 gap: 12px;
@@ -344,11 +338,6 @@
                   width="20" height="20" />
               </button>
               <span class="muted" id="pp-colors-segcount" style="min-width: 80px"></span>
-              <span class="muted" id="pp-colors-status" style="
-                  min-width: 200px;
-                  min-height: 1.4em;
-                  display: inline-block;
-                "></span>
             </div>
             <div id="pp-colors-hist" style="margin-top: 8px"></div>
             <div style="
@@ -379,8 +368,28 @@
             <div class="vert-spacer"></div>
             <div class="pane-footer">
               Drag a marker (R/G/B/Y/BG) from the top-left dock onto a segment
-              to assign it, or click a segment to assign the current mouse (use
-              keys 1–4 and 0).
+              to assign it, or click a segment to assign the current mouse.
+              <div class="muted" style="font-weight: 600; margin-top: 10px">Keyboard Shortcuts</div>
+              <table class="shortcut-table" style="margin-top: 6px">
+                <tr>
+                  <td class="shortcut">
+                    <span class="kbd">1</span><span class="kbd">2</span><span class="kbd">3</span><span class="kbd">4</span>
+                  </td>
+                  <td class="description">Select R / G / B / Y mouse</td>
+                </tr>
+                <tr>
+                  <td class="shortcut">
+                    <span class="kbd">0</span>
+                  </td>
+                  <td class="description">Select BG (background) mouse</td>
+                </tr>
+                <tr>
+                  <td class="shortcut">
+                    <span class="kbd">Space</span>
+                  </td>
+                  <td class="description">Jump to a random frame</td>
+                </tr>
+              </table>
             </div>
           </div>
           <div id="pane-timing" style="display: none">
@@ -430,7 +439,7 @@
               <table class="shortcut-table">
                 <tr>
                   <td class="shortcut">
-                    <span class="kbd">[</span><span class="kbd">]</span>
+                    <span class="kbd" id="timing-frame-prev">[</span><span class="kbd" id="timing-frame-next">]</span>
                   </td>
                   <td class="description">Step 1 frame backward / forward</td>
                 </tr>
@@ -439,14 +448,22 @@
                   <td class="shortcut">
                     <span class="kbd">←</span><span class="kbd">→</span>
                   </td>
-                  <td class="description">Jump 1 second backward / forward</td>
+                  <td class="description">Jump <span id="timing-jump-left">1</span>s back / <span
+                      id="timing-jump-right">1</span>s forward</td>
                 </tr>
 
-                <tr>
+                <tr id="timing-jump-shift-row">
                   <td class="shortcut">
                     <span class="kbd">Shift</span> + <span class="kbd">←</span><span class="kbd">→</span>
                   </td>
-                  <td class="description">Jump 5 seconds backward / forward</td>
+                  <td class="description">Jump <span id="timing-jump-shift">5</span>s</td>
+                </tr>
+
+                <tr id="timing-jump-alt-row">
+                  <td class="shortcut">
+                    <span class="kbd">Alt</span> + <span class="kbd">←</span><span class="kbd">→</span>
+                  </td>
+                  <td class="description">Jump <span id="timing-jump-alt">0.5</span>s</td>
                 </tr>
               </table>
             </div>
