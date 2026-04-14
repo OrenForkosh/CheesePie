@@ -91,6 +91,11 @@
   color: var(--muted);
 }
 
+.cal-pixel-sep {
+  color: var(--border);
+  user-select: none;
+}
+
 .cal-pixel-swatch {
   width: 16px;
   height: 16px;

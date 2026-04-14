@@ -46,6 +46,7 @@
   const pixelBar       = byId('cal-pixel-bar');
   const pixelCoords    = byId('cal-pixel-coords');
   const pixelRgb       = byId('cal-pixel-rgb');
+  const pixelHsv       = byId('cal-pixel-hsv');
   const pixelSwatch    = byId('cal-pixel-swatch');
   const histPanel      = byId('cal-hist-panel');
   const histCanvas     = byId('cal-hist-canvas');
@@ -441,9 +442,25 @@
     return c.getContext('2d');
   }
 
+  function _rgbToHsv(r, g, b) {
+    const rn = r / 255, gn = g / 255, bn = b / 255;
+    const max = Math.max(rn, gn, bn), min = Math.min(rn, gn, bn), d = max - min;
+    const v = max;
+    const s = max === 0 ? 0 : d / max;
+    let h = 0;
+    if (d > 0) {
+      if      (max === rn) h = ((gn - bn) / d + (gn < bn ? 6 : 0)) / 6;
+      else if (max === gn) h = ((bn - rn) / d + 2) / 6;
+      else                 h = ((rn - gn) / d + 4) / 6;
+    }
+    return [Math.round(h * 360), Math.round(s * 100), Math.round(v * 100)];
+  }
+
   function _showPixelInfo(coords, r, g, b, prefix = '') {
+    const [h, s, v]              = _rgbToHsv(r, g, b);
     pixelCoords.textContent      = coords;
     pixelRgb.textContent         = `${prefix}R:${r}  G:${g}  B:${b}`;
+    pixelHsv.textContent         = `H:${h}°  S:${s}%  V:${v}%`;
     pixelSwatch.style.background = `rgb(${r},${g},${b})`;
   }
 
