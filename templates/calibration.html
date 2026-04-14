@@ -39,6 +39,15 @@
         <div id="cal-preview-status" class="muted" style="margin-top:6px;font-size:12px"></div>
       </div>
 
+      <!-- Image filters -->
+      <div class="control-group" id="cal-filter-group" style="display:none">
+        <label>Filters <span class="muted" style="font-weight:400;font-size:11px">(display only)</span></label>
+        <div style="display:flex;gap:6px">
+          <button class="btn mini cal-filter-btn" id="cal-filter-eq"  data-filter="eq">Equalize</button>
+          <button class="btn mini cal-filter-btn" id="cal-filter-inv" data-filter="inv">Invert</button>
+        </div>
+      </div>
+
       <!-- Mask overlay -->
       <div class="control-group" id="cal-mask-group" style="display:none">
         <label>Mask Opacity</label>
@@ -81,14 +90,15 @@
           </div>
           <!-- Frame layers (hidden until first frame) -->
           <div class="cal-layers" id="cal-layers" style="display:none">
-            <!-- Snapshot mode: <img> -->
-            <img id="cal-frame-img" class="cal-frame-img" alt="">
-            <!-- Live mode: MJPEG <img> hidden behind canvas -->
+            <!-- Raw source images (layout anchors; always hold unfiltered data) -->
+            <img id="cal-frame-img"  class="cal-frame-img" alt="">
             <img id="cal-stream-img" class="cal-frame-img" alt="" style="display:none">
-            <!-- Mask overlay canvas -->
-            <canvas id="cal-mask-canvas" class="cal-overlay-canvas"></canvas>
-            <!-- Interaction canvas (topmost, handles clicks) -->
-            <canvas id="cal-interact-canvas" class="cal-overlay-canvas cal-crosshair"></canvas>
+            <!-- Filter canvas: covers raw img when a filter is active (z-index 1) -->
+            <canvas id="cal-filter-canvas" class="cal-overlay-canvas" style="display:none;z-index:1"></canvas>
+            <!-- Mask overlay canvas (z-index 2) -->
+            <canvas id="cal-mask-canvas"   class="cal-overlay-canvas" style="z-index:2"></canvas>
+            <!-- Interaction canvas — topmost (z-index 3) -->
+            <canvas id="cal-interact-canvas" class="cal-overlay-canvas cal-crosshair" style="z-index:3"></canvas>
           </div>
         </div>
 

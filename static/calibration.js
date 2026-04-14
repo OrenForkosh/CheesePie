@@ -9,10 +9,13 @@
     profile:     null,   // selected profile token
     mode:        'snap', // 'snap' | 'auto' | 'live'
     autoTimer:   null,
+    liveRafId:   null,   // rAF handle for live filter rendering
     maskImg:     null,   // HTMLImageElement for mask PNG
     maskLoaded:  false,
     frameLoaded: false,  // has at least one frame been displayed
     ptzActive:   null,   // currently held PTZ action
+    filterEq:    false,  // histogram equalization (display only)
+    filterInv:   false,  // invert (display only)
   };
 
   // DOM refs
@@ -26,6 +29,8 @@
   const maskGroup      = byId('cal-mask-group');
   const maskOpacity    = byId('cal-mask-opacity');
   const maskOpacityVal = byId('cal-mask-opacity-val');
+  const filterGroup    = byId('cal-filter-group');
+  const filterCanvas   = byId('cal-filter-canvas');
   const ptzGroup       = byId('cal-ptz-group');
   const ptzStatus      = byId('cal-ptz-status');
   const autofocusBtn   = byId('cal-autofocus-btn');
@@ -115,6 +120,7 @@
     stopAuto(); stopLive();
     profileGroup.style.display  = '';
     previewCtrls.style.display  = '';
+    filterGroup.style.display   = '';
     maskGroup.style.display     = '';
     ptzGroup.style.display      = '';
     profileSelect.innerHTML     = '<option value="">Loading…</option>';
@@ -200,12 +206,14 @@
     streamImg.onload = () => {
       onFrameReady();
       previewStatus.textContent = 'Live';
+      if (state.filterEq || state.filterInv) startLiveRaf();
     };
     streamImg.src = url;
   }
 
   function stopLive() {
     if (state.mode === 'live') {
+      stopLiveRaf();
       streamImg.src = '';
       streamImg.style.display = 'none';
       frameImg.style.display  = '';
@@ -231,6 +239,7 @@
       histPanel.style.display   = '';
     }
     syncCanvasSize();
+    renderFilter();
     drawMask();
     updateHistogram();
   }
@@ -240,15 +249,96 @@
     const srcImg = state.mode === 'live' ? streamImg : frameImg;
     const w = srcImg.offsetWidth  || srcImg.clientWidth  || 640;
     const h = srcImg.offsetHeight || srcImg.clientHeight || 480;
-    if (maskCanvas.width !== w || maskCanvas.height !== h) {
-      maskCanvas.width      = w;
-      maskCanvas.height     = h;
-      interactCanvas.width  = w;
-      interactCanvas.height = h;
+    for (const c of [filterCanvas, maskCanvas, interactCanvas]) {
+      if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
     }
   }
 
-  window.addEventListener('resize', () => { syncCanvasSize(); drawMask(); });
+  window.addEventListener('resize', () => { syncCanvasSize(); renderFilter(); drawMask(); });
+
+  // ── Filter rendering ──────────────────────────────────────────────────────
+  // The filter canvas sits on top of the raw img but below the mask.
+  // Histogram and pixel sampling always use the raw img — not this canvas.
+
+  function renderFilter() {
+    const active = state.filterEq || state.filterInv;
+    if (!active || !state.frameLoaded) {
+      filterCanvas.style.display = 'none';
+      stopLiveRaf();
+      return;
+    }
+
+    const srcImg = state.mode === 'live' ? streamImg : frameImg;
+    if (!srcImg.naturalWidth) return;
+
+    syncCanvasSize();
+    filterCanvas.style.display = '';
+
+    // Read raw pixels into an offscreen canvas
+    const off = document.createElement('canvas');
+    off.width  = srcImg.naturalWidth;
+    off.height = srcImg.naturalHeight;
+    const offCtx = off.getContext('2d');
+    offCtx.drawImage(srcImg, 0, 0);
+    const imageData = offCtx.getImageData(0, 0, off.width, off.height);
+    const d = imageData.data;
+
+    if (state.filterEq) {
+      // Build per-channel histograms
+      const histR = new Float32Array(256), histG = new Float32Array(256), histB = new Float32Array(256);
+      for (let i = 0; i < d.length; i += 4) { histR[d[i]]++; histG[d[i+1]]++; histB[d[i+2]]++; }
+      const total = off.width * off.height;
+      const lutR = _eqLut(histR, total), lutG = _eqLut(histG, total), lutB = _eqLut(histB, total);
+      for (let i = 0; i < d.length; i += 4) { d[i] = lutR[d[i]]; d[i+1] = lutG[d[i+1]]; d[i+2] = lutB[d[i+2]]; }
+    }
+
+    if (state.filterInv) {
+      for (let i = 0; i < d.length; i += 4) { d[i] = 255 - d[i]; d[i+1] = 255 - d[i+1]; d[i+2] = 255 - d[i+2]; }
+    }
+
+    offCtx.putImageData(imageData, 0, 0);
+    const ctx = filterCanvas.getContext('2d');
+    ctx.clearRect(0, 0, filterCanvas.width, filterCanvas.height);
+    ctx.drawImage(off, 0, 0, filterCanvas.width, filterCanvas.height);
+  }
+
+  function _eqLut(hist, total) {
+    // Build equalization look-up table from a per-channel histogram
+    const lut = new Uint8Array(256);
+    let cdf = 0, cdfMin = -1;
+    for (let i = 0; i < 256; i++) {
+      cdf += hist[i];
+      if (cdfMin < 0 && cdf > 0) cdfMin = cdf;
+      lut[i] = cdfMin >= total ? 0 : Math.round(((cdf - cdfMin) / (total - cdfMin)) * 255);
+    }
+    return lut;
+  }
+
+  // For live mode, keep filter canvas updated via rAF
+  function startLiveRaf() {
+    if (state.liveRafId) return;
+    function loop() { renderFilter(); state.liveRafId = requestAnimationFrame(loop); }
+    state.liveRafId = requestAnimationFrame(loop);
+  }
+  function stopLiveRaf() {
+    if (state.liveRafId) { cancelAnimationFrame(state.liveRafId); state.liveRafId = null; }
+  }
+
+  // Filter toggle buttons
+  document.querySelectorAll('.cal-filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const f = btn.dataset.filter;
+      if (f === 'eq')  state.filterEq  = !state.filterEq;
+      if (f === 'inv') state.filterInv = !state.filterInv;
+      btn.classList.toggle('active', f === 'eq' ? state.filterEq : state.filterInv);
+      if (state.mode === 'live' && (state.filterEq || state.filterInv)) {
+        startLiveRaf();
+      } else {
+        stopLiveRaf();
+        renderFilter();
+      }
+    });
+  });
 
   // ── Mask drawing ──────────────────────────────────────────────────────────
   function drawMask() {

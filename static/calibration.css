@@ -127,6 +127,13 @@
   cursor: pointer;
 }
 
+/* Filter buttons ----------------------------------------------------------- */
+.cal-filter-btn.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
 /* PTZ controls ------------------------------------------------------------- */
 .cal-ptz-section {
   display: flex;
