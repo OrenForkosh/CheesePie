@@ -288,8 +288,38 @@ def ptz():
                     return jsonify({'ok': True})
             except Exception:
                 pass
-            # Some cameras expose focus via PTZ Zoom axis — not standard, skip
             return jsonify({'ok': True, 'note': 'focus_not_available'})
+
+        if action == 'autofocus':
+            try:
+                img_svc = cam.create_imaging_service()
+                vsrc    = media.GetVideoSources()
+                src_tok = vsrc[0].token if vsrc else None
+                if not src_tok:
+                    return jsonify({'ok': True, 'note': 'autofocus_not_available'})
+                # Try one-shot autofocus via ImagingSettings
+                settings = img_svc.GetImagingSettings({'VideoSourceToken': src_tok})
+                try:
+                    settings.Focus.AutoFocusMode = 'AUTO'
+                    img_svc.SetImagingSettings({
+                        'VideoSourceToken': src_tok,
+                        'ImagingSettings':  settings,
+                        'ForcePersistence': False,
+                    })
+                    return jsonify({'ok': True})
+                except Exception:
+                    pass
+                # Fallback: trigger a Move with zero speed to nudge autofocus
+                try:
+                    img_svc.Move({
+                        'VideoSourceToken': src_tok,
+                        'Focus': {'Continuous': {'Speed': 0.0}},
+                    })
+                except Exception:
+                    pass
+                return jsonify({'ok': True, 'note': 'autofocus_sent'})
+            except Exception as ae:
+                return jsonify({'ok': True, 'note': f'autofocus_not_available: {ae}'})
 
         return jsonify({'error': f'Unknown action: {action}'}), 400
 

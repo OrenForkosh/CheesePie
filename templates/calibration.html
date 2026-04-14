@@ -12,10 +12,14 @@
 
       <!-- Camera discovery -->
       <div class="control-group">
-        <label>Cameras</label>
-        <button class="btn" id="cal-scan-btn">Scan Network</button>
-        <div id="cal-scan-status" class="muted" style="margin-top:6px;font-size:12px"></div>
-        <ul id="cal-camera-list" class="cal-camera-list"></ul>
+        <label>Camera</label>
+        <div style="display:flex;gap:6px;align-items:center">
+          <select id="cal-camera-select" style="flex:1" disabled>
+            <option value="">— scan to discover —</option>
+          </select>
+          <button class="btn" id="cal-scan-btn" title="Scan 10.0.0.x for cameras">Scan</button>
+        </div>
+        <div id="cal-scan-status" class="muted" style="margin-top:4px;font-size:12px"></div>
       </div>
 
       <!-- Profile selection -->
@@ -57,6 +61,7 @@
             <span class="muted" style="font-size:11px;width:52px">Focus</span>
             <button class="btn mini cal-ptz-btn" data-action="focus_near" title="Focus near">Near</button>
             <button class="btn mini cal-ptz-btn" data-action="focus_far"  title="Focus far">Far</button>
+            <button class="btn mini" id="cal-autofocus-btn" title="One-shot auto focus">Auto</button>
           </div>
         </div>
         <div id="cal-ptz-status" class="muted" style="margin-top:4px;font-size:11px"></div>

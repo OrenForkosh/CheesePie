@@ -18,7 +18,7 @@
   // DOM refs
   const scanBtn        = byId('cal-scan-btn');
   const scanStatus     = byId('cal-scan-status');
-  const cameraList     = byId('cal-camera-list');
+  const cameraSelect   = byId('cal-camera-select');
   const profileGroup   = byId('cal-profile-group');
   const profileSelect  = byId('cal-profile-select');
   const previewCtrls   = byId('cal-preview-controls');
@@ -28,6 +28,7 @@
   const maskOpacityVal = byId('cal-mask-opacity-val');
   const ptzGroup       = byId('cal-ptz-group');
   const ptzStatus      = byId('cal-ptz-status');
+  const autofocusBtn   = byId('cal-autofocus-btn');
   const grabBtn        = byId('cal-grab-btn');
   const autoBtn        = byId('cal-auto-btn');
   const liveBtn        = byId('cal-live-btn');
@@ -58,39 +59,58 @@
   loadMask();
 
   // ── Camera discovery ──────────────────────────────────────────────────────
+  // Map ip → camera object, populated after scan
+  const cameraMap = {};
+
   scanBtn.addEventListener('click', () => {
-    scanStatus.textContent = 'Scanning 10.0.0.x … this may take a few seconds.';
-    cameraList.innerHTML   = '';
-    scanBtn.disabled       = true;
+    scanStatus.textContent   = 'Scanning 10.0.0.x … this may take a few seconds.';
+    scanBtn.disabled         = true;
+    cameraSelect.disabled    = true;
+    cameraSelect.innerHTML   = '<option value="">Scanning…</option>';
 
     fetch('/api/calibration/discover')
       .then(r => r.json())
       .then(data => {
         scanBtn.disabled = false;
         const cams = data.cameras || [];
+        cameraSelect.innerHTML = '<option value="">— select a camera —</option>';
         if (!cams.length) {
           scanStatus.textContent = 'No cameras found on 10.0.0.x.';
+          cameraSelect.disabled  = true;
           return;
         }
         scanStatus.textContent = `Found ${cams.length} device${cams.length > 1 ? 's' : ''}.`;
         cams.forEach(cam => {
-          const li = document.createElement('li');
-          li.className = 'cal-camera-item';
-          li.innerHTML = `<div class="cal-cam-name">${esc(cam.name || cam.ip)}</div>`
-                       + `<div class="cal-cam-ip">${esc(cam.ip)}</div>`;
-          li.addEventListener('click', () => selectCamera(cam, li));
-          cameraList.appendChild(li);
+          cameraMap[cam.ip] = cam;
+          const opt = document.createElement('option');
+          opt.value       = cam.ip;
+          opt.textContent = cam.name !== cam.ip
+            ? `${cam.name}  (${cam.ip})`
+            : cam.ip;
+          cameraSelect.appendChild(opt);
         });
+        cameraSelect.disabled = false;
+        // Auto-select if only one camera found
+        if (cams.length === 1) {
+          cameraSelect.value = cams[0].ip;
+          cameraSelect.dispatchEvent(new Event('change'));
+        }
       })
       .catch(err => {
-        scanBtn.disabled   = false;
+        scanBtn.disabled       = false;
+        cameraSelect.disabled  = false;
         scanStatus.textContent = `Error: ${err.message}`;
       });
   });
 
-  function selectCamera(cam, liEl) {
-    document.querySelectorAll('.cal-camera-item').forEach(el => el.classList.remove('active'));
-    liEl.classList.add('active');
+  cameraSelect.addEventListener('change', () => {
+    const ip  = cameraSelect.value;
+    const cam = cameraMap[ip];
+    if (!ip || !cam) return;
+    selectCamera(cam);
+  });
+
+  function selectCamera(cam) {
     state.ip = cam.ip;
     stopAuto(); stopLive();
     profileGroup.style.display  = '';
@@ -391,6 +411,23 @@
       })
       .catch(err => { ptzStatus.textContent = err.message; });
   }
+
+  autofocusBtn.addEventListener('click', () => {
+    if (!state.ip) return;
+    autofocusBtn.disabled = true;
+    ptzStatus.textContent = 'Auto-focusing…';
+    fetch('/api/calibration/ptz', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ip: state.ip, profile: state.profile || '', action: 'autofocus' }),
+    })
+      .then(r => r.json())
+      .then(d => {
+        autofocusBtn.disabled = false;
+        ptzStatus.textContent = d.error ? d.error : (d.note || '');
+      })
+      .catch(err => { autofocusBtn.disabled = false; ptzStatus.textContent = err.message; });
+  });
 
   document.querySelectorAll('.cal-ptz-btn').forEach(btn => {
     const action = btn.dataset.action;

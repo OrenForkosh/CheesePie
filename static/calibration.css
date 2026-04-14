@@ -30,44 +30,6 @@
   min-width: 0;
 }
 
-/* Camera list -------------------------------------------------------------- */
-.cal-camera-list {
-  list-style: none;
-  margin: 8px 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.cal-camera-item {
-  padding: 6px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  cursor: pointer;
-  font-size: 13px;
-  transition: background 0.1s, border-color 0.1s;
-  background: var(--surface);
-}
-
-.cal-camera-item:hover {
-  border-color: var(--primary);
-}
-
-.cal-camera-item.active {
-  border-color: var(--primary);
-  background: color-mix(in srgb, var(--primary) 12%, transparent);
-}
-
-.cal-camera-item .cal-cam-name {
-  font-weight: 600;
-}
-
-.cal-camera-item .cal-cam-ip {
-  font-size: 11px;
-  color: var(--muted);
-  font-family: 'Roboto Mono', monospace;
-}
 
 /* Preview area ------------------------------------------------------------- */
 .cal-preview-wrap {
