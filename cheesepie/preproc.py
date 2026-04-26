@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import logging
 import re
 from pathlib import Path
 import tempfile
 from typing import Any, Dict, List, Optional
 
+_log = logging.getLogger(__name__)
+
 from flask import Blueprint, jsonify, request
+from werkzeug.exceptions import HTTPException
 try:
     # Pydantic v2 preferred; v1 fallback handled in _parse_model
     from pydantic import BaseModel, ValidationError
@@ -18,6 +23,7 @@ except Exception:
 
 from .config import CONFIG, _config_path
 from .media import probe_media  # type: ignore
+from .pathguard import assert_within_allowed_roots
 
 
 bp = Blueprint('preproc', __name__)
@@ -41,7 +47,7 @@ def api_preproc_group():
     video = request.args.get('video', '').strip()
     if not video:
         return jsonify({'error': 'Missing video'}), 400
-    vpath = Path(video).expanduser()
+    vpath = assert_within_allowed_roots(video)
     if not vpath.exists() or not vpath.is_file():
         return jsonify({'error': 'Video not found'}), 404
     parts = _parse_video_name(vpath.name)
@@ -83,7 +89,7 @@ def api_preproc_apply_settings():
     targets = payload.get('to') or []
     if not src or not isinstance(targets, list) or not targets:
         return jsonify({'error': 'Missing from/to'}), 400
-    spath = Path(src).expanduser()
+    spath = assert_within_allowed_roots(src)
     if not spath.exists() or not spath.is_file():
         return jsonify({'error': 'Source video not found'}), 404
     src_arena = None
@@ -111,7 +117,11 @@ def api_preproc_apply_settings():
     results = []
     for t in targets:
         try:
-            tpath = Path(str(t)).expanduser()
+            try:
+                tpath = assert_within_allowed_roots(str(t))
+            except Exception:
+                results.append({'path': str(t), 'ok': False, 'error': 'Path not allowed'})
+                continue
             if not tpath.exists() or not tpath.is_file():
                 results.append({'path': str(t), 'ok': False, 'error': 'Target not found'})
                 continue
@@ -147,14 +157,18 @@ def api_preproc_apply_settings():
 
 
 def _tmp_base(video_path: Path) -> Path:
-    """Return base temp path for this video (without specific suffix)."""
-    # Prefer /tmp explicitly if present (per request), else fall back to system temp
+    """Return base temp path for this video (without specific suffix).
+
+    Uses a hash of the fully-resolved path so that two videos with the same
+    filename in different directories never share temp files.
+    """
     tmp_root = Path('/tmp')
     if not tmp_root.exists() or not tmp_root.is_dir():
         tmp_root = Path(tempfile.gettempdir())
-    tmpdir = tmp_root
-    base = video_path.stem  # drop last extension
-    return tmpdir / base
+    resolved = str(video_path.resolve())
+    path_hash = hashlib.sha256(resolved.encode()).hexdigest()[:16]
+    base = f"{path_hash}_{video_path.stem}"
+    return tmp_root / base
 
 
 def _video_meta_for(video_path: Path) -> Dict[str, Any]:
@@ -284,6 +298,12 @@ def _arena_bbox_from_tlbr(arena: Dict[str, Any]) -> Dict[str, Any]:
         if isinstance(tl, dict) and isinstance(br, dict):
             ax = int(tl.get('x', 0)); ay = int(tl.get('y', 0))
             bx = int(br.get('x', ax)); by = int(br.get('y', ay))
+            if ax < 0 or ay < 0 or bx < 0 or by < 0:
+                _log.warning(
+                    "preproc: arena bbox has negative coordinates "
+                    "(tl=%r, br=%r) — may cause segmentation errors",
+                    (ax, ay), (bx, by),
+                )
             arena_out['bbox'] = {'x': ax, 'y': ay, 'width': max(0, bx-ax), 'height': max(0, by-ay)}
         # Optional numeric fields if present in input
         def _set_int(k):
@@ -515,7 +535,7 @@ def api_preproc_state():
     video = request.args.get('video', '').strip()
     if not video:
         return jsonify({'error': 'No video path provided'}), 400
-    vpath = Path(video).expanduser()
+    vpath = assert_within_allowed_roots(video)
     if not vpath.exists() or not vpath.is_file():
         return jsonify({'error': 'Video file not found'}), 404
 
@@ -651,7 +671,11 @@ def api_preproc_save_multi():
     results = []
     for t in targets:
         try:
-            tpath = Path(str(t)).expanduser()
+            try:
+                tpath = assert_within_allowed_roots(str(t))
+            except Exception:
+                results.append({'path': str(t), 'ok': False, 'error': 'Path not allowed'})
+                continue
             if not tpath.exists() or not tpath.is_file():
                 results.append({'path': str(t), 'ok': False, 'error': 'Target not found'})
                 continue
@@ -727,7 +751,7 @@ def api_preproc_arena():
     arena = payload.get('arena')
     if not video or not isinstance(arena, dict):
         return jsonify({'error': 'Missing video or arena'}), 400
-    vpath = Path(video).expanduser()
+    vpath = assert_within_allowed_roots(video)
     if not vpath.exists() or not vpath.is_file():
         return jsonify({'error': 'Video file not found'}), 404
     st = _load_state(vpath)
@@ -757,7 +781,7 @@ def api_preproc_background():
     image = payload.get('image')
     if not video or not image:
         return jsonify({'error': 'Missing video or background'}), 400
-    vpath = Path(video).expanduser()
+    vpath = assert_within_allowed_roots(video)
     if not vpath.exists() or not vpath.is_file():
         return jsonify({'error': 'Video file not found'}), 404
     # Previously required timing before saving; now proceed even if timing is missing.
@@ -808,7 +832,7 @@ def api_preproc_regions():
     regions = payload.get('regions')
     if not video or not regions:
         return jsonify({'error': 'Missing video or regions'}), 400
-    vpath = Path(video).expanduser()
+    vpath = assert_within_allowed_roots(video)
     if not vpath.exists() or not vpath.is_file():
         return jsonify({'error': 'Video file not found'}), 404
     st = _load_state(vpath)
@@ -836,7 +860,7 @@ def api_preproc_colors():
     colors = payload.get('colors')
     if not video or not isinstance(colors, dict):
         return jsonify({'error': 'Missing video or colors'}), 400
-    vpath = Path(video).expanduser()
+    vpath = assert_within_allowed_roots(video)
     if not vpath.exists() or not vpath.is_file():
         return jsonify({'error': 'Video file not found'}), 404
     st = _load_state(vpath)
@@ -918,7 +942,7 @@ def api_preproc_timing():
     end_time = str(payload.get('end_time', '')).strip()
     if not video:
         return jsonify({'error': 'Missing video'}), 400
-    vpath = Path(video).expanduser()
+    vpath = assert_within_allowed_roots(video)
     if not vpath.exists() or not vpath.is_file():
         return jsonify({'error': 'Video file not found'}), 404
     st = _load_state(vpath)
@@ -949,7 +973,7 @@ def api_preproc_save_final():
     video = str(payload.get('video', '')).strip()
     if not video:
         return jsonify({'error': 'Missing video'}), 400
-    vpath = Path(video).expanduser()
+    vpath = assert_within_allowed_roots(video)
     if not vpath.exists() or not vpath.is_file():
         return jsonify({'error': 'Video file not found'}), 404
     # Load temp state
@@ -1152,21 +1176,28 @@ def api_preproc_segment_simple():
         except Exception as e:
             raise ValueError(f'Failed to decode image: {e}')
 
+    def _from_guarded_path(raw_path: Any, label: str) -> Image.Image:
+        try:
+            path = assert_within_allowed_roots(str(raw_path or '').strip())
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise ValueError(f'Invalid {label} path: {e}')
+        try:
+            return Image.open(str(path)).convert('RGB')
+        except Exception as e:
+            raise ValueError(f'Failed to open {label}: {e}')
+
     try:
         if image_data and not image_path:
             img = _from_dataurl(str(image_data))
         else:
-            from pathlib import Path
-            img = Image.open(str(Path(str(image_path)).expanduser())).convert('RGB')
+            img = _from_guarded_path(image_path, 'image')
         bkg = None
-        try:
-            if bg_data and not bg_path:
-                bkg = _from_dataurl(str(bg_data))
-            elif bg_path:
-                from pathlib import Path
-                bkg = Image.open(str(Path(str(bg_path)).expanduser())).convert('RGB')
-        except Exception:
-            bkg = None
+        if bg_data and not bg_path:
+            bkg = _from_dataurl(str(bg_data))
+        elif bg_path:
+            bkg = _from_guarded_path(bg_path, 'background')
 
         # Ensure both inputs are same size if background is provided
         if bkg is not None and bkg.size != img.size:
@@ -1229,6 +1260,8 @@ def api_preproc_segment_simple():
         if overlay_b64 is not None:
             payload_out['overlay_b64'] = overlay_b64
         return jsonify(payload_out)
+    except HTTPException:
+        raise
     except Exception as e:
         return jsonify({'error': f'segment.simple failed: {e}'}), 500
 

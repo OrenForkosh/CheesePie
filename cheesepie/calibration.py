@@ -1,15 +1,68 @@
 from __future__ import annotations
 
 import concurrent.futures
+import io
+import logging
 import socket
+import time
 from pathlib import Path
 
-import numpy as np
 from flask import Blueprint, Response, jsonify, request, send_file
 
 bp = Blueprint('calibration_api', __name__)
+_log = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# ---------------------------------------------------------------------------
+# Demo / test-pattern source
+# ---------------------------------------------------------------------------
+
+_DEMO_IP = '__demo__'
+
+_DEMO_PROFILES = [
+    {'token': 'demo_hd', 'name': 'Demo HD',  'width': 1280, 'height': 720, 'encoding': 'DEMO'},
+    {'token': 'demo_sd', 'name': 'Demo SD',  'width': 640,  'height': 480, 'encoding': 'DEMO'},
+]
+
+
+def _demo_frame(profile_token: str = 'demo_hd', frame_idx: int = 0) -> bytes:
+    """Generate a synthetic JPEG test-pattern frame using Pillow."""
+    from PIL import Image, ImageDraw
+
+    w, h = (1280, 720) if profile_token == 'demo_hd' else (640, 480)
+    img  = Image.new('RGB', (w, h), 0)
+    draw = ImageDraw.Draw(img)
+
+    # ── Top 2/3: classic colour bars ──────────────────────────────────────
+    bar_colours = [
+        (255, 255, 255), (255, 255,   0), (  0, 255, 255), (  0, 255,   0),
+        (255,   0, 255), (255,   0,   0), (  0,   0, 255), (  0,   0,   0),
+    ]
+    bar_h  = h * 2 // 3
+    bar_w  = w // len(bar_colours)
+    for i, c in enumerate(bar_colours):
+        draw.rectangle([i * bar_w, 0, (i + 1) * bar_w - 1, bar_h], fill=c)
+
+    # ── Bottom 1/3: horizontal luminance ramp ─────────────────────────────
+    for x in range(w):
+        v = int(x / (w - 1) * 255)
+        draw.line([(x, bar_h), (x, h - 1)], fill=(v, v, v))
+
+    # ── Animated element: small moving dot so the "stream" looks live ──────
+    dot_x  = int((frame_idx * 4) % w)
+    dot_y  = h - 20
+    radius = 6
+    draw.ellipse([dot_x - radius, dot_y - radius,
+                  dot_x + radius, dot_y + radius], fill=(255, 200, 0))
+
+    # ── Timestamp overlay ─────────────────────────────────────────────────
+    ts = time.strftime('%H:%M:%S')
+    draw.text((8, 8), f'DEMO  {ts}  #{frame_idx}', fill=(255, 255, 255))
+
+    buf = io.BytesIO()
+    img.save(buf, format='JPEG', quality=85)
+    return buf.getvalue()
 
 
 # ---------------------------------------------------------------------------
@@ -22,12 +75,12 @@ def _cfg() -> dict:
     if not isinstance(raw, dict):
         raw = {}
     return {
-        'user':     str(raw.get('onvif_user',     'admin')).strip(),
-        'password': str(raw.get('onvif_password', '12345')).strip(),
-        'subnet':   str(raw.get('subnet',         '10.0.0')).strip().rstrip('.'),
-        'port':     int(raw.get('onvif_port',     80)),
-        'mask_path': str(raw.get('mask_path',
-                                 'external/camera_calibration_mask.png')).strip(),
+        'user':         str(raw.get('onvif_user',     'admin')).strip(),
+        'password':     str(raw.get('onvif_password', '12345')).strip(),
+        'subnet':       str(raw.get('subnet',         '10.0.0')).strip().rstrip('.'),
+        'port':         int(raw.get('onvif_port',     80)),
+        'mask_path':    str(raw.get('mask_path',
+                                    'external/camera_calibration_mask.png')).strip(),
     }
 
 
@@ -68,17 +121,22 @@ def _fetch_snapshot_bytes(ip: str, snap_uri: str) -> bytes:
 
 @bp.route('/discover')
 def discover():
-    """Probe 10.0.0.1-254 in parallel and try ONVIF on responding hosts."""
+    """Probe <subnet>.1-254 in parallel and try ONVIF on responding hosts."""
     cfg = _cfg()
-    subnet = cfg['subnet']
+    subnet = request.args.get('subnet', '').strip().rstrip('.') or cfg['subnet']
     port   = cfg['port']
     user   = cfg['user']
     password = cfg['password']
+
+    names_cfg = _cfg().get('camera_names', {})
+    if not isinstance(names_cfg, dict):
+        names_cfg = {}
 
     def probe(last: int):
         ip = f'{subnet}.{last}'
         if not _tcp_ok(ip, port):
             return None
+        user_name = str(names_cfg.get(ip, '')).strip()
         try:
             from onvif import ONVIFCamera
             cam = ONVIFCamera(ip, port, user, password)
@@ -87,28 +145,43 @@ def discover():
             info = dev.GetDeviceInformation()
             mfr   = getattr(info, 'Manufacturer',    '') or ''
             model = getattr(info, 'Model',            '') or ''
-            name  = f'{mfr} {model}'.strip() or ip
+            # Try the user-assigned friendly name from ONVIF scopes
+            friendly = ''
+            try:
+                scopes = dev.GetScopes()
+                for s in (scopes or []):
+                    uri = getattr(s, 'ScopeItem', '') or ''
+                    if 'onvif.org/name/' in uri:
+                        friendly = uri.split('onvif.org/name/')[-1].strip()
+                        break
+            except Exception as e:
+                _log.debug("calibration: could not read scopes from %s: %s", ip, e)
+            # Drop the ONVIF "friendly" name if it's just the model string repeated
+            model_str = f'{mfr} {model}'.strip().lower()
+            if friendly.lower() in (model.lower(), model_str):
+                friendly = ''
             return {
-                'ip':          ip,
-                'name':        name,
+                'ip':           ip,
+                'user_name':    user_name,
+                'friendly_name': friendly,
                 'manufacturer': mfr,
-                'model':       model,
-                'serial':      getattr(info, 'SerialNumber',    '') or '',
-                'firmware':    getattr(info, 'FirmwareVersion', '') or '',
-                'onvif_port':  port,
-                'onvif':       True,
+                'model':        model,
+                'serial':       getattr(info, 'SerialNumber',    '') or '',
+                'firmware':     getattr(info, 'FirmwareVersion', '') or '',
+                'onvif_port':   port,
+                'onvif':        True,
             }
         except Exception:
-            # Port 80 responds but not (or not yet) ONVIF — include anyway
             return {
-                'ip':          ip,
-                'name':        ip,
+                'ip':           ip,
+                'user_name':    user_name,
+                'friendly_name': '',
                 'manufacturer': '',
-                'model':       '',
-                'serial':      '',
-                'firmware':    '',
-                'onvif_port':  port,
-                'onvif':       False,
+                'model':        '',
+                'serial':       '',
+                'firmware':     '',
+                'onvif_port':   port,
+                'onvif':        False,
             }
 
     cameras = []
@@ -131,6 +204,8 @@ def profiles():
     ip = request.args.get('ip', '').strip()
     if not ip:
         return jsonify({'error': 'Missing ip'}), 400
+    if ip == _DEMO_IP:
+        return jsonify({'profiles': _DEMO_PROFILES})
     try:
         cam   = _make_camera(ip)
         media = cam.create_media_service()
@@ -163,6 +238,11 @@ def snapshot():
     profile = request.args.get('profile', '').strip()
     if not ip or not profile:
         return jsonify({'error': 'Missing ip or profile'}), 400
+    if ip == _DEMO_IP:
+        data = _demo_frame(profile)
+        return Response(data, mimetype='image/jpeg', headers={
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+        })
     try:
         cam   = _make_camera(ip)
         media = cam.create_media_service()
@@ -182,6 +262,18 @@ def stream():
     profile = request.args.get('profile', '').strip()
     if not ip or not profile:
         return jsonify({'error': 'Missing ip or profile'}), 400
+
+    if ip == _DEMO_IP:
+        def _demo_gen():
+            idx = 0
+            while True:
+                jpg = _demo_frame(profile, idx)
+                yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + jpg + b'\r\n')
+                idx += 1
+                time.sleep(0.1)   # ~10 fps
+        return Response(_demo_gen(),
+                        mimetype='multipart/x-mixed-replace; boundary=frame',
+                        headers={'Cache-Control': 'no-cache'})
 
     cfg = _cfg()
     try:
@@ -234,6 +326,9 @@ def ptz():
     if not ip or not action:
         return jsonify({'error': 'Missing ip or action'}), 400
 
+    if ip == _DEMO_IP:
+        return jsonify({'ok': True, 'note': 'demo_no_op'})
+
     try:
         cam   = _make_camera(ip)
         media = cam.create_media_service()
@@ -250,16 +345,16 @@ def ptz():
                 ptz_svc = cam.create_ptz_service()
                 ptz_svc.Stop({'ProfileToken': ptoken,
                                'PanTilt': True, 'Zoom': True})
-            except Exception:
-                pass
+            except Exception as e:
+                _log.debug("calibration: PTZ stop failed for %s: %s", ip, e)
             # Also stop any imaging move
             try:
                 img_svc = cam.create_imaging_service()
                 vsrc    = media.GetVideoSources()
                 if vsrc:
                     img_svc.Stop({'VideoSourceToken': vsrc[0].token})
-            except Exception:
-                pass
+            except Exception as e:
+                _log.debug("calibration: imaging stop failed for %s: %s", ip, e)
             return jsonify({'ok': True})
 
         if action in ('zoom_in', 'zoom_out'):
@@ -307,16 +402,16 @@ def ptz():
                         'ForcePersistence': False,
                     })
                     return jsonify({'ok': True})
-                except Exception:
-                    pass
+                except Exception as e:
+                    _log.debug("calibration: SetImagingSettings autofocus failed for %s: %s", ip, e)
                 # Fallback: trigger a Move with zero speed to nudge autofocus
                 try:
                     img_svc.Move({
                         'VideoSourceToken': src_tok,
                         'Focus': {'Continuous': {'Speed': 0.0}},
                     })
-                except Exception:
-                    pass
+                except Exception as e:
+                    _log.debug("calibration: imaging Move fallback failed for %s: %s", ip, e)
                 return jsonify({'ok': True, 'note': 'autofocus_sent'})
             except Exception as ae:
                 return jsonify({'ok': True, 'note': f'autofocus_not_available: {ae}'})
@@ -327,6 +422,56 @@ def ptz():
         return jsonify({'error': str(e)}), 500
 
 
+@bp.route('/config', methods=['GET'])
+def get_config():
+    cfg = _cfg()
+    return jsonify({
+        'subnet':     cfg['subnet'],
+        'onvif_port': cfg['port'],
+        'onvif_user': cfg['user'],
+    })
+
+
+@bp.route('/config', methods=['POST'])
+def set_config():
+    from .config import CONFIG, _config_path
+    import json as _json
+
+    payload = request.json or {}
+    cfg_path = _config_path()
+
+    # Load the full config file so we only touch the calibration section
+    try:
+        full = _json.loads(cfg_path.read_text(encoding='utf-8'))
+    except Exception:
+        full = dict(CONFIG)
+
+    cal = full.setdefault('calibration', {})
+
+    if 'subnet' in payload:
+        subnet = str(payload['subnet']).strip().rstrip('.')
+        if subnet:
+            cal['subnet'] = subnet
+
+    if 'onvif_port' in payload:
+        try:
+            cal['onvif_port'] = int(payload['onvif_port'])
+        except (ValueError, TypeError):
+            return jsonify({'error': 'onvif_port must be an integer'}), 400
+
+    if 'onvif_user' in payload:
+        cal['onvif_user'] = str(payload['onvif_user']).strip()
+
+    try:
+        cfg_path.write_text(_json.dumps(full, indent=2, ensure_ascii=False), encoding='utf-8')
+        # Refresh the in-memory CONFIG so subsequent requests see the new values
+        CONFIG['calibration'] = cal
+    except Exception as e:
+        return jsonify({'error': f'Failed to write config: {e}'}), 500
+
+    return jsonify({'ok': True})
+
+
 @bp.route('/mask')
 def mask():
     cfg       = _cfg()
@@ -335,3 +480,5 @@ def mask():
         return jsonify({'error': f'Mask not found: {mask_path}'}), 404
     return send_file(str(mask_path), mimetype='image/png',
                      max_age=0)
+
+

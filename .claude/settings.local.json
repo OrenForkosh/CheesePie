@@ -6,7 +6,19 @@
       "Read(//tmp/**)",
       "Bash(python3:*)",
       "Bash(pip show:*)",
-      "Bash(ffmpeg -version)"
+      "Bash(ffmpeg -version)",
+      "Bash(grep -n \"encodeStartWallTime\\\\|encodeStartPct\\\\|left''''\\\\|left\\\\`\\\\|encodeTimer = null\" /Users/forkosh/Documents/development/git/CheeseIt/templates/importer.html)",
+      "Bash(node --check /Users/forkosh/Documents/development/git/CheeseIt/static/annotator.js)",
+      "Bash(node:*)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:8000/)",
+      "Bash(curl -s http://127.0.0.1:8000/api/import/scan_prepare/current)",
+      "Bash(for file:*)",
+      "Bash(do echo:*)",
+      "Bash(grep -n \"except Exception:$\\\\|except OSError:$\" /Users/forkosh/Documents/development/git/CheeseIt/cheesepie/importer.py)",
+      "Bash(head -20 echo \"---\" grep -n \"default_types\\\\|default_animals\\\\|default_fps\\\\|autosave\" /Users/forkosh/Documents/development/git/CheeseIt/config.mac.json)",
+      "Bash(source .venv/bin/activate)",
+      "Bash(python -c \"from cheesepie import create_app; app = create_app\\(\\); print\\(''OK''\\)\")",
+      "Bash(python -c \"from cheesepie import create_app; create_app\\(\\); print\\(''OK''\\)\")"
     ]
   }
 }

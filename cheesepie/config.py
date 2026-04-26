@@ -70,6 +70,30 @@ def cfg_default_fps() -> int:
         return 30
 
 
+_VALID_MODES = {'individual', 'mutual', 'directed', 'polyadic'}
+
+_DEFAULT_ETHOGRAM: List[Dict[str, Any]] = [
+    {'name': 'Self-grooming',            'nameHe': 'ניקוי עצמי',                       'key': 'g', 'mode': 'individual', 'color': '#4fc3f7'},
+    {'name': 'Allo-grooming',            'nameHe': 'ניקוי חברתי',                       'key': 'a', 'mode': 'directed',   'color': '#81c784'},
+    {'name': 'Facial investigation',     'nameHe': 'חקירת פנים',                        'key': 'f', 'mode': 'directed',   'color': '#ffb74d'},
+    {'name': 'Anogenital investigation', 'nameHe': 'חקירה אנוגניטלית',                  'key': 'n', 'mode': 'directed',   'color': '#ff8a65'},
+    {'name': 'Huddling',                 'nameHe': 'הצטופפות',                          'key': 'h', 'mode': 'polyadic',   'color': '#ce93d8'},
+    {'name': 'Fighting',                 'nameHe': 'לחימה',                             'key': 'i', 'mode': 'mutual',     'color': '#ef5350'},
+    {'name': 'Pinning',                  'nameHe': 'ריתוק',                             'key': 'p', 'mode': 'directed',   'color': '#e91e63'},
+    {'name': 'Social barbering',         'nameHe': 'תלישת פרווה או שפם מאחר',           'key': 'b', 'mode': 'directed',   'color': '#f06292'},
+    {'name': 'Self-barbering',           'nameHe': 'תלישת פרווה או שפם עצמית',          'key': 's', 'mode': 'individual', 'color': '#ab47bc'},
+    {'name': 'Chasing',                  'nameHe': 'רדיפה',                             'key': 'c', 'mode': 'directed',   'color': '#ff7043'},
+    {'name': 'Fleeing',                  'nameHe': 'בריחה',                             'key': 'e', 'mode': 'directed',   'color': '#ffca28'},
+    {'name': 'Mounting',                 'nameHe': 'רכיבה',                             'key': 'm', 'mode': 'directed',   'color': '#26c6da'},
+    {'name': 'Crouch',                   'nameHe': 'כריעה',                             'key': 'o', 'mode': 'individual', 'color': '#78909c'},
+    {'name': 'Tail rattling',            'nameHe': 'רטט זנב',                           'key': 't', 'mode': 'individual', 'color': '#aed581'},
+    {'name': 'Rearing',                  'nameHe': 'עמידה זקופה',                       'key': 'r', 'mode': 'individual', 'color': '#4db6ac'},
+    {'name': 'Digging',                  'nameHe': 'חפירה',                             'key': 'd', 'mode': 'individual', 'color': '#a1887f'},
+    {'name': 'Nesting',                  'nameHe': 'קינון',                             'key': 'k', 'mode': 'individual', 'color': '#8d6e63'},
+    {'name': 'Sleeping',                 'nameHe': 'שינה',                              'key': 'l', 'mode': 'individual', 'color': '#546e7a'},
+]
+
+
 def cfg_default_types() -> List[Dict[str, Any]]:
     raw = CONFIG.get('annotator', {}).get('default_types', [])
     out: List[Dict[str, Any]] = []
@@ -80,19 +104,18 @@ def cfg_default_types() -> List[Dict[str, Any]]:
             name = str(t.get('name', '')).strip()
             if not name:
                 continue
-            mode = str(t.get('mode', 'single')).strip().lower()
-            if mode not in ('single', 'dyadic'):
-                mode = 'single'
+            mode = str(t.get('mode', 'individual')).strip().lower()
+            if mode not in _VALID_MODES:
+                mode = 'individual'
             key = str(t.get('key', '')).strip()[:1]
             color = str(t.get('color', '#7c4dff')).strip() or '#7c4dff'
-            out.append({'name': name, 'mode': mode, 'key': key, 'color': color})
-    if not out:
-        out = [
-            {'name': 'Grooming', 'key': 'g', 'mode': 'single', 'color': '#4f8cff'},
-            {'name': 'Chasing', 'key': 'c', 'mode': 'dyadic', 'color': '#ff6b6b'},
-            {'name': 'Sniffing', 'key': 's', 'mode': 'single', 'color': '#ffd166'},
-        ]
-    return out
+            entry: Dict[str, Any] = {'name': name, 'mode': mode, 'key': key, 'color': color}
+            for field in ('nameHe', 'description', 'descHe'):
+                val = t.get(field, '')
+                if val:
+                    entry[field] = str(val)
+            out.append(entry)
+    return out if out else list(_DEFAULT_ETHOGRAM)
 
 
 def cfg_keyboard() -> Dict[str, Any]:
@@ -439,17 +462,27 @@ def api_config_info():
 
 @bp.route('/switch', methods=['POST'])
 def api_config_switch():
-    global CONFIG
     payload = request.json or {}
     path = str(payload.get('path', '')).strip()
     if not path:
         return jsonify({'error': 'Missing path'}), 400
-    p = Path(path).expanduser()
+    project_root = Path(__file__).resolve().parent.parent
+    try:
+        p = Path(path).expanduser().resolve()
+        p.relative_to(project_root)  # raises ValueError if outside project root
+    except ValueError:
+        return jsonify({'error': 'Config path must be within the project directory'}), 403
+    except Exception:
+        return jsonify({'error': 'Invalid path'}), 400
+    # Only allow config*.json filenames
+    if not (p.suffix == '.json' and p.stem.startswith('config')):
+        return jsonify({'error': 'Only config*.json files may be selected'}), 403
     if not p.exists() or not p.is_file():
         return jsonify({'error': 'File not found', 'path': str(p)}), 404
     try:
         os.environ['CHEESEPIE_CONFIG'] = str(p)
-        CONFIG = load_config()
+        CONFIG.clear()
+        CONFIG.update(load_config())
         return jsonify({'ok': True, 'path': str(p)})
     except Exception as e:
         return jsonify({'error': f'Failed to switch config: {e}'}), 500

@@ -3,8 +3,8 @@
 <section class="panel panel--nochrome" id="annotator" data-video="{{ video|default('') }}" data-default-mice='{{ default_mice|tojson }}'
   data-default-fps='{{ default_fps|tojson }}' data-default-types='{{ default_types|tojson }}'
   data-keyboard='{{ keyboard|tojson }}'>
-  <div class="controls-trans" style="grid-template-columns: 3fr 2fr">
-    <div class="subpanel">
+  <div class="controls-trans ann-split" id="ann-split">
+    <div class="subpanel" id="ann-left">
       <div class="control-group header-left" style="margin-bottom: 8px">
         <h1>Annotator</h1>
         <p class="muted">Annotate behaviors by type with precise timing.</p>
@@ -15,14 +15,27 @@
           <input type="text" id="annotator-video-path" value="{{ video or '' }}" readonly style="display:none" />
           <button class="btn" id="help-shortcuts" title="Show keyboard shortcuts">?</button>
           <button class="btn" id="export-json">Save</button>
+          <button class="btn" id="export-csv" title="Export events as CSV">CSV</button>
         </div>
       </div>
 
       <div class="control-group" style="margin-top: 12px">
         <div class="video-wrap">
           <video id="ann-video" controls preload="metadata"></video>
+          <div id="zoom-overlay" class="zoom-overlay" hidden>
+            <div id="zoom-selection" class="zoom-selection" hidden></div>
+          </div>
+          <div class="zoom-badge">
+            <button id="zoom-toggle" class="zoom-toggle-btn" title="Draw a region to zoom in · Click to zoom out · Click button to exit">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+              </svg>
+            </button>
+          </div>
         </div>
+        <canvas id="timeline-minimap" height="20" title="Full timeline overview · click to seek"></canvas>
       </div>
+      <div class="vid-resizer" id="vid-resizer" title="Drag to resize video"></div>
 
       <div class="controls-row">
         <label class="rate-label">Rate</label>
@@ -37,39 +50,62 @@
           <button class="chip" data-rate="1.5">1.5×</button>
           <button class="chip" data-rate="2">2×</button>
         </div>
+        <span class="controls-row-sep"></span>
+        <div class="timeline-controls">
+          <button class="chip active" id="tl-compact-toggle" title="Toggle compact / full timeline">Compact</button>
+          <span class="tl-zoom-label" style="margin-left:6px">Window</span>
+          <button class="chip tl-zoom active" data-window="">Full</button>
+          <button class="chip tl-zoom" data-window="5">5s</button>
+          <button class="chip tl-zoom" data-window="10">10s</button>
+          <button class="chip tl-zoom" data-window="30">30s</button>
+          <button class="chip tl-zoom" data-window="60">1m</button>
+          <button class="chip tl-zoom" data-window="300">5m</button>
+        </div>
       </div>
+
+      <div id="open-event-bar" class="open-event-bar" hidden></div>
 
       <div class="timeline-wrap">
         <canvas id="timeline" height="220"></canvas>
-        <div class="legend" id="legend"></div>
       </div>
     </div>
 
-    <aside class="subpanel">
+    <div class="ann-resizer" id="ann-resizer" title="Drag to resize panels" aria-hidden="true"></div>
+    <aside class="subpanel" id="ann-right">
       <div class="side-section">
-        <div style="display:flex; align-items:center; justify-content:space-between">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px">
           <h3 style="margin:0">Behavior Types</h3>
-          <button class="btn mini" id="open-add-type">Add</button>
+          <div style="display:flex; align-items:center; gap:6px">
+            <div class="ann-lang-seg" id="ann-lang-seg" role="group" aria-label="Display language">
+              <button class="ann-lang-btn active" data-lang="en">EN</button>
+              <button class="ann-lang-btn" data-lang="he">HE</button>
+            </div>
+            <button class="btn mini" id="open-add-type">Add</button>
+          </div>
         </div>
         <div id="types-list"></div>
       </div>
-      <div class="side-section">
-        <h3>Animals</h3>
-        <div class="muted" style="margin-bottom:6px">Comma-separated names (e.g., {{ (default_mice or [])|join(',') }})
-        </div>
-        <input type="text" id="mice-input" placeholder="{{ (default_mice or [])|join(',') }}">
+      <div class="side-section side-section--inline">
+        <label for="mice-input" class="muted" style="white-space:nowrap;font-size:13px">Animals</label>
+        <input type="text" id="mice-input" placeholder="{{ (default_mice or [])|join(',') or 'e.g., Mouse1,Mouse2' }}" title="Comma-separated animal names">
       </div>
-      <div class="side-section">
-        <h3>Event Details</h3>
-        <div id="event-details" class="muted">Select an event or start one using a shortcut key.</div>
-      </div>
+      <div id="event-details" hidden></div>
     </aside>
   </div>
 
   <div style="padding: 0 12px 12px">
     <div class="subpanel">
       <h3 style="margin: 0 0 4px">Events</h3>
-      <div class="muted" style="margin: 0 0 10px">Click an event to select. Double-click to jump to start.</div>
+      <div class="muted" style="margin: 0 0 10px">Click an event to select. Double-click to jump to start. Shift+double-click to jump to end.</div>
+      <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px">
+        <label class="muted" style="font-size:12px">Filter</label>
+        <select id="tbl-filter-type" style="flex:1">
+          <option value="">All types</option>
+        </select>
+        <select id="tbl-filter-animal" style="flex:1">
+          <option value="">All animals</option>
+        </select>
+      </div>
       <table id="events-table">
         <thead>
           <tr>
@@ -95,18 +131,25 @@
       <button class="btn mini" id="type-cancel">Cancel</button>
     </div>
     <div class="type-form" style="display:grid; grid-template-columns:120px 1fr; gap:10px; align-items:center">
-      <label for="type-name-modal" class="muted">Name</label>
+      <label for="type-name-modal" class="muted">Name (EN)</label>
       <input type="text" id="type-name-modal" placeholder="e.g., Grooming">
+      <label for="type-name-he-modal" class="muted">Name (HE)</label>
+      <input type="text" id="type-name-he-modal" placeholder="e.g., טיפוח" dir="rtl" lang="he">
       <label for="type-mode-modal" class="muted">Mode</label>
       <select id="type-mode-modal">
-        <option value="single">Single</option>
-        <option value="dyadic">Dyadic</option>
-        <option value="agonistic">Agonistic</option>
+        <option value="individual">Individual</option>
+        <option value="mutual">Mutual</option>
+        <option value="directed">Directed</option>
+        <option value="polyadic">Polyadic</option>
       </select>
       <label for="type-key-modal" class="muted">Key</label>
       <input type="text" id="type-key-modal" placeholder="g" maxlength="1" style="width:80px">
       <label for="type-color-modal" class="muted">Color</label>
       <input type="color" id="type-color-modal" value="#7c4dff" style="width:80px">
+      <label for="type-desc-modal" class="muted" style="align-self:start;padding-top:6px">Description (EN)</label>
+      <textarea id="type-desc-modal" rows="2" placeholder="Optional description" style="resize:vertical"></textarea>
+      <label for="type-desc-he-modal" class="muted" style="align-self:start;padding-top:6px">Description (HE)</label>
+      <textarea id="type-desc-he-modal" rows="2" placeholder="תיאור אופציונלי" dir="rtl" lang="he" style="resize:vertical"></textarea>
     </div>
     <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px">
       <button class="btn" id="type-save">Add</button>

@@ -1,6 +1,67 @@
 /* Importer-specific controls */
 .panel.panel-importer {
-  margin-bottom: calc(var(--footer-height, 52px) + 12px);
+  margin-bottom: 12px;
+}
+
+/* ── Error banner ──────────────────────────────────────────────────────────── */
+.error-banner {
+  margin: 10px 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--error-surface, #ffebee);
+  color: var(--error, #b71c1c);
+  border: 1px solid var(--error-border, #ef9a9a);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* ── Date / Time range rows ─────────────────────────────────────────────── */
+.range-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.range-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.range-field.range-field-narrow {
+  flex: 0 0 88px;
+}
+
+.range-sublabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.range-conn {
+  flex-shrink: 0;
+  padding-bottom: 12px;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 300;
+  user-select: none;
+  opacity: 0.55;
+}
+
+@media (max-width: 500px) {
+  .range-row {
+    flex-wrap: wrap;
+  }
+  .range-field.range-field-narrow {
+    flex: 1 0 80px;
+  }
+  .range-conn {
+    display: none;
+  }
 }
 
 :root[data-theme="mouse"] .cam-btn.active {
@@ -21,6 +82,49 @@
   white-space: nowrap;
   padding-bottom: 4px;
   flex: 1;
+}
+
+/* ── Batch field with Auto pill ─────────────────────────────────────────── */
+.batch-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.batch-wrap input {
+  flex: 1;
+  padding-right: 52px;
+  min-width: 0;
+}
+
+.batch-auto-btn {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.batch-auto-btn.active {
+  background: color-mix(in srgb, var(--primary) 15%, transparent);
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 35%, transparent);
+}
+
+.batch-auto-btn:hover {
+  filter: brightness(1.08);
 }
 
 .cam-btn {
@@ -47,47 +151,448 @@
   border-color: transparent;
 }
 
+/* ── Scan modal ─────────────────────────────────────────────────────────── */
+.scan-modal-panel {
+  width: min(920px, 94vw);
+  max-height: 84vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 16px;
+}
+
+.scan-modal-title {
+  font-weight: 600;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scan-header-badge {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 1px 8px;
+  display: none;
+}
+
+.scan-header-badge:not(:empty) {
+  display: inline-flex;
+}
+
+/* ── Scanning progress bar ──────────────────────────────────────────────── */
+.scan-progress-bar {
+  margin: 8px 0;
+}
+
+.scan-progress-inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.scan-spinner {
+  display: inline-block;
+  font-style: normal;
+  line-height: 1;
+  color: var(--primary);
+  animation: scan-spin 1s linear infinite;
+}
+
+@keyframes scan-spin {
+  to { transform: rotate(360deg); }
+}
+
+.scan-running-text {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.scan-rail {
+  height: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.scan-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), var(--accent));
+  border-radius: 999px;
+  width: 0;
+  transition: width 0.2s;
+}
+
+.scan-fill.indeterminate {
+  width: 40% !important;
+  animation: scan-indeterminate 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes scan-indeterminate {
+  0%   { transform: translateX(-150%); }
+  100% { transform: translateX(340%); }
+}
+
+/* ── Stats strip ────────────────────────────────────────────────────────── */
+.scan-stats-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 2px;
+  font-size: 12px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2px;
+}
+
+.scan-stat-val {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.scan-stat-range .scan-stat-val {
+  color: #4caf50;
+}
+
+.scan-stat-sep {
+  color: var(--border);
+}
+
+/* ── Status / error line ────────────────────────────────────────────────── */
+.scan-meta-line {
+  font-size: 11px;
+  color: var(--muted);
+  min-height: 14px;
+  padding: 3px 2px;
+  line-height: 1.4;
+}
+
+/* ── Scrollable content ─────────────────────────────────────────────────── */
+.scan-modal-content {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 4px 0 12px;
+}
+
+/* ── File table ─────────────────────────────────────────────────────────── */
 #scan-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 12.5px;
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  overflow: hidden;
 }
 
 #scan-table th,
 #scan-table td {
   border-bottom: 1px solid var(--border);
-  padding: 6px 8px;
+  padding: 6px 10px;
+  text-align: left;
+  white-space: nowrap;
 }
 
 #scan-table th {
   background: var(--panel);
-  color: var(--text);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
   position: sticky;
   top: 0;
   z-index: 1;
 }
 
+#scan-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+#scan-table tbody tr:hover:not(.scan-dir-row):not(.scan-empty) {
+  background: color-mix(in srgb, var(--border) 25%, transparent);
+}
+
 #scan-table td.scan-path {
-  white-space: nowrap;
+  max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-#scan-table tbody tr.scan-in-range {
-  color: #2e7d32;
-  font-weight: 600;
+#scan-table td.scan-mono {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 11.5px;
 }
 
-#scan-table tbody tr.scan-dir-row {
-  color: var(--muted);
+.scan-cam-pill {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--primary) 15%, transparent);
+  color: var(--primary);
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
+}
+
+.scan-badge-range {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 20px;
+  background: color-mix(in srgb, #4caf50 15%, transparent);
+  color: #4caf50;
+  border: 1px solid color-mix(in srgb, #4caf50 30%, transparent);
+  letter-spacing: 0.02em;
 }
 
 #scan-table tbody tr.scan-empty td {
   color: var(--muted);
+  text-align: center;
+  padding: 32px 16px;
+  font-size: 13px;
+}
+
+/* ── Plan output rows ───────────────────────────────────────────────────── */
+.plan-waiting {
+  padding: 48px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.plan-output-row td {
+  vertical-align: middle;
+}
+
+.plan-output-row.plan-missing td {
+  color: var(--muted);
+  opacity: 0.65;
+}
+
+.plan-fname {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 11.5px;
+}
+
+.plan-day-cell {
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.plan-segs {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-th-expand {
+  width: 36px;
+}
+
+/* Expand toggle button */
+.plan-expand-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 3px 7px;
+  transition: color 0.12s, border-color 0.12s;
+}
+
+.plan-expand-btn:hover,
+.plan-expand-btn.open {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+/* Source files sub-row */
+.plan-src-row td {
+  padding: 0 !important;
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  border-bottom: 2px solid var(--border);
+}
+
+.plan-src-inner {
+  padding: 8px 12px 8px 48px;
+}
+
+.plan-src-empty {
+  padding: 10px 12px 10px 48px;
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+#ffmpeg-log-panel {
+  border-top: 1px solid var(--border);
+  padding: 0 12px 0;
+}
+.ffmpeg-log-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 6px 0;
+  background: none;
+  border: none;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  cursor: pointer;
+  text-align: left;
+}
+.ffmpeg-log-header:hover { color: var(--text); }
+.ffmpeg-log-arrow { font-size: 9px; }
+#ffmpeg-log-entries { padding-bottom: 8px; }
+.ffmpeg-log-entries {
+  max-height: 120px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ffmpeg-log-entry {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11px;
+}
+.ffmpeg-log-ts {
+  font-family: monospace;
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.ffmpeg-log-cmd {
+  font-family: monospace;
+  color: var(--text);
+  word-break: break-all;
+  flex: 1;
+}
+
+.ffmpeg-log-copy {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+  padding: 0 2px;
+  opacity: 0.6;
+  line-height: 1;
+  transition: opacity 0.1s, color 0.1s;
+}
+
+.ffmpeg-log-copy:hover {
+  opacity: 1;
+  color: var(--primary);
+}
+
+/* Source files inner table */
+.plan-src-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.plan-src-table th {
+  background: none;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  position: static;
+}
+
+.plan-src-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+
+.plan-src-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Status badges — using CSS vars, no hard-coded colours */
+.plan-badge {
+  display: inline-flex;
+  justify-content: center;
+  min-width: 80px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+.plan-badge-ready {
+  background: color-mix(in srgb, var(--primary) 18%, transparent);
+  color: var(--primary);
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, transparent);
+}
+
+.plan-badge-done {
+  background: color-mix(in srgb, #4caf50 15%, transparent);
+  color: #4caf50;
+  border: 1px solid color-mix(in srgb, #4caf50 30%, transparent);
+}
+
+.plan-badge-running {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.plan-badge-missing {
+  background: color-mix(in srgb, var(--muted) 15%, transparent);
+  color: var(--muted);
+  border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent);
+}
+
+.plan-badge-fail {
+  background: color-mix(in srgb, #ef5350 15%, transparent);
+  color: #ef5350;
+  border: 1px solid color-mix(in srgb, #ef5350 30%, transparent);
+}
+
+.plan-badge-out {
+  background: color-mix(in srgb, var(--muted) 12%, transparent);
+  color: var(--muted);
+  border: 1px solid color-mix(in srgb, var(--muted) 25%, transparent);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 20px;
+}
+
+/* ── Modal footer ───────────────────────────────────────────────────────── */
+.scan-modal-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
 }
 
 :root[data-theme="mouse"] #dp-video-preview {

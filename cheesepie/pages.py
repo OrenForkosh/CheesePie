@@ -68,7 +68,7 @@ def calibration_partial():
 
 @bp.route('/settings')
 def settings():
-    return render_template('settings.html', active_tab='settings')
+    return render_template('settings.html', active_tab='settings', page_css=['settings.css'])
 
 
 @bp.route('/tasks')
@@ -122,7 +122,7 @@ def tasks_partial():
 
 @bp.route('/partials/settings')
 def settings_partial():
-    return render_template('settings.html', active_tab='settings', partial=True)
+    return render_template('settings.html', active_tab='settings', partial=True, page_css=['settings.css'])
 
 # Temporary compatibility: redirect old Analyze URL to Preview
 @bp.route('/analyze')

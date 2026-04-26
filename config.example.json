@@ -4,24 +4,60 @@
     "default_animals": ["R", "G", "B", "Y"],
     "default_fps": 30,
     "default_types": [
-      {
-        "color": "#4f8cff",
-        "key": "g",
-        "mode": "single",
-        "name": "Grooming"
-      },
-      {
-        "color": "#ff6b6b",
-        "key": "c",
-        "mode": "agonistic",
-        "name": "Chasing"
-      },
-      {
-        "color": "#ffd166",
-        "key": "s",
-        "mode": "single",
-        "name": "Sniffing"
-      }
+      { "name": "Self-grooming",            "nameHe": "ניקוי עצמי",              "key": "g", "mode": "individual", "color": "#4fc3f7",
+        "description": "The mouse cleans its own body, including licking its fur or body, passing the forepaws over the face or head, scratching with a limb, or licking the body. Code this only when the action is directed toward the same individual.\nDistinguish it from allo-grooming by the absence of grooming directed at another mouse, and from barbering by the absence of fur or whisker pulling, new bald patches, or clear discomfort.",
+        "descHe": "העכבר מנקה את עצמו, כולל ליקוק פרווה או גוף, העברת כפות קדמיות על הפנים או הראש, גירוד באחת הגפיים, או ליקוק גוף. לקודד רק כאשר הפעולה מכוונת לגוף של אותו פרט.\nלהבדיל מניקוי חברתי לפי היעדר פעולת ניקוי על פרט אחר, ולהבדיל מתלישת פרווה או שפם לפי היעדר משיכת שיער או שפם, קרחות חדשות או תגובת אי נוחות ברורה." },
+      { "name": "Allo-grooming",            "nameHe": "ניקוי חברתי",             "key": "a", "mode": "directed",   "color": "#81c784",
+        "description": "One mouse licks, gently nibbles, cleans, or arranges the fur of another mouse, usually on the back, shoulders, head, or nape. The recipient usually remains calm, sits, or continues its activity.\nDistinguish it from barbering: barbering includes systematic removal of fur or whiskers, flinching by the recipient, forceful holding, or a bald area.",
+        "descHe": "עכבר אחד מלקק, מכרסם בעדינות, מנקה או מסדר את הפרווה של עכבר אחר, לרוב בגב, בכתפיים, בראש או בעורף. הנמען לרוב נשאר רגוע, יושב או ממשיך פעילות.\nלהבדיל מתלישת פרווה או שפם: בתלישה יש הסרה שיטתית של שיער או שפם, רתיעה של הנמען, החזקה כוחנית או אזור קרח." },
+      { "name": "Facial investigation",     "nameHe": "חקירת פנים",              "key": "f", "mode": "directed",   "color": "#ffb74d",
+        "description": "A social investigation in which the actor's nose or whiskers are very close to, or touching, the face, nose, or mouth region of another mouse. Sniffing or whisker movements may be visible, but there is no licking, biting, or mounting.\nDistinguish it from anogenital investigation by the location of contact, and from allo-grooming by the absence of grooming, licking, or fur pulling.",
+        "descHe": "חקירה חברתית שבה האף או השפם של השחקן קרובים מאוד או במגע עם אזור הפנים, האף או הפה של עכבר אחר. ייתכנו תנועות רחרוח או שפם, אך אין ליקוק, נשיכה או רכיבה.\nלהבדיל מחקירה אנוגניטלית לפי מיקום המגע, ולהבדיל מניקוי חברתי לפי היעדר ניקוי, ליקוק או משיכה בפרווה." },
+      { "name": "Anogenital investigation", "nameHe": "חקירה אנוגניטלית",        "key": "n", "mode": "directed",   "color": "#ff8a65",
+        "description": "The mouse directs its nose toward the anogenital region, under the tail, or rear part of another mouse, with or without brief contact. Code according to the position of the actor's nose relative to the recipient's rear.\nDistinguish it from mounting: there is no climbing onto the back or rear of the recipient and no gripping of the body sides.",
+        "descHe": "העכבר מכוון את אפו לאזור האנוגניטלי, מתחת לזנב או לחלק האחורי של עכבר אחר, עם או בלי מגע קצר. לקודד לפי מיקום האף של השחקן ביחס לאחורי הנמען.\nלהבדיל מרכיבה: אין עלייה על הגב או על האחורי של הנמען ואין אחיזה בצידי הגוף." },
+      { "name": "Huddling",                 "nameHe": "הצטופפות",                "key": "h", "mode": "polyadic",   "color": "#ce93d8",
+        "description": "Two or more mice are in a resting or sleeping posture while most or all of one individual's body is in contact with another individual's body. The key criterion is continuous body contact, not merely being near each other in the same area.",
+        "descHe": "שני עכברים או יותר במנח מנוחה או שינה, כאשר רוב או כל הגוף של פרט אחד צמוד לגופו של פרט אחר. הקריטריון המרכזי הוא מגע גוף רציף, לא רק קרבה באותו אזור." },
+      { "name": "Fighting",                 "nameHe": "לחימה",                   "key": "i", "mode": "mutual",     "color": "#ef5350",
+        "description": "Two mice are in close violent physical contact, usually with wrestling, rapid rolling, kicking, biting, or attempted biting. During the event, individual actions may be hard to separate because the movement is fast and intertwined.\nDistinguish it from chasing: fighting includes violent contact, rolling, or wrestling, whereas chasing does not include sustained violent contact or biting.",
+        "descHe": "שני עכברים במגע פיזי אלים וצמוד, לרוב עם התאבקות, גלגול מהיר, בעיטות, נשיכות או ניסיונות נשיכה.\nלהבדיל מרדיפה: בלחימה יש מגע אלים, גלגול או התאבקות, בעוד שברדיפה אין מגע אלים רציף או נשיכה." },
+      { "name": "Pinning",                  "nameHe": "ריתוק",                   "key": "p", "mode": "directed",   "color": "#e91e63",
+        "description": "The actor holds the recipient by the side of the body or flank and uses grip or body weight to restrict the recipient's movement. Code separately from fighting if there is no rapid rolling, kicking, or biting.",
+        "descHe": "השחקן אוחז בצד הגוף או בפלנק של הנמען ומשתמש באחיזה או במשקל גוף כדי להגביל את תנועתו. לקודד בנפרד מלחימה אם אין גלגול מהיר, בעיטות או נשיכות." },
+      { "name": "Social barbering",         "nameHe": "תלישת פרווה או שפם מאחר", "key": "b", "mode": "directed",   "color": "#f06292",
+        "description": "One mouse systematically pulls fur or whiskers from another mouse. Code this when hair or whisker pulling is visible, when the recipient flinches, or when there is repeated focused pulling at the whisker, face, back, or rump areas.\nDistinguish it from allo-grooming: social barbering includes hair or whisker removal, recipient discomfort, or forceful holding.",
+        "descHe": "עכבר אחד תולש באופן שיטתי פרווה או שפם מעכבר אחר. לקודד כאשר נראית משיכת שיער או שפם, כאשר הנמען נרתע, או כאשר יש התמקדות חוזרת בתלישה.\nלהבדיל מניקוי חברתי: תלישת פרווה או שפם מאחר כוללת הסרת שיער או שפם, אי נוחות של הנמען או החזקה כוחנית." },
+      { "name": "Self-barbering",           "nameHe": "תלישת פרווה או שפם עצמית","key": "s", "mode": "individual", "color": "#ab47bc",
+        "description": "The mouse systematically pulls, bites, or plucks its own fur or whiskers, usually with repeated focused movements toward one body area. Distinguish it from self-grooming: self-barbering includes visible pulling, biting, or plucking of fur or whiskers; self-grooming is licking or cleaning without evidence of hair removal.",
+        "descHe": "העכבר תולש, נושך או מורט באופן שיטתי את הפרווה או השפם של עצמו, לרוב בתנועות ממוקדות וחוזרות כלפי אזור גוף אחד.\nלהבדיל מניקוי עצמי: תלישת פרווה עצמית כוללת משיכה, נשיכה או מריטה נראית; ניקוי עצמי הוא ליקוק ללא עדות להסרת שיער." },
+      { "name": "Chasing",                  "nameHe": "רדיפה",                   "key": "c", "mode": "directed",   "color": "#ff7043",
+        "description": "One mouse moves quickly after another mouse that is moving away, maintaining a pursuit direction and short distance for several steps or frames. There is no active biting during the coded event.",
+        "descHe": "עכבר אחד נע במהירות בעקבות עכבר אחר שמתרחק ממנו, תוך שמירה על כיוון רדיפה ומרחק קצר לאורך מספר צעדים או פריימים. בזמן האירוע המקודד אין נשיכה פעילה." },
+      { "name": "Fleeing",                  "nameHe": "בריחה",                   "key": "e", "mode": "directed",   "color": "#ffca28",
+        "description": "The mouse moves away from a threatening or pursuing mouse, usually by running, jumping, or making sharp changes in direction.\nDistinguish it from ordinary locomotion by a clear relation to another mouse that is approaching, threatening, or pursuing.",
+        "descHe": "העכבר מתרחק מעכבר מאיים או רודף, לרוב בריצה, קפיצות או שינויי כיוון חדים.\nלהבדיל מתנועה רגילה לפי קשר ברור לפרט אחר שמתקרב, מאיים או רודף." },
+      { "name": "Mounting",                 "nameHe": "רכיבה",                   "key": "m", "mode": "directed",   "color": "#26c6da",
+        "description": "A mouse climbs from behind or over the rear or back of the recipient, sometimes gripping the sides of the body with the forepaws, and pelvic thrusts may occur. Code as mounting even when intromission is not visible.",
+        "descHe": "עכבר עולה מאחור או מעל האחורי או הגב של הנמען, לעיתים אוחז בצידי הגוף בכפות הקדמיות, וייתכנו תנועות אגן. לקודד כרכיבה גם כאשר לא נראית אינטרומיסיה." },
+      { "name": "Crouch",                   "nameHe": "כריעה",                   "key": "o", "mode": "individual", "color": "#78909c",
+        "description": "The mouse is low to the ground and appears frozen or stiff, with lowered ears and closed or nearly closed eyes, usually in response to threat or aggression.\nDistinguish it from sleeping: in crouch the body is stiff and the context is threat; in sleep the mouse is usually curled and the face is tucked.",
+        "descHe": "העכבר שוכב נמוך וצמוד למצע ונראה קפוא או נוקשה, עם אוזניים מונמכות ועיניים עצומות, לרוב בתגובה לאיום.\nלהבדיל משינה: בכריעה הגוף נוקשה וההקשר הוא איום; בשינה העכבר לרוב מכורבל." },
+      { "name": "Tail rattling",            "nameHe": "רטט זנב",                 "key": "t", "mode": "individual", "color": "#aed581",
+        "description": "Rapid side-to-side tail movements or tail vibration. If the tail contacts a wall or a hard object, a sound may be produced. Code based on the tail movement itself, not on sound alone.",
+        "descHe": "תנועות מהירות של הזנב מצד לצד או רטט זנב. אם הזנב נוגע בדופן או באובייקט קשיח עשוי להישמע רעש. לקודד לפי תנועת הזנב עצמה, לא לפי רעש בלבד." },
+      { "name": "Rearing",                  "nameHe": "עמידה זקופה",             "key": "r", "mode": "individual", "color": "#4db6ac",
+        "description": "The mouse shifts weight onto the hind legs, lifts the forelimbs from the substrate, and raises the head or front part of the body. It may be accompanied by non-directed sniffing.",
+        "descHe": "העכבר מעביר משקל לרגליים האחוריות, מרים את הגפיים הקדמיות מהמצע ומגביה את הראש או פלג הגוף הקדמי. לעיתים מלווה ברחרוח בלתי מכוון." },
+      { "name": "Digging",                  "nameHe": "חפירה",                   "key": "d", "mode": "individual", "color": "#a1887f",
+        "description": "Fast, repeated digging movements of the forepaws that push bedding backward or create a pile under or behind the body.",
+        "descHe": "תנועות חפירה מהירות וחוזרות של הכפות הקדמיות שגורפות מצע לאחור או יוצרות ערימה מתחת או מאחורי הגוף." },
+      { "name": "Nesting",                  "nameHe": "קינון",                   "key": "k", "mode": "individual", "color": "#8d6e63",
+        "description": "The mouse collects, carries, drags, shreds, arranges, or pulls nesting material to create or improve a nest structure.",
+        "descHe": "העכבר אוסף, נושא, גורר, גורס או מפרק, מסדר או מושך חומר קינון לצורך יצירה או שיפור של מבנה קן." },
+      { "name": "Sleeping",                 "nameHe": "שינה",                    "key": "l", "mode": "individual", "color": "#546e7a",
+        "description": "The mouse is immobile in a sleeping posture, usually curled on the side or in a curled sitting posture, with the face tucked into the body.\nDistinguish it from huddling by the absence of body contact with another mouse.",
+        "descHe": "העכבר ללא תנועה במנח שינה, לרוב מכורבל על הצד, והפנים תחובות בגוף.\nלהבדיל מהצטופפות לפי היעדר מגע גוף עם עכבר אחר." }
     ],
     "keyboard": {
       "frame_step_keys": {
@@ -77,7 +113,12 @@
     "onvif_password": "12345",
     "subnet": "10.0.0",
     "onvif_port": 80,
-    "mask_path": "external/camera_calibration_mask.png"
+    "mask_path": "external/camera_calibration_mask.png",
+    "camera_names": {
+      "10.0.0.201": "Arena 1",
+      "10.0.0.202": "Arena 2"
+    },
+    "snapshot_dir": "calibration_snapshots"
   },
   "matlab": {
     "binary": "/Applications/MATLAB_R2025a.app/bin/matlab",

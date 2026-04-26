@@ -328,8 +328,7 @@ body {
   color: var(--text);
   font: 14px/1.4 -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Inter,
     Helvetica, Arial, sans-serif;
-  padding-bottom: calc(var(--footer-height, 52px) + 8px);
-  /* reserve space for bottom footer */
+  padding-bottom: 0;
 }
 
 :root[data-theme="light"] body {
@@ -349,83 +348,6 @@ body {
   box-shadow: 0 8px 24px var(--shadow);
 }
 
-.app-footer {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 9;
-  height: var(--footer-height, 52px);
-  background: linear-gradient(90deg, #111522, #101421);
-  border-top: 1px solid var(--border);
-  box-shadow: 0 -8px 24px var(--shadow);
-}
-
-:root[data-theme="light"] .app-footer {
-  background: linear-gradient(90deg, #ffffff, #f9fbff);
-}
-
-.footer-inner {
-  height: 100%;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 8px 16px;
-}
-
-.footer-link {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  text-decoration: none;
-  color: var(--text);
-  white-space: nowrap;
-}
-
-.footer-title {
-  font-weight: 700;
-}
-
-.footer-summary {
-  font-size: 12px;
-}
-
-.footer-progress {
-  flex: 1;
-  min-width: 120px;
-  max-width: 420px;
-}
-
-.app-footer .progress {
-  height: 6px;
-}
-
-.footer-detail {
-  font-size: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 360px;
-}
-
-.footer-progress-rail .bar.indeterminate {
-  width: 40%;
-  animation: footerIndeterminate 1.2s linear infinite;
-}
-
-@keyframes footerIndeterminate {
-  0% { transform: translateX(-120%); }
-  100% { transform: translateX(240%); }
-}
-
-@media (max-width: 720px) {
-  .footer-detail {
-    display: none;
-  }
-  .footer-progress {
-    max-width: 200px;
-  }
-}
 
 :root[data-theme="light"] .app-header {
   background: linear-gradient(90deg, #ffffff, #f9fbff);
@@ -484,6 +406,53 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  position: relative;
+}
+
+/* ── Tasks activity ring ──────────────────────────────────────────────────── */
+.tasks-nav-ring {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-top-color: var(--primary);
+  border-right-color: color-mix(in srgb, var(--primary) 35%, transparent);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  animation: tasks-nav-spin 1s linear infinite;
+}
+
+.tasks-nav-ring.active {
+  opacity: 1;
+}
+
+@keyframes tasks-nav-spin {
+  to { transform: rotate(360deg); }
+}
+
+.tasks-nav-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  padding: 0 3px;
+  box-sizing: border-box;
+  pointer-events: none;
+  display: none;
+  box-shadow: 0 0 0 2px var(--panel-bg, #121212);
+}
+
+.tasks-nav-badge.visible {
+  display: block;
 }
 
 
@@ -911,9 +880,9 @@ body {
 
 .importer-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 12px;
-  align-items: start;
+  align-items: end;
 }
 
 .import-modal-wrap {
@@ -929,7 +898,7 @@ body {
 
 @media (max-width: 900px) {
   .importer-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 
@@ -1522,11 +1491,78 @@ input[type="range"]::-moz-range-track {
 }
 
 .preview-video-wrap {
-  max-height: calc(100vh - var(--header-height, 0px) - var(--footer-height, 0px) - 220px);
+  max-height: calc(100vh - var(--header-height, 0px) - 220px);
 }
 
 .preview-video-wrap .video-preview video {
-  max-height: calc(100vh - var(--header-height, 0px) - var(--footer-height, 0px) - 220px);
+  max-height: calc(100vh - var(--header-height, 0px) - 220px);
+}
+
+/* ── Preview page: fill available height ────────────────── */
+
+/* Step 1 — panel is a flex item inside module-modal-content AND a flex container */
+.module-modal-content > .panel--preview-page {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Step 2 — controls-trans fills the panel */
+.controls-trans--preview {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+}
+
+/* Step 3 — subpanel fills controls-trans (subpanel is already flex column globally) */
+.controls-trans--preview > .subpanel {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Step 4 — video-group fills subpanel */
+.panel--preview-page .preview-video-group {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-top: 12px;
+}
+
+/* Step 5 — video-wrap fills video-group */
+.panel--preview-page .preview-video-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Step 6 — video-preview fills video-wrap */
+.panel--preview-page .preview-video-wrap .video-preview {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Step 7 — position:relative inner wrapper fills video-preview */
+.panel--preview-page .preview-video-inner {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Step 8 — video fills inner wrapper, letterboxed */
+.panel--preview-page .preview-video-inner video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  object-fit: contain;
 }
 
 .video-preview.preview-drop-target {
@@ -2481,6 +2517,21 @@ body.modal-open { overflow: hidden; }
   display: flex;
   flex-direction: column;
   box-shadow: 0 32px 80px rgba(0, 0, 0, 0.6);
+}
+
+/* Annotator: video resize can push content taller than the modal box.
+   Switch the box to min-height so it grows with content; the fixed modal
+   becomes a normal scrollable container. */
+.module-modal-box--scrollable {
+  height: auto;
+  min-height: 92vh;
+  max-height: none;
+  overflow-y: auto;
+}
+
+.module-modal-box--scrollable .module-modal-content {
+  overflow-y: visible;
+  min-height: 0;
 }
 
 .module-modal-close {

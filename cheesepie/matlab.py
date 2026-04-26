@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 from pathlib import Path
 import os
 from typing import Any, Dict, Optional
 
 from flask import Blueprint, jsonify, request
+
+_log = logging.getLogger(__name__)
 
 from .config import CONFIG
 
@@ -112,16 +115,26 @@ def _ensure_matlab_started():
         MATLAB_INIT_ERR = f"Import failed: {e}"
         return None
     try:
-        MATLAB_ENG = matlab.engine.start_matlab()
-        for p in cfg_matlab().get('paths', []):
-            try:
-                MATLAB_ENG.addpath(str(Path(p).expanduser().resolve()), nargout=0)
-            except Exception:
-                pass
-        return MATLAB_ENG
+        eng = matlab.engine.start_matlab()
     except Exception as e:
         MATLAB_ENG = None
         MATLAB_INIT_ERR = f"Start failed: {e}"
+        return None
+    try:
+        for p in cfg_matlab().get('paths', []):
+            try:
+                eng.addpath(str(Path(p).expanduser().resolve()), nargout=0)
+            except Exception as path_err:
+                _log.warning("matlab: addpath failed for %r: %s", p, path_err)
+        MATLAB_ENG = eng
+        return MATLAB_ENG
+    except Exception as e:
+        MATLAB_INIT_ERR = f"Post-start init failed: {e}"
+        try:
+            eng.quit()
+        except Exception:
+            pass
+        MATLAB_ENG = None
         return None
 
 
@@ -374,7 +387,14 @@ def api_simple_segment_native():
     try:
         mod = getattr(api_simple_segment_native, '_ss_mod', None)
         if mod is None:
-            ss_path = _Path(__file__).parent.parent / 'matlab' / 'simpleSegment.py'
+            project_root = _Path(__file__).parent.parent.resolve()
+            ss_path = (project_root / 'matlab' / 'simpleSegment.py').resolve()
+            try:
+                ss_path.relative_to(project_root)
+            except ValueError:
+                return jsonify({'error': 'simpleSegment.py is outside project root'}), 500
+            if not ss_path.is_file():
+                return jsonify({'error': 'Failed to locate simpleSegment.py'}), 500
             spec = importlib.util.spec_from_file_location('simpleSegment_native', str(ss_path))
             if spec is None or spec.loader is None:
                 return jsonify({'error': 'Failed to locate simpleSegment.py'}), 500

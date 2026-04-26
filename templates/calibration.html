@@ -2,125 +2,155 @@
 <section class="panel panel--nochrome" id="calibration-panel">
   <div class="cal-layout">
 
-    <!-- ── Left sidebar: controls ──────────────────────────────────── -->
-    <div class="subpanel cal-sidebar">
+    <!-- ── Left sidebar ─────────────────────────────────────────────── -->
+    <aside class="subpanel cal-sidebar">
 
-      <div class="control-group header-left" style="margin-bottom:12px">
-        <h1>Calibrate</h1>
-        <p class="muted">Align cameras to the arena mask.</p>
-      </div>
-
-      <!-- Camera discovery -->
-      <div class="control-group">
-        <label>Camera</label>
-        <div style="display:flex;gap:6px;align-items:center">
-          <select id="cal-camera-select" style="flex:1" disabled>
+      <!-- § Camera + Profile ------------------------------------------ -->
+      <div class="cal-section">
+        <div class="cal-section-label">Camera</div>
+        <div class="cal-camera-row ai-style-change-1">
+          <select id="cal-camera-select" class="ai-style-change-2">
             <option value="">— scan to discover —</option>
+            <option value="__demo__">Demo</option>
           </select>
-          <button class="btn" id="cal-scan-btn" title="Scan 10.0.0.x for cameras">Scan</button>
+          <button class="btn" id="cal-scan-btn" title="Scan subnet for cameras">
+            <span class="cal-spin-icon" id="cal-scan-spin">↻</span> Scan
+          </button>
+          <button class="btn mini cal-icon-btn" id="cal-cfg-btn" title="Connection settings">⚙</button>
         </div>
-        <div id="cal-scan-status" class="muted" style="margin-top:4px;font-size:12px"></div>
+        <div id="cal-scan-status" class="cal-status"></div>
       </div>
 
-      <!-- Profile selection -->
-      <div class="control-group" id="cal-profile-group" style="display:none">
-        <label for="cal-profile-select">Video Profile</label>
+      <div class="cal-section" id="cal-profile-group" style="display:none">
+        <div class="cal-section-label">Profile</div>
         <select id="cal-profile-select"></select>
       </div>
 
-      <!-- Preview controls -->
-      <div class="control-group" id="cal-preview-controls" style="display:none">
-        <label>Preview</label>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button class="btn" id="cal-grab-btn">Grab Frame</button>
-          <button class="btn" id="cal-auto-btn">Auto</button>
-          <button class="btn" id="cal-live-btn">Live</button>
+      <hr class="cal-divider" id="cal-div-preview" style="display:none">
+
+      <!-- § Preview mode ---------------------------------------------- -->
+      <div class="cal-section" id="cal-preview-controls" style="display:none">
+        <div class="cal-section-label">Preview</div>
+        <div class="cal-seg" role="group" aria-label="Preview mode">
+          <button class="cal-seg-btn" id="cal-grab-btn">Snap</button>
+          <button class="cal-seg-btn" id="cal-auto-btn">Auto</button>
+          <button class="cal-seg-btn" id="cal-live-btn">Live</button>
         </div>
-        <div id="cal-preview-status" class="muted" style="margin-top:6px;font-size:12px"></div>
+        <div id="cal-preview-status" class="cal-status"></div>
       </div>
 
-      <!-- Image filters -->
-      <div class="control-group" id="cal-filter-group" style="display:none">
-        <label>Filters <span class="muted" style="font-weight:400;font-size:11px">(display only)</span></label>
-        <div style="display:flex;gap:6px">
-          <button class="btn mini cal-filter-btn" id="cal-filter-eq"  data-filter="eq">Equalize</button>
-          <button class="btn mini cal-filter-btn" id="cal-filter-inv" data-filter="inv">Invert</button>
-        </div>
-      </div>
+      <hr class="cal-divider" id="cal-div-display" style="display:none">
 
-      <!-- Mask overlay -->
-      <div class="control-group" id="cal-mask-group" style="display:none">
-        <label>Mask Opacity</label>
-        <div style="display:flex;gap:8px;align-items:center">
-          <input type="range" id="cal-mask-opacity" min="0" max="1" step="0.05" value="0.4" style="flex:1">
-          <span id="cal-mask-opacity-val" class="muted" style="font-size:12px;width:32px">40%</span>
+      <!-- § Display (filters + mask) ---------------------------------- -->
+      <div class="cal-section" id="cal-filter-group" style="display:none">
+        <div class="cal-section-label">Display
+          <span class="cal-badge-label">display only</span>
+        </div>
+        <div class="cal-pill-row">
+          <button class="cal-pill" id="cal-filter-eq" data-filter="eq">Equalize</button>
+          <button class="cal-pill" id="cal-filter-inv" data-filter="inv">Invert</button>
         </div>
       </div>
 
-      <!-- PTZ controls -->
-      <div class="control-group" id="cal-ptz-group" style="display:none">
-        <label>Camera Control</label>
-        <div class="cal-ptz-section">
-          <div class="cal-ptz-row">
-            <span class="muted" style="font-size:11px;width:52px">Zoom</span>
-            <button class="btn mini cal-ptz-btn" data-action="zoom_out" title="Zoom out">−</button>
-            <button class="btn mini cal-ptz-btn" data-action="zoom_in"  title="Zoom in">+</button>
-          </div>
-          <div class="cal-ptz-row">
-            <span class="muted" style="font-size:11px;width:52px">Focus</span>
-            <button class="btn mini cal-ptz-btn" data-action="focus_near" title="Focus near">Near</button>
-            <button class="btn mini cal-ptz-btn" data-action="focus_far"  title="Focus far">Far</button>
-            <button class="btn mini" id="cal-autofocus-btn" title="One-shot auto focus">Auto</button>
-          </div>
+      <div class="cal-section" id="cal-mask-group" style="display:none">
+        <div class="cal-section-label">
+          Mask Opacity
+          <span id="cal-mask-opacity-val" class="cal-badge">40%</span>
         </div>
-        <div id="cal-ptz-status" class="muted" style="margin-top:4px;font-size:11px"></div>
+        <input type="range" id="cal-mask-opacity" min="0" max="1" step="0.05" value="0.4">
       </div>
 
-    </div>
+      <hr class="cal-divider" id="cal-div-save" style="display:none">
 
-    <!-- ── Right panel: preview + histogram ────────────────────────── -->
+      <!-- § Save snapshot --------------------------------------------- -->
+      <div class="cal-section" id="cal-save-group" style="display:none">
+        <div class="cal-section-label">Save Snapshot</div>
+        <div class="cal-save-row">
+          <select id="cal-cal-type">
+            <option value="mice" selected>Mice</option>
+            <option value="empty">Empty</option>
+            <option value="color">Color</option>
+            <option value="white balance">White Balance</option>
+          </select>
+          <button class="btn" id="cal-save-btn" title="Save current frame as PNG">Save</button>
+        </div>
+        <div id="cal-save-status" class="cal-status"></div>
+      </div>
+
+      <hr class="cal-divider" id="cal-div-ptz" style="display:none">
+
+      <!-- § Camera control (PTZ) --------------------------------------- -->
+      <div class="cal-section" id="cal-ptz-group" style="display:none">
+        <div class="cal-section-label">Camera Control</div>
+        <div class="cal-ptz-grid">
+          <span class="cal-ptz-label">Zoom</span>
+          <button class="btn cal-ptz-btn" data-action="zoom_out" title="Zoom out">−</button>
+          <button class="btn cal-ptz-btn" data-action="zoom_in" title="Zoom in">+</button>
+          <span class="cal-ptz-label">Focus</span>
+          <button class="btn cal-ptz-btn" data-action="focus_near" title="Focus near">Near</button>
+          <button class="btn cal-ptz-btn" data-action="focus_far" title="Focus far">Far</button>
+          <span></span>
+          <button class="btn" id="cal-autofocus-btn" style="grid-column:2/-1;font-size:12px"
+            title="One-shot auto focus">Auto Focus</button>
+        </div>
+        <div id="cal-ptz-status" class="cal-status"></div>
+      </div>
+
+    </aside><!-- .cal-sidebar -->
+
+    <!-- ── Right panel ──────────────────────────────────────────────── -->
     <div class="cal-main">
 
-      <!-- Video / frame preview -->
-      <div class="subpanel" style="flex:1;min-width:0">
+      <!-- Preview area -->
+      <div class="subpanel cal-preview-panel">
         <div class="cal-preview-wrap" id="cal-preview-wrap">
-          <!-- Placeholder shown when no frame loaded -->
+
           <div class="cal-placeholder" id="cal-placeholder">
-            <span class="muted">Select a camera and grab a frame.</span>
+            <div class="cal-ph-inner">
+              <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="7" width="15" height="11" rx="2" />
+                <path d="M17 9.5l4-2v9l-4-2" />
+              </svg>
+              <p>Select a camera, then snap or stream a frame.</p>
+            </div>
           </div>
-          <!-- Frame layers (hidden until first frame) -->
+
           <div class="cal-layers" id="cal-layers" style="display:none">
-            <!-- Raw source images (layout anchors; always hold unfiltered data) -->
-            <img id="cal-frame-img"  class="cal-frame-img" alt="">
+            <img id="cal-frame-img" class="cal-frame-img" alt="">
             <img id="cal-stream-img" class="cal-frame-img" alt="" style="display:none">
-            <!-- Filter canvas: covers raw img when a filter is active (z-index 1) -->
             <canvas id="cal-filter-canvas" class="cal-overlay-canvas" style="display:none;z-index:1"></canvas>
-            <!-- Mask overlay canvas (z-index 2) -->
-            <canvas id="cal-mask-canvas"   class="cal-overlay-canvas" style="z-index:2"></canvas>
-            <!-- Interaction canvas — topmost (z-index 3) -->
+            <canvas id="cal-mask-canvas" class="cal-overlay-canvas" style="z-index:2"></canvas>
             <canvas id="cal-interact-canvas" class="cal-overlay-canvas cal-crosshair" style="z-index:3"></canvas>
           </div>
+
+          <div class="cal-mode-badge" id="cal-mode-badge" style="display:none"></div>
         </div>
 
         <!-- Pixel info bar -->
         <div id="cal-pixel-bar" class="cal-pixel-bar" style="display:none">
           <span id="cal-pixel-coords" class="cal-pixel-chip"></span>
-          <span id="cal-pixel-rgb"    class="cal-pixel-chip"></span>
+          <span class="cal-pixel-sep">·</span>
+          <span id="cal-pixel-rgb" class="cal-pixel-chip"></span>
           <span class="cal-pixel-sep">|</span>
-          <span id="cal-pixel-hsv"    class="cal-pixel-chip"></span>
-          <span id="cal-pixel-swatch" class="cal-pixel-swatch"></span>
+          <span id="cal-pixel-hsv" class="cal-pixel-chip"></span>
+          <div id="cal-pixel-swatch" class="cal-pixel-swatch"></div>
         </div>
       </div>
 
       <!-- Histogram -->
       <div class="subpanel cal-hist-panel" id="cal-hist-panel" style="display:none">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div class="cal-hist-header">
           <span style="font-size:12px;font-weight:600">Histogram</span>
-          <div style="display:flex;gap:6px">
-            <label class="cal-ch-toggle"><input type="checkbox" id="cal-ch-lum" checked><span style="color:#ccc">L</span></label>
-            <label class="cal-ch-toggle"><input type="checkbox" id="cal-ch-r"   checked><span style="color:#f76">R</span></label>
-            <label class="cal-ch-toggle"><input type="checkbox" id="cal-ch-g"   checked><span style="color:#6f6">G</span></label>
-            <label class="cal-ch-toggle"><input type="checkbox" id="cal-ch-b"   checked><span style="color:#68f">B</span></label>
+          <div class="cal-ch-toggles">
+            <label class="cal-ch-toggle"><input type="checkbox" id="cal-ch-lum" checked><span
+                style="color:#ccc">L</span></label>
+            <label class="cal-ch-toggle"><input type="checkbox" id="cal-ch-r" checked><span
+                style="color:#f76">R</span></label>
+            <label class="cal-ch-toggle"><input type="checkbox" id="cal-ch-g" checked><span
+                style="color:#6f6">G</span></label>
+            <label class="cal-ch-toggle"><input type="checkbox" id="cal-ch-b" checked><span
+                style="color:#68f">B</span></label>
           </div>
         </div>
         <canvas id="cal-hist-canvas" class="cal-hist-canvas"></canvas>
@@ -129,5 +159,40 @@
     </div><!-- .cal-main -->
   </div><!-- .cal-layout -->
 </section>
+
+<!-- ── Connection-settings dialog ────────────────────────────────────── -->
+<div class="overlay" id="cal-cfg-overlay" hidden>
+  <div class="overlay-panel" style="width:340px">
+    <div class="overlay-header">
+      <span style="font-weight:600;font-size:14px">Connection Settings</span>
+      <button class="btn mini" id="cal-cfg-close" style="font-size:16px;line-height:1;padding:2px 7px">&times;</button>
+    </div>
+    <div class="control-group" style="margin-bottom:0">
+      <label for="cal-cfg-subnet">Subnet prefix</label>
+      <input type="text" id="cal-cfg-subnet" placeholder="e.g. 192.168.1"
+        style="font-family:'Roboto Mono',monospace;font-size:13px">
+      <span class="muted" style="font-size:11px;margin-top:3px;display:block">
+        Last octet (1–254) is swept automatically during scan.
+      </span>
+    </div>
+    <div class="control-group" style="margin-top:10px;margin-bottom:0">
+      <label for="cal-cfg-port">ONVIF port</label>
+      <input type="number" id="cal-cfg-port" min="1" max="65535"
+        style="font-family:'Roboto Mono',monospace;font-size:13px">
+    </div>
+    <div class="control-group" style="margin-top:10px;margin-bottom:0">
+      <label for="cal-cfg-user">ONVIF username</label>
+      <input type="text" id="cal-cfg-user" autocomplete="off"
+        style="font-family:'Roboto Mono',monospace;font-size:13px">
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">
+      <button class="btn" id="cal-cfg-cancel">Cancel</button>
+      <button class="btn" id="cal-cfg-save"
+        style="background:var(--primary);color:#fff;border-color:var(--primary)">Save</button>
+    </div>
+    <div id="cal-cfg-status" class="muted" style="margin-top:6px;font-size:12px;text-align:right"></div>
+  </div>
+</div>
+
 <script src="/static/calibration.js"></script>
 {% endblock %}

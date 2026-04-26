@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
+import time
 import uuid
 from collections import deque
 from datetime import datetime
@@ -9,6 +11,8 @@ from pathlib import Path
 from typing import Any, Callable, Deque, Dict, List, Optional
 
 from flask import Blueprint, jsonify, request
+
+_log = logging.getLogger(__name__)
 
 TaskRunner = Callable[['TaskContext'], None]
 TaskResumer = Callable[['TaskContext', Dict[str, Any]], None]
@@ -25,26 +29,43 @@ TASK_QUEUE: Deque[str] = deque()
 TASK_LOCK = threading.Lock()
 TASK_EVENT = threading.Event()
 _WORKER_STARTED = False
+_WATCHDOG_STARTED = False
 _RESUME_STARTED = False
 TASKS_FILE = Path(__file__).resolve().parent.parent.joinpath('working', 'tasks.json')
 
 TERMINAL_STATES = {'DONE', 'FAILED', 'CANCELLED'}
+
+# Per-kind hard timeout (seconds). Runners that exceed this are cancelled.
+# External code (e.g. importer) may extend specific kinds before tasks start.
+TASK_TIMEOUTS: Dict[str, float] = {
+    'import.scan':   20 * 60,
+    'import.encode': 12 * 3600,
+    'import.concat': 12 * 3600,
+    'track':         24 * 3600,
+}
+_DEFAULT_TASK_TIMEOUT = 4.0 * 3600  # fallback for unregistered kinds
+
+# Mutable slot holding the currently-running task id + monotonic start time.
+# Protected by _CURRENT_TASK_LOCK; use a dict so inner functions can mutate it.
+_current_task: Dict[str, Any] = {'id': None, 'started': None}
+_CURRENT_TASK_LOCK = threading.Lock()
 
 def _now_iso() -> str:
     return datetime.utcnow().isoformat() + 'Z'
 
 
 def _ensure_worker() -> None:
-    global _WORKER_STARTED
-    if _WORKER_STARTED:
-        return
-    _WORKER_STARTED = True
-    t = threading.Thread(target=_task_worker, daemon=True)
-    t.start()
+    global _WORKER_STARTED, _WATCHDOG_STARTED
+    if not _WORKER_STARTED:
+        _WORKER_STARTED = True
+        threading.Thread(target=_task_worker, daemon=True, name='task-worker').start()
+    if not _WATCHDOG_STARTED:
+        _WATCHDOG_STARTED = True
+        threading.Thread(target=_watchdog_worker, daemon=True, name='task-watchdog').start()
 
 
 def _persist_tasks() -> None:
-    """Persist current task list to disk as JSON."""
+    """Persist current task list to disk as JSON (atomic write)."""
     try:
         TASKS_FILE.parent.mkdir(parents=True, exist_ok=True)
         with TASK_LOCK:
@@ -52,8 +73,8 @@ def _persist_tasks() -> None:
         tmp = TASKS_FILE.with_suffix('.json.tmp')
         tmp.write_text(json.dumps(data, default=str, indent=2), encoding='utf-8')
         tmp.replace(TASKS_FILE)
-    except Exception:
-        pass
+    except Exception as e:
+        _log.error("tasks: persist failed (%s): %s", TASKS_FILE, e, exc_info=True)
 
 
 def _load_tasks() -> None:
@@ -70,6 +91,7 @@ def _load_tasks() -> None:
             return
         for t in data:
             if not isinstance(t, dict):
+                _log.warning("tasks: skipping malformed entry in %s (not a dict): %r", TASKS_FILE, t)
                 continue
             tid = str(t.get('id') or uuid.uuid4().hex)
             t['id'] = tid
@@ -197,6 +219,7 @@ def resume_pending_tasks() -> None:
     for task in tasks:
         tid = task.get('id')
         if not tid:
+            _log.warning("tasks: skipping persisted task with no id: %r", task)
             continue
         status = str(task.get('status') or 'QUEUED').upper()
         if status in TERMINAL_STATES:
@@ -207,14 +230,20 @@ def resume_pending_tasks() -> None:
         kind = str(task.get('kind') or '')
         resumer = TASK_RESUMERS.get(kind)
         if not resumer:
+            _log.warning("tasks: no resumer for kind=%r — cancelling task %s", kind, tid)
             update_task(tid, status='CANCELLED', message='No resume handler for task kind')
             continue
         payload = task.get('payload') or {}
         if not payload:
+            _log.warning("tasks: task %s (kind=%r) has no payload — cancelling", tid, kind)
             update_task(tid, status='CANCELLED', message='Missing task payload for resume')
             continue
-        def _runner(ctx: TaskContext, payload=payload, resumer=resumer):
-            resumer(ctx, payload)
+        def _runner(ctx: TaskContext, payload=payload, resumer=resumer, _tid=tid, _kind=kind):
+            try:
+                resumer(ctx, payload)
+            except Exception as exc:
+                _log.error("tasks: resumer for task %s (kind=%r) raised: %s", _tid, _kind, exc, exc_info=True)
+                raise
         update_task(tid, status='QUEUED', message='Resuming after restart', started_at=None, finished_at=None)
         _enqueue_existing_task(tid, _runner)
 
@@ -316,7 +345,43 @@ def update_task(task_id: str, **fields: Any) -> bool:
     return _update_task(task_id, **fields)
 
 
-def _task_worker():
+def _watchdog_worker() -> None:
+    """Periodically check whether the running task has exceeded its timeout.
+
+    Runs every 30 s. If the current task's wall time exceeds the per-kind
+    limit in TASK_TIMEOUTS, cancel_task() is called, which sets the cancel
+    flag and fires the registered cancel hook (e.g. kills the subprocess).
+    """
+    while True:
+        time.sleep(30.0)
+        try:
+            with _CURRENT_TASK_LOCK:
+                tid = _current_task['id']
+                started = _current_task['started']
+            if tid is None or started is None:
+                continue
+            with TASK_LOCK:
+                task = TASKS.get(tid)
+            if task is None:
+                continue
+            status = str(task.get('status') or '').upper()
+            if status not in ('RUNNING', 'QUEUED'):
+                continue
+            kind = str(task.get('kind') or '')
+            timeout = TASK_TIMEOUTS.get(kind, _DEFAULT_TASK_TIMEOUT)
+            elapsed = time.monotonic() - started
+            if elapsed > timeout:
+                _log.warning(
+                    "tasks: watchdog: task %s (kind=%s) timed out after %.0f s "
+                    "(limit %.0f s) — cancelling",
+                    tid, kind, elapsed, timeout,
+                )
+                cancel_task(tid)
+        except Exception:
+            pass
+
+
+def _task_worker() -> None:
     while True:
         TASK_EVENT.wait()
         while True:
@@ -331,10 +396,14 @@ def _task_worker():
                     continue
                 task['status'] = 'RUNNING'
                 task['started_at'] = task.get('started_at') or _now_iso()
+            # Arm watchdog for this task
+            with _CURRENT_TASK_LOCK:
+                _current_task['id'] = tid
+                _current_task['started'] = time.monotonic()
             ctx = TaskContext(tid)
             try:
                 runner(ctx)
-                # Runner is responsible for setting final status; default to DONE if still running
+                # Runner is responsible for setting final status; default to DONE
                 with TASK_LOCK:
                     t = TASKS.get(tid)
                     if t and str(t.get('status')).upper() not in TERMINAL_STATES:
@@ -342,7 +411,14 @@ def _task_worker():
                         t['finished_at'] = _now_iso()
                 _persist_tasks()
             except Exception as e:
+                _log.error("tasks: runner raised for task %s: %s", tid, e, exc_info=True)
                 _update_task(tid, status='FAILED', message=str(e), finished_at=_now_iso())
+            finally:
+                # Disarm watchdog
+                with _CURRENT_TASK_LOCK:
+                    if _current_task['id'] == tid:
+                        _current_task['id'] = None
+                        _current_task['started'] = None
 
 
 @bp.route('/')

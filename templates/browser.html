@@ -14,13 +14,19 @@
       <div class="header-controls">
         <div class="inline browser-nav-row">
           <div id="breadcrumb-bar" class="breadcrumb-bar" aria-label="Current path"></div>
-          <div class="search-wrap">
-            <input id="search-input" type="text" placeholder="Filter…" />
-            <button id="clear-search" class="clear-x" title="Clear" aria-label="Clear search" hidden>
-              ×
-            </button>
+          <div class="browser-toolbar">
+            <div class="search-wrap">
+              <input id="search-input" type="text" placeholder="Filter…" />
+              <button id="clear-search" class="clear-x" title="Clear" aria-label="Clear search" hidden>×</button>
+            </div>
+            <div class="browser-sort-seg" id="browser-sort-seg" role="group" aria-label="Sort by">
+              <button class="sort-seg active" data-sort="name">Name <span class="sort-dir">↑</span></button>
+              <button class="sort-seg" data-sort="date">Date</button>
+              <button class="sort-seg" data-sort="size">Size</button>
+            </div>
           </div>
         </div>
+        <div id="browser-item-count" class="browser-item-count muted"></div>
       </div>
       <div class="file-list" id="file-list">
         <div class="placeholder muted">Select a facility to load files.</div>

@@ -9,13 +9,18 @@ import uuid
 from datetime import datetime, timedelta
 from functools import partial
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any, Dict, List, Optional, Set, Tuple
 
+import logging
 import os
+import signal
 import tempfile
 import time
 from flask import Blueprint, jsonify, request, Response
 from flask import stream_with_context
+
+_log = logging.getLogger(__name__)
 
 from .config import (
     cfg_importer_facilities,
@@ -38,6 +43,132 @@ from .tasks import (
 
 
 bp = Blueprint('import_api', __name__)
+
+# ── Orphan-process tracking ──────────────────────────────────────────────────
+# ffmpeg PIDs are written here so the next server start can kill any stragglers
+# left by a crash.  The file holds a plain JSON object: {job_id: pid}.
+_FFMPEG_PIDS_FILE = Path(__file__).resolve().parent.parent / 'working' / 'ffmpeg_pids.json'
+_FFMPEG_PIDS_LOCK = threading.Lock()
+
+# ── Scan plan persistence ────────────────────────────────────────────────────
+_LAST_SCAN_FILE = Path(__file__).resolve().parent.parent / 'working' / 'last_scan.json'
+
+
+def _persist_last_scan(params: Dict[str, Any], plan: Dict[str, Any]) -> None:
+    """Write the most recent completed scan+plan to disk for cross-navigation restore."""
+    try:
+        _LAST_SCAN_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _LAST_SCAN_FILE.write_text(
+            json.dumps({'params': params, 'plan': plan, 'saved_at': time.time()},
+                       ensure_ascii=False),
+            encoding='utf-8',
+        )
+    except Exception as e:
+        _log.warning("importer: could not persist last scan: %s", e)
+
+
+def _load_last_scan() -> Optional[Dict[str, Any]]:
+    try:
+        if not _LAST_SCAN_FILE.exists():
+            return None
+        data = json.loads(_LAST_SCAN_FILE.read_text(encoding='utf-8'))
+        if not isinstance(data, dict) or 'plan' not in data:
+            return None
+        return data
+    except Exception:
+        return None
+
+
+def _write_ffmpeg_pid(job_id: str, pid: int) -> None:
+    """Append pid to the list stored under job_id. Format: {job_id: [pid, ...]}."""
+    with _FFMPEG_PIDS_LOCK:
+        try:
+            _FFMPEG_PIDS_FILE.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                data: Dict[str, List[int]] = json.loads(_FFMPEG_PIDS_FILE.read_text(encoding='utf-8'))
+                if not isinstance(data, dict):
+                    data = {}
+            except Exception:
+                data = {}
+            # Migrate legacy scalar values to lists
+            existing = data.get(job_id)
+            if isinstance(existing, int):
+                existing = [existing]
+            elif not isinstance(existing, list):
+                existing = []
+            if pid not in existing:
+                existing.append(pid)
+            data[job_id] = existing
+            _FFMPEG_PIDS_FILE.write_text(json.dumps(data), encoding='utf-8')
+        except Exception as e:
+            _log.warning("importer: could not write ffmpeg pid: %s", e)
+
+
+def _clear_ffmpeg_pid(job_id: str, pid: Optional[int] = None) -> None:
+    """Remove a specific pid (or the entire job entry) from the PID file."""
+    with _FFMPEG_PIDS_LOCK:
+        try:
+            if not _FFMPEG_PIDS_FILE.exists():
+                return
+            data: Dict[str, Any] = json.loads(_FFMPEG_PIDS_FILE.read_text(encoding='utf-8'))
+            if not isinstance(data, dict) or job_id not in data:
+                return
+            if pid is None:
+                del data[job_id]
+            else:
+                existing = data[job_id]
+                if isinstance(existing, list):
+                    try:
+                        existing.remove(pid)
+                    except ValueError:
+                        pass
+                    if existing:
+                        data[job_id] = existing
+                    else:
+                        del data[job_id]
+                else:
+                    del data[job_id]
+            _FFMPEG_PIDS_FILE.write_text(json.dumps(data), encoding='utf-8')
+        except Exception as e:
+            _log.error("importer: failed to update ffmpeg PID file: %s", e, exc_info=True)
+
+
+def reap_orphan_ffmpeg() -> int:
+    """Kill any ffmpeg processes recorded by a previous server run.
+
+    Called once at app startup before resume_pending_tasks().  Returns the
+    number of processes that were successfully signalled.
+    Format: {job_id: [pid1, pid2, ...]} — supports parallel workers per job.
+    """
+    killed = 0
+    with _FFMPEG_PIDS_LOCK:
+        try:
+            if not _FFMPEG_PIDS_FILE.exists():
+                return 0
+            data = json.loads(_FFMPEG_PIDS_FILE.read_text(encoding='utf-8'))
+            if not isinstance(data, dict):
+                return 0
+            for job_id, pids in list(data.items()):
+                # Support both legacy scalar and new list format
+                if isinstance(pids, int):
+                    pids = [pids]
+                elif not isinstance(pids, list):
+                    continue
+                for pid in pids:
+                    try:
+                        pid = int(pid)
+                        os.kill(pid, signal.SIGTERM)
+                        killed += 1
+                        _log.info("importer: reaped orphan ffmpeg pid=%d (job %s)", pid, job_id)
+                    except (ProcessLookupError, ValueError):
+                        pass  # already gone
+                    except Exception as e:
+                        _log.warning("importer: could not reap pid %s: %s", pid, e)
+            # Reset the file — all prior PIDs are now handled
+            _FFMPEG_PIDS_FILE.write_text(json.dumps({}), encoding='utf-8')
+        except Exception as e:
+            _log.warning("importer: reap_orphan_ffmpeg failed: %s", e)
+    return killed
 
 
 def _ffmpeg_exists() -> bool:
@@ -219,9 +350,24 @@ def _write_concat_list(list_path: Path, items: List[Dict[str, Any]]) -> None:
                 f.write(f"outpoint {_format_hhmmss(float(it['outpoint']))}\n")
 
 
+def _probe_concat_duration(list_path: Path) -> Optional[float]:
+    """Return total duration (seconds) of a concat list via ffprobe, or None on error."""
+    try:
+        cmd = [
+            'ffprobe', '-v', 'quiet',
+            '-f', 'concat', '-safe', '0', '-i', str(list_path),
+            '-show_entries', 'format=duration',
+            '-of', 'default=noprint_wrappers=1:nokey=1',
+        ]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        return float(r.stdout.strip())
+    except Exception:
+        return None
+
+
 def _run_ffmpeg_concat(list_file: Path, out_path: Path) -> tuple[int, str]:
     cmd = [
-        'ffmpeg', '-v', 'quiet', '-stats', '-y', '-threads', '4',
+        'ffmpeg', '-v', 'quiet', '-y', '-threads', '4',
         '-f', 'concat', '-safe', '0', '-i', str(list_file),
         '-vcodec', 'copy', '-an', '-copytb', '0', str(out_path)
     ]
@@ -232,13 +378,59 @@ def _run_ffmpeg_concat(list_file: Path, out_path: Path) -> tuple[int, str]:
         return (1, str(e))
 
 
-JOBS: Dict[str, Dict[str, Any]] = {}
-JOBS_LOCK = threading.Lock()
+def _resolve_manifest_source_path(source_dir: Path, raw_path: Any) -> Path:
+    raw = str(raw_path or '').strip()
+    if not raw:
+        raise ValueError('Missing manifest file path')
+    try:
+        source_root = source_dir.expanduser().resolve()
+        path = Path(raw).expanduser().resolve()
+    except Exception as e:
+        raise ValueError(f'Invalid manifest file path: {e}')
+    try:
+        path.relative_to(source_root)
+    except ValueError:
+        raise PermissionError(f'Manifest path outside facility source_dir: {path}')
+    if not path.exists() or not path.is_file():
+        raise FileNotFoundError(f'Manifest file not found: {path}')
+    return path
+
 
 # Async encode job state for /encode_days + /encode_status
 ENCODE_JOBS: Dict[str, Dict[str, Any]] = {}
 ENCODE_LOCK = threading.Lock()
-ENCODE_PROCS: Dict[str, subprocess.Popen] = {}
+ENCODE_PROCS: Dict[str, Set[subprocess.Popen]] = {}  # set of live procs per job
+_ENCODE_MAX_WORKERS = 2  # days encoded in parallel per job
+
+_STALE_JOB_MAX_AGE = 3600.0  # seconds before a terminal job is evicted from memory
+
+
+def _prune_stale_jobs() -> None:
+    """Remove completed/failed/cancelled jobs older than _STALE_JOB_MAX_AGE.
+
+    Called before creating each new job so dicts don't grow unboundedly in
+    long-running deployments.
+    """
+    cutoff = time.time() - _STALE_JOB_MAX_AGE
+    terminal = {'DONE', 'FAILED', 'CANCELLED', 'ERROR'}
+    with SCAN_LOCK:
+        stale_scan = [
+            jid for jid, j in SCAN_JOBS.items()
+            if str(j.get('status', '')).upper() in terminal
+            and float(j.get('created_at', 0)) < cutoff
+        ]
+        for jid in stale_scan:
+            SCAN_JOBS.pop(jid, None)
+    with ENCODE_LOCK:
+        stale_enc = [
+            jid for jid, j in ENCODE_JOBS.items()
+            if str(j.get('status', '')).upper() in terminal
+            and float(j.get('created_at', 0)) < cutoff
+        ]
+        for jid in stale_enc:
+            ENCODE_JOBS.pop(jid, None)
+
+
 def _task_total_steps(plan: Dict[str, Any]) -> int:
     try:
         return sum(
@@ -300,11 +492,16 @@ def _run_import_job(ctx: TaskContext, plan: Dict[str, Any]) -> None:
             out_path = Path(str(day_entry.get('output') or '')).expanduser()
             try:
                 _ensure_dir(out_path.parent)
-            except Exception:
-                pass
+            except Exception as e:
+                _log.error("importer: failed to create output directory %s: %s", out_path.parent, e, exc_info=True)
             day_entry['status'] = 'RUNNING'
             update_task(ctx.task_id, status='RUNNING', progress=prog, meta={'plan': plan}, message=f'Camera {cam} day {day_entry.get("day")} running')
             code, msg = _run_ffmpeg_concat(list_path, out_path)
+            if code == 0:
+                try:
+                    list_path.unlink(missing_ok=True)
+                except OSError as _ue:
+                    _log.warning("importer: could not remove concat list %s: %s", list_path, _ue)
             prog += 1
             day_entry['ffmpeg'] = msg
             day_entry['status'] = 'DONE' if code == 0 else 'FAILED'
@@ -322,6 +519,7 @@ def _scan_task_runner(ctx: TaskContext, payload: Dict[str, Any]) -> None:
     job_id = str(payload.get('job_id') or uuid.uuid4().hex)
     params = payload.get('params') or {}
     set_task_cancel_hook(ctx.task_id, lambda: _cancel_scan_job(job_id))
+    _prune_stale_jobs()
     with SCAN_LOCK:
         if job_id not in SCAN_JOBS:
             SCAN_JOBS[job_id] = {
@@ -331,6 +529,7 @@ def _scan_task_runner(ctx: TaskContext, payload: Dict[str, Any]) -> None:
                 'files': [],
                 'total': 0,
                 'cancel': False,
+                'created_at': time.time(),
             }
         SCAN_JOBS[job_id]['task_id'] = ctx.task_id
     if ctx.cancelled():
@@ -343,6 +542,32 @@ def _scan_task_runner(ctx: TaskContext, payload: Dict[str, Any]) -> None:
     _scan_prepare_worker(job_id)
 
 
+def _estimate_source_bytes(plan: List[Dict[str, Any]]) -> int:
+    """Sum sizes of source files referenced in concat lists as a disk-space estimate."""
+    total = 0
+    seen: set = set()
+    for cam_entry in plan:
+        for d in (cam_entry.get('days') or []):
+            lp_str = str(d.get('list_path') or d.get('concat_list') or '')
+            if not lp_str:
+                continue
+            lp = Path(lp_str).expanduser()
+            if not lp.exists():
+                continue
+            try:
+                for line in lp.read_text(encoding='utf-8').splitlines():
+                    line = line.strip()
+                    if line.startswith('file '):
+                        raw = line[5:].strip().strip("'\"")
+                        p = Path(raw)
+                        if p not in seen and p.exists():
+                            seen.add(p)
+                            total += p.stat().st_size
+            except Exception as e:
+                _log.warning("importer: error reading list file %s for size calculation: %s", lp, e)
+    return total
+
+
 def _encode_task_runner(ctx: TaskContext, payload: Dict[str, Any]) -> None:
     facility = str(payload.get('facility', '')).strip().lower()
     experiment = str(payload.get('experiment', '')).strip()
@@ -353,8 +578,7 @@ def _encode_task_runner(ctx: TaskContext, payload: Dict[str, Any]) -> None:
         batch = 1
     if batch < 0:
         batch = 0
-    if batch < 0:
-        batch = 0
+    is_retry = bool(payload.get('is_retry', False))
     plan = payload.get('plan') or payload.get('lists') or []
     start_date = str(payload.get('start_date', '')).strip()
     end_date = str(payload.get('end_date', '')).strip()
@@ -380,7 +604,7 @@ def _encode_task_runner(ctx: TaskContext, payload: Dict[str, Any]) -> None:
         return
 
     used_batches = _collect_used_batches(base_dir)
-    if batch in used_batches:
+    if not is_retry and batch in used_batches:
         msg = f'Batch {batch} already exists in output folder'
         update_task(ctx.task_id, status='FAILED', message=msg, meta={'output_dir': str(base_dir), 'used_batches': used_batches})
         with ENCODE_LOCK:
@@ -394,6 +618,23 @@ def _encode_task_runner(ctx: TaskContext, payload: Dict[str, Any]) -> None:
     if not _ffmpeg_exists():
         update_task(ctx.task_id, status='FAILED', message='ffmpeg not available')
         return
+
+    # Disk space check — estimate from source file sizes (copy mode: output ≈ input)
+    try:
+        needed = _estimate_source_bytes(plan)
+        free = shutil.disk_usage(str(base_dir)).free
+        if needed > 0 and free < needed:
+            msg = (f'Insufficient disk space: need ~{_format_bytes(needed)}, '
+                   f'only {_format_bytes(free)} free on {base_dir}')
+            update_task(ctx.task_id, status='FAILED', message=msg)
+            with ENCODE_LOCK:
+                j = ENCODE_JOBS.get(job_id)
+                if j:
+                    j['status'] = 'FAILED'
+                    j['message'] = msg
+            return
+    except Exception as _dsk:
+        _log.warning("importer: disk space check failed: %s", _dsk)
 
     # Expected window seconds per day
     day_expected: Dict[int, float] = {}
@@ -430,6 +671,7 @@ def _encode_task_runner(ctx: TaskContext, payload: Dict[str, Any]) -> None:
             if st in ('DONE', 'FAILED', 'CANCELLED'):
                 prog += 1
 
+    _prune_stale_jobs()
     with ENCODE_LOCK:
         ENCODE_JOBS[job_id] = {
             'id': job_id,
@@ -440,6 +682,7 @@ def _encode_task_runner(ctx: TaskContext, payload: Dict[str, Any]) -> None:
             'output_dir': str(base_dir),
             'cancel': False,
             'task_id': ctx.task_id,
+            'created_at': time.time(),
         }
 
     results: List[Dict[str, Any]] = []
@@ -511,95 +754,236 @@ def _encode_task_runner(ctx: TaskContext, payload: Dict[str, Any]) -> None:
 
     _publish(status='RUNNING', plan_state=_snapshot_plan())
 
-    for cam_entry in plan:
-        cam = cam_entry.get('camera')
-        out_days: List[Dict[str, Any]] = []
-        for d in cam_entry.get('days', []):
-            list_path = Path(str(d.get('list_path') or '')).expanduser()
-            segments = int(d.get('segments') or 0) if 'segments' in d else (0 if str(d.get('status','')).upper()=='MISSING' else 1)
-            st = str(d.get('status') or '').upper()
-            if list_path.name.endswith('.txt'):
-                out_name = list_path.name[:-4] + '.mp4'
-            else:
-                day_num = int(d.get('day') or 0)
-                out_name = f"{experiment}-{treatment}.exp{batch:03d}{cam}.day{day_num:02d}.cam{int(cam):02d}.mp4"
-            out_path = base_dir.joinpath(out_name)
+    # ── Parallel day encoding ────────────────────────────────────────────────
+    _state_lock = threading.Lock()
+    prog_ref: List[int] = [prog]
+    day_result_map: Dict[Tuple[int, int], Dict[str, Any]] = {}
 
-            if segments <= 0 or st == 'MISSING':
-                out_days.append({'day': d.get('day'), 'status': 'MISSING', 'segments': 0, 'output': str(out_path), 'list_path': str(list_path)})
-                continue
-            if st in ('DONE', 'FAILED', 'CANCELLED'):
-                out_days.append({**d, 'output': str(out_path), 'list_path': str(list_path)})
-                continue
-            if not list_path.exists():
-                out_days.append({'day': d.get('day'), 'status': 'FAILED', 'segments': segments, 'message': 'list not found', 'output': str(out_path), 'list_path': str(list_path)})
-                prog += 1
-                _publish(plan_state=_snapshot_plan(cur_cam=cam, cur_days=out_days), message='List not found')
-                continue
+    def _snap_par() -> List[Dict[str, Any]]:
+        """Rebuild plan snapshot from day_result_map (called under _state_lock)."""
+        full: List[Dict[str, Any]] = []
+        for bc in base_plan:
+            cam_id = bc.get('camera')
+            snap_days: List[Dict[str, Any]] = []
+            for bd in (bc.get('days') or []):
+                try:
+                    key: Tuple[int, int] = (int(cam_id), int(bd.get('day') or 0))
+                except Exception:
+                    key = (0, 0)
+                if key in day_result_map:
+                    snap_days.append(day_result_map[key])
+                else:
+                    segs = int(bd.get('segments') or 0) if 'segments' in bd else 0
+                    st2 = str(bd.get('status') or '').upper()
+                    if st2 in ('DONE', 'FAILED', 'CANCELLED'):
+                        snap_days.append({**bd})
+                    elif st2 == 'MISSING' or segs <= 0:
+                        snap_days.append({**bd, 'status': 'MISSING'})
+                    else:
+                        snap_days.append({**bd, 'status': 'PENDING'})
+            full.append({'camera': cam_id, 'days': snap_days})
+        return full
 
-            running_entry: Dict[str, Any] = {
-                'day': d.get('day'),
-                'status': 'RUNNING',
-                'segments': segments,
-                'output': str(out_path),
-                'list_path': str(list_path),
-            }
-            out_days.append(running_entry)
-            _publish(plan_state=_snapshot_plan(cur_cam=cam, cur_days=out_days))
+    def _pub_par(status: Optional[str] = None, plan_state: Optional[List[Dict[str, Any]]] = None, message: Optional[str] = None) -> None:
+        cur_prog = prog_ref[0]
+        fields: Dict[str, Any] = {'total': total, 'progress': cur_prog}
+        if status:
+            fields['status'] = status
+        if message is not None:
+            fields['message'] = message
+        if plan_state is not None:
+            fields['meta'] = {'plan': plan_state}
+        update_task(ctx.task_id, **fields)
+        with ENCODE_LOCK:
+            j = ENCODE_JOBS.get(job_id)
+            if j:
+                if status:
+                    j['status'] = status
+                j['progress'] = cur_prog
+                j['plan'] = plan_state or j.get('plan')
 
-            if _job_cancelled(job_id) or ctx.cancelled():
-                out_days[-1] = {
-                    'day': d.get('day'),
-                    'status': 'CANCELLED',
-                    'segments': segments,
-                    'output': str(out_path),
-                }
-                _publish(status='CANCELLED', plan_state=_snapshot_plan(cur_cam=cam, cur_days=out_days), message='Cancelled')
-                return
+    def _process_day_item(cam: Any, d: Dict[str, Any]) -> None:
+        try:
+            cam_int = int(cam)
+        except Exception:
+            cam_int = 0
+        try:
+            day_int = int(d.get('day') or 0)
+        except Exception:
+            day_int = 0
+        key: Tuple[int, int] = (cam_int, day_int)
 
-            code, msg, cancelled = _run_ffmpeg_concat_monitored(list_path, out_path, job_id)
-            entry: Dict[str, Any] = {
-                'day': d.get('day'),
-                'status': ('CANCELLED' if cancelled else ('DONE' if code == 0 else 'FAILED')),
-                'segments': segments,
-                'output': str(out_path),
-                'ffmpeg': msg,
-                'list_path': str(list_path),
-            }
+        list_path = Path(str(d.get('list_path') or '')).expanduser()
+        segments = int(d.get('segments') or 0) if 'segments' in d else (
+            0 if str(d.get('status', '')).upper() == 'MISSING' else 1)
+        st = str(d.get('status') or '').upper()
+        out_name = (list_path.name[:-4] + '.mp4') if list_path.name.endswith('.txt') else (
+            f"{experiment}-{treatment}.exp{batch:03d}{cam}.day{day_int:02d}.cam{cam_int:02d}.mp4")
+        out_path = base_dir.joinpath(out_name)
+
+        # Already-finished items from a previous/retry run
+        if segments <= 0 or st == 'MISSING':
+            with _state_lock:
+                day_result_map[key] = {'day': d.get('day'), 'status': 'MISSING', 'segments': 0,
+                                       'output': str(out_path), 'list_path': str(list_path)}
+            return
+        if st in ('DONE', 'FAILED', 'CANCELLED'):
+            with _state_lock:
+                day_result_map[key] = {**d, 'output': str(out_path), 'list_path': str(list_path)}
+            return
+
+        # Idempotent: healthy output already exists from a previous run
+        if out_path.exists():
             try:
-                exp_len = day_expected.get(int(d.get('day') or 0))
-                actual = None
-                if out_path.exists():
-                    meta = probe_media(out_path)
-                    dur = meta.get('duration') if isinstance(meta, dict) else None
-                    if isinstance(dur, (int, float)):
-                        actual = float(dur)
-                if actual is not None:
-                    entry['duration'] = actual
-                if exp_len is not None and actual is not None:
-                    delta = actual - float(exp_len)
-                    ok = abs(delta) <= float(tol)
-                    entry['health'] = {'expected': float(exp_len), 'actual': actual, 'delta': delta, 'ok': ok}
-            except Exception:
-                pass
-            out_days[-1] = entry
-            if cancelled:
-                _publish(status='CANCELLED', plan_state=_snapshot_plan(cur_cam=cam, cur_days=out_days), message=msg or 'Cancelled')
-                return
-            prog += 1
-            _publish(plan_state=_snapshot_plan(cur_cam=cam, cur_days=out_days), message=msg or '')
+                existing_meta = probe_media(out_path)
+                existing_dur = existing_meta.get('duration') if isinstance(existing_meta, dict) else None
+                if isinstance(existing_dur, (int, float)) and existing_dur > 0:
+                    _day_num_chk = int(d.get('day') or 0)
+                    exp_len_chk = day_expected.get(_day_num_chk)
+                    healthy = (exp_len_chk is None) or (abs(existing_dur - exp_len_chk) <= float(tol))
+                    if healthy:
+                        skip_entry: Dict[str, Any] = {
+                            **d, 'status': 'DONE', 'output': str(out_path),
+                            'list_path': str(list_path), 'duration': existing_dur, 'skipped': True,
+                        }
+                        if exp_len_chk is not None:
+                            delta_chk = existing_dur - exp_len_chk
+                            skip_entry['health'] = {'expected': float(exp_len_chk), 'actual': existing_dur,
+                                                    'delta': delta_chk, 'ok': True}
+                        with _state_lock:
+                            day_result_map[key] = skip_entry
+                            prog_ref[0] += 1
+                            snap = _snap_par()
+                        _pub_par(plan_state=snap, message=f'Day {d.get("day")} cam {cam}: already encoded, skipping')
+                        return
+            except Exception as e:
+                _log.warning("importer: error checking existing output for %s day %s: %s", cam, d.get('day'), e, exc_info=True)
 
-        results.append({'camera': cam, 'days': out_days})
+        # Unhealthy or unreadable output exists — remove before re-encoding
+        if out_path.exists():
+            try:
+                out_path.unlink()
+                _log.info("importer: removed unhealthy/partial output %s before re-encode", out_path)
+            except OSError as e:
+                _log.warning("importer: could not remove partial output %s: %s", out_path, e)
 
-    final_plan = _snapshot_plan()
-    _publish(status='DONE', plan_state=final_plan)
+        if not list_path.exists():
+            with _state_lock:
+                day_result_map[key] = {'day': d.get('day'), 'status': 'FAILED', 'segments': segments,
+                                       'message': 'list not found', 'output': str(out_path), 'list_path': str(list_path)}
+                prog_ref[0] += 1
+                snap = _snap_par()
+            _pub_par(plan_state=snap, message='List not found')
+            return
 
-def _set_job_proc(job_id: str, proc: Optional[subprocess.Popen]) -> None:
-    with ENCODE_LOCK:
-        if proc is None:
-            ENCODE_PROCS.pop(job_id, None)
+        _ffmpeg_cmd = ' '.join([
+            'ffmpeg', '-v', 'quiet', '-y', '-threads', '4',
+            '-f', 'concat', '-safe', '0', '-i', str(list_path),
+            '-vcodec', 'copy', '-an', '-copytb', '0',
+            '-progress', 'pipe:1', str(out_path),
+        ])
+        with _state_lock:
+            day_result_map[key] = {'day': d.get('day'), 'status': 'RUNNING', 'segments': segments,
+                                   'output': str(out_path), 'list_path': str(list_path), 'cmd': _ffmpeg_cmd}
+            snap = _snap_par()
+        _pub_par(plan_state=snap)
+
+        if _job_cancelled(job_id) or ctx.cancelled():
+            with _state_lock:
+                day_result_map[key] = {'day': d.get('day'), 'status': 'CANCELLED',
+                                       'segments': segments, 'output': str(out_path)}
+                snap = _snap_par()
+            _pub_par(status='CANCELLED', plan_state=snap, message='Cancelled')
+            return
+
+        try:
+            _day_num_key = int(d.get('day') or 0)
+        except Exception:
+            _day_num_key = 0
+        total_dur = day_expected.get(_day_num_key) or _probe_concat_duration(list_path)
+        code, msg, cancelled = _run_ffmpeg_concat_monitored(list_path, out_path, job_id, total_duration=total_dur)
+        entry: Dict[str, Any] = {
+            'day': d.get('day'),
+            'status': ('CANCELLED' if cancelled else ('DONE' if code == 0 else 'FAILED')),
+            'segments': segments, 'output': str(out_path),
+            'ffmpeg': msg, 'list_path': str(list_path), 'cmd': _ffmpeg_cmd,
+        }
+        try:
+            exp_len = day_expected.get(int(d.get('day') or 0))
+            actual = None
+            if out_path.exists():
+                meta = probe_media(out_path)
+                dur = meta.get('duration') if isinstance(meta, dict) else None
+                if isinstance(dur, (int, float)):
+                    actual = float(dur)
+            if actual is not None:
+                entry['duration'] = actual
+            if exp_len is not None and actual is not None:
+                delta = actual - float(exp_len)
+                ok = abs(delta) <= float(tol)
+                entry['health'] = {'expected': float(exp_len), 'actual': actual, 'delta': delta, 'ok': ok}
+        except Exception as e:
+            _log.warning("importer: error computing health for %s day %s: %s", out_path, d.get('day'), e)
+        if (cancelled or code != 0) and out_path.exists():
+            try:
+                out_path.unlink()
+            except OSError as _ue:
+                _log.warning("importer: could not remove partial output %s: %s", out_path, _ue)
+        if code == 0 and not cancelled:
+            try:
+                list_path.unlink(missing_ok=True)
+            except OSError as _ue:
+                _log.warning("importer: could not remove concat list %s: %s", list_path, _ue)
+
+        with _state_lock:
+            day_result_map[key] = entry
+            if not cancelled:
+                prog_ref[0] += 1
+            snap = _snap_par()
+        if cancelled:
+            _pub_par(status='CANCELLED', plan_state=snap, message=msg or 'Cancelled')
         else:
-            ENCODE_PROCS[job_id] = proc
+            _pub_par(plan_state=snap, message=msg or '')
+
+    # Flatten and submit all (cam, day) work items
+    all_items: List[Tuple[Any, Dict[str, Any]]] = [
+        (ce.get('camera'), d) for ce in plan for d in (ce.get('days') or [])
+    ]
+    with ThreadPoolExecutor(max_workers=_ENCODE_MAX_WORKERS) as executor:
+        futs = {executor.submit(_process_day_item, cam, d): (cam, d) for cam, d in all_items}
+        for fut in as_completed(futs):
+            try:
+                fut.result()
+            except Exception as exc:
+                _log.error("importer: day worker error: %s", exc, exc_info=True)
+
+    # Build results list for _snapshot_plan (used in final publish)
+    for ce in plan:
+        cam = ce.get('camera')
+        cam_days: List[Dict[str, Any]] = []
+        for bd in (ce.get('days') or []):
+            try:
+                rkey: Tuple[int, int] = (int(cam), int(bd.get('day') or 0))
+            except Exception:
+                rkey = (0, 0)
+            cam_days.append(day_result_map.get(rkey, bd))
+        results.append({'camera': cam, 'days': cam_days})
+
+    any_cancelled = any(
+        str(v.get('status', '')).upper() == 'CANCELLED' for v in day_result_map.values()
+    )
+    final_plan = _snapshot_plan()
+    _pub_par(status='CANCELLED' if any_cancelled else 'DONE', plan_state=final_plan)
+
+def _set_job_proc(job_id: str, proc: Optional[subprocess.Popen], remove: bool = False) -> None:
+    with ENCODE_LOCK:
+        if proc is None or remove:
+            if proc is not None:
+                ENCODE_PROCS.get(job_id, set()).discard(proc)
+            elif not remove:
+                ENCODE_PROCS.pop(job_id, None)
+        else:
+            ENCODE_PROCS.setdefault(job_id, set()).add(proc)
 
 # Background Scan/Prepare jobs (navigation-resumable)
 SCAN_JOBS: Dict[str, Dict[str, Any]] = {}
@@ -633,29 +1017,67 @@ def _cancel_encode_job(job_id: str) -> None:
         job = ENCODE_JOBS.get(job_id)
         if job:
             job['cancel'] = True
-        proc = ENCODE_PROCS.get(job_id)
-    if proc and proc.poll() is None:
-        try:
-            proc.terminate()
-        except Exception:
-            pass
+        procs = set(ENCODE_PROCS.get(job_id) or [])
+    for proc in procs:
+        if proc.poll() is None:
+            try:
+                proc.terminate()
+            except Exception:
+                pass
 
 
-def _run_ffmpeg_concat_monitored(list_file: Path, out_path: Path, job_id: str) -> tuple[int, str, bool]:
-    """Run ffmpeg concat with ability to cancel via ENCODE_JOBS[job]['cancel'].
+def _run_ffmpeg_concat_monitored(
+    list_file: Path, out_path: Path, job_id: str,
+    total_duration: Optional[float] = None,
+) -> tuple[int, str, bool]:
+    """Run ffmpeg concat with progress reporting and cancellation support.
+    Parses -progress pipe:1 output and writes frame/time/fps/speed into
+    ENCODE_JOBS[job_id] so /encode_status can return live progress.
     Returns (returncode, message, cancelled_flag).
     """
     cmd = [
-        'ffmpeg', '-v', 'quiet', '-stats', '-y', '-threads', '4',
+        'ffmpeg', '-v', 'quiet', '-y', '-threads', '4',
         '-f', 'concat', '-safe', '0', '-i', str(list_file),
-        '-vcodec', 'copy', '-an', '-copytb', '0', str(out_path)
+        '-vcodec', 'copy', '-an', '-copytb', '0',
+        '-progress', 'pipe:1',
+        str(out_path),
     ]
     try:
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        _set_job_proc(job_id, p)
+        _set_job_proc(job_id, p)   # adds to set
+        _write_ffmpeg_pid(job_id, p.pid)
+        with ENCODE_LOCK:
+            j = ENCODE_JOBS.get(job_id)
+            if j:
+                j['current_cmd'] = ' '.join(cmd)
         cancelled = False
-        out_buf: List[str] = []
         err_buf: List[str] = []
+        prog_block: Dict[str, str] = {}
+
+        # Drain stderr in a background thread to prevent pipe-buffer deadlock.
+        # If we read stdout (progress) and stderr alternately in one thread,
+        # a full stderr buffer will block ffmpeg while we wait on stdout.readline().
+        def _drain_stderr() -> None:
+            try:
+                for line in p.stderr:  # type: ignore[union-attr]
+                    err_buf.append(line)
+            except Exception:
+                pass
+
+        stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+        stderr_thread.start()
+
+        # Seed total_duration in the job so the frontend can show it immediately
+        if total_duration is not None:
+            with ENCODE_LOCK:
+                j = ENCODE_JOBS.get(job_id)
+                if j:
+                    j['current_total_duration'] = total_duration
+                    j['current_frame'] = 0
+                    j['out_time_us'] = 0
+                    j['fps'] = 0.0
+                    j['speed'] = ''
+
         while True:
             rc = p.poll()
             if rc is not None:
@@ -666,37 +1088,77 @@ def _run_ffmpeg_concat_monitored(list_file: Path, out_path: Path, job_id: str) -
                     try:
                         p.wait(timeout=3)
                     except Exception:
-                        p.kill()
-                except Exception:
-                    pass
+                        try:
+                            p.kill()
+                        except Exception as e:
+                            _log.warning("importer: failed to kill ffmpeg pid %s: %s", p.pid, e)
+                except Exception as e:
+                    _log.warning("importer: failed to terminate ffmpeg pid %s: %s", p.pid, e)
                 cancelled = True
                 break
             try:
-                # non-blocking small reads
-                out = p.stdout.readline() if p.stdout else ''
-                err = p.stderr.readline() if p.stderr else ''
-                if out:
-                    out_buf.append(out)
-                if err:
-                    err_buf.append(err)
+                line = p.stdout.readline() if p.stdout else ''
+                if not line:
+                    # stdout EOF or nothing yet — process has likely exited
+                    time.sleep(0.05)
+                    continue
+                line = line.strip()
+                if '=' in line:
+                    k, _, v = line.partition('=')
+                    prog_block[k.strip()] = v.strip()
+                if line.startswith('progress='):
+                    # One complete progress block received — update job
+                    try:
+                        frame = int(prog_block.get('frame', 0) or 0)
+                        # ffmpeg emits INT64_MIN before first packet; clamp to 0
+                        out_time_us = max(0, int(prog_block.get('out_time_us', 0) or 0))
+                        fps_raw = prog_block.get('fps', '0')
+                        try:
+                            fps = float(fps_raw) if fps_raw not in ('', 'N/A') else 0.0
+                        except ValueError:
+                            fps = 0.0
+                        # Parse speed ("1.23x", "3.07e+03x") → plain float
+                        speed_raw = prog_block.get('speed', '')
+                        try:
+                            speed = float(speed_raw.rstrip('x')) if speed_raw not in ('', 'N/A') else 0.0
+                        except (ValueError, AttributeError):
+                            speed = 0.0
+                        with ENCODE_LOCK:
+                            j = ENCODE_JOBS.get(job_id)
+                            if j:
+                                j['current_frame'] = frame
+                                j['out_time_us'] = out_time_us
+                                j['fps'] = fps
+                                j['speed'] = speed
+                    except Exception:
+                        pass
+                    prog_block = {}
             except Exception:
-                pass
-            time.sleep(0.1)
-        try:
-            # Drain remaining
-            if p.stdout:
-                o, _ = p.communicate(timeout=0.2)
-                if o:
-                    out_buf.append(o)
-        except Exception:
-            pass
-        msg = (''.join(err_buf) or ''.join(out_buf) or '').strip()
-        rc = p.returncode if p.returncode is not None else (1 if cancelled else 1)
+                time.sleep(0.05)
+
+        stderr_thread.join(timeout=5)
+
+        # Clear per-file progress fields from job when done
+        with ENCODE_LOCK:
+            j = ENCODE_JOBS.get(job_id)
+            if j:
+                j.pop('current_frame', None)
+                j.pop('out_time_us', None)
+                j.pop('fps', None)
+                j.pop('speed', None)
+                j.pop('current_total_duration', None)
+
+        msg = ''.join(err_buf).strip()
+        rc = p.returncode if p.returncode is not None else 1
         return (rc, msg if msg else ('cancelled' if cancelled else ''), cancelled)
     except Exception as e:
         return (1, str(e), False)
     finally:
-        _set_job_proc(job_id, None)
+        _set_job_proc(job_id, p, remove=True)  # removes this proc from set
+        try:
+            _clear_ffmpeg_pid(job_id, p.pid)
+        except Exception as e:
+            _log.warning("importer: failed to clear ffmpeg PID for job %s: %s", job_id, e)
 
 
 def _parse_time_from_path(p: Path, regex: str) -> Optional[datetime]:
@@ -799,8 +1261,8 @@ def _scan_prepare_worker(job_id: str) -> None:
                     if ig_re:
                         try:
                             dirnames[:] = [d for d in dirnames if not ig_re.search(d)]
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            _log.warning("importer: error applying ignore_dir_regex in %s: %s", cur, e)
                     for fn in filenames:
                         if cancelled(): break
                         try:
@@ -840,7 +1302,8 @@ def _scan_prepare_worker(job_id: str) -> None:
                             if total - last_push >= 200:
                                 _update_scan_task(job_id, status='RUNNING', meta={'total': total})
                                 last_push = total
-                        except Exception:
+                        except Exception as e:
+                            _log.warning("importer: skipped file %s during scan: %s", fn, e, exc_info=True)
                             continue
         if cancelled():
             with SCAN_LOCK:
@@ -857,6 +1320,10 @@ def _scan_prepare_worker(job_id: str) -> None:
                     j['plan'] = plan
                     j['status'] = 'DONE'
             _update_scan_task(job_id, status='DONE', meta={'plan': plan, 'total': total})
+            with SCAN_LOCK:
+                j = SCAN_JOBS.get(job_id)
+                params = j.get('params', {}) if j else {}
+            _persist_last_scan(params, plan)
         except Exception as e:
             with SCAN_LOCK:
                 j = SCAN_JOBS.get(job_id)
@@ -875,6 +1342,9 @@ def _scan_prepare_worker(job_id: str) -> None:
 def _prepare_plan_from_manifest(facility: str, experiment: str, treatment: str, batch: int, start_date: str, end_date: str, start_time: str, end_time: str, cameras: List[int], files: List[Dict[str, Any]]):
     facs = cfg_importer_facilities()
     fac = facs[facility]
+    source_dir = Path(fac.get('source_dir', '')).expanduser()
+    if not source_dir.exists() or not source_dir.is_dir():
+        raise RuntimeError(f'Source folder not found: {source_dir}')
     day_windows = _day_windows(start_date, end_date, start_time, end_time)
     out_dir = _resolve_import_output_dir(facility, experiment, treatment)
     try:
@@ -897,13 +1367,18 @@ def _prepare_plan_from_manifest(facility: str, experiment: str, treatment: str, 
     max_dur_sec = _parse_dur_to_seconds(fac.get('max_file_duration'))
     by_cam: Dict[int, List[Dict[str, Any]]] = {c: [] for c in cameras}
     for f in files:
+        if not isinstance(f, dict):
+            raise RuntimeError('Invalid manifest entry')
         try:
             cam = int(f.get('camera'))
         except Exception:
             continue
         if cam not in by_cam:
             continue
-        p = Path(str(f.get('path') or '')).expanduser()
+        try:
+            p = _resolve_manifest_source_path(source_dir, f.get('path'))
+        except Exception as e:
+            raise RuntimeError(f'Invalid manifest path for camera {cam}: {e}')
         ts = _parse_start_from_stem(p.stem) or _parse_time_from_path(p, str(fac.get('path_time_regex') or ''))
         if not ts:
             continue
@@ -949,8 +1424,8 @@ def _prepare_plan_from_manifest(facility: str, experiment: str, treatment: str, 
                 try:
                     with list_path.open('w', encoding='utf-8') as f:
                         pass
-                except Exception:
-                    pass
+                except Exception as e:
+                    _log.error("importer: failed to write empty concat list %s: %s", list_path, e, exc_info=True)
                 cam_days.append({'day': di, 'status': 'MISSING', 'segments': 0, 'list_path': str(list_path)})
         out.append({'camera': cam, 'days': cam_days})
     return {'ok': True, 'tmp_dir': str(out_dir), 'plan': out}
@@ -1057,9 +1532,19 @@ def api_scan_prepare_cancel():
     if task_id:
         try:
             cancel_task_record(task_id)
-        except Exception:
-            pass
+        except Exception as e:
+            _log.warning("importer: failed to cancel task record %s: %s", task_id, e)
     return jsonify({'ok': True})
+
+@bp.route('/scan_prepare/last')
+def api_scan_prepare_last():
+    """Return the most recently completed scan plan saved to disk."""
+    data = _load_last_scan()
+    if not data:
+        return jsonify({'ok': False, 'reason': 'no_saved_scan'})
+    return jsonify({'ok': True, 'params': data.get('params', {}),
+                    'plan': data.get('plan'), 'saved_at': data.get('saved_at')})
+
 
 @bp.route('/scan_prepare/current')
 def api_scan_prepare_current():
@@ -1159,6 +1644,10 @@ def _collect_used_batches(base_dir: Path) -> List[int]:
             return []
         for p in base_dir.iterdir():
             if not p.is_file():
+                continue
+            # Skip concat-list .txt files written during scan/prepare — only
+            # actual encoded output files (e.g. .mp4, .avi) count as a used batch
+            if p.suffix.lower() in ('.txt', '.src', '.log', '.json'):
                 continue
             b = _batch_from_exp_name(p.name)
             if b is not None:
@@ -1291,6 +1780,11 @@ def api_import_start():
                 elif not dry_run and _ffmpeg_exists():
                     code, msg = _run_ffmpeg_concat(list_path, out_path)
                     status = 'DONE' if code == 0 else 'FAILED'
+                    if code == 0:
+                        try:
+                            list_path.unlink(missing_ok=True)
+                        except OSError as _ue:
+                            _log.warning("importer: could not remove concat list %s: %s", list_path, _ue)
                 else:
                     status = 'PLANNED' if items else 'SKIPPED'
                     msg = 'dry-run or ffmpeg not available'
@@ -1455,8 +1949,8 @@ def api_import_browse_source():
                     'date': folder_date,
                     'file_count': file_count,
                 })
-        except Exception:
-            pass
+        except Exception as e:
+            _log.error("importer: error scanning date folders for cam %s in %s: %s", cam, sub, e, exc_info=True)
 
         cameras.append({'camera': cam, 'folder': sub, 'exists': True, 'date_folders': date_folders})
 
@@ -1748,8 +2242,8 @@ def api_import_make_day_lists():
                     # Use facility max duration as an upper bound; concat demuxer will stop at file end.
                     start_dt = ts
                     segments.append({'path': p, 'start': start_dt, 'end': start_dt + timedelta(seconds=float(max_dur_sec))})
-        except Exception:
-            pass
+        except Exception as e:
+            _log.error("importer: error walking source directory for cam %s: %s", cam, e, exc_info=True)
 
         if not segments:
             results.append({'camera': cam, 'days': [], 'warning': 'No files found'})
@@ -2254,6 +2748,9 @@ def api_import_prepare_from_manifest():
     if facility not in facs:
         return jsonify({'error': 'Unknown facility'}), 400
     fac = facs[facility]
+    source_dir = Path(fac.get('source_dir', '')).expanduser()
+    if not source_dir.exists() or not source_dir.is_dir():
+        return jsonify({'error': 'Source folder not found', 'path': str(source_dir)}), 400
 
     # duration fallback
     def _parse_dur_to_seconds(val: str | int | float | None) -> int:
@@ -2280,13 +2777,20 @@ def api_import_prepare_from_manifest():
     # Normalize manifest entries per camera
     by_cam = {c: [] for c in cameras}
     for f in files:
+        if not isinstance(f, dict):
+            return jsonify({'error': 'Invalid files manifest entry'}), 400
         try:
             cam = int(f.get('camera'))
         except Exception:
             continue
         if cam not in by_cam:
             continue
-        p = Path(str(f.get('path') or '')).expanduser()
+        try:
+            p = _resolve_manifest_source_path(source_dir, f.get('path'))
+        except PermissionError as e:
+            return jsonify({'error': str(e), 'path': str(f.get('path') or '')}), 403
+        except (ValueError, FileNotFoundError) as e:
+            return jsonify({'error': str(e), 'path': str(f.get('path') or '')}), 400
         # prefer provided start iso, else parse from name
         ts = None
         siso = f.get('start')
@@ -2350,8 +2854,8 @@ def api_import_prepare_from_manifest():
                 try:
                     with list_path.open('w', encoding='utf-8') as f:
                         pass
-                except Exception:
-                    pass
+                except Exception as e:
+                    _log.error("importer: failed to write empty concat list %s: %s", list_path, e, exc_info=True)
                 cam_days.append({'day': di, 'status': 'MISSING', 'segments': 0, 'list_path': str(list_path)})
         out.append({'camera': cam, 'days': cam_days})
 
@@ -2484,6 +2988,11 @@ def api_import_encode_days():
                 days.append({'day': d.get('day'), 'status': 'FAILED', 'segments': segments, 'message': 'list not found', 'output': str(out_path), 'list_path': str(list_path)})
                 continue
             code, msg = _run_ffmpeg_concat(list_path, out_path)
+            if code == 0:
+                try:
+                    list_path.unlink(missing_ok=True)
+                except OSError as _ue:
+                    _log.warning("importer: could not remove concat list %s: %s", list_path, _ue)
             entry = {'day': d.get('day'), 'status': ('DONE' if code == 0 else 'FAILED'), 'segments': segments, 'output': str(out_path), 'ffmpeg': msg, 'list_path': str(list_path)}
             try:
                 exp_len = day_expected.get(int(d.get('day') or 0))
@@ -2499,8 +3008,8 @@ def api_import_encode_days():
                     delta = actual - float(exp_len)
                     ok = abs(delta) <= float(tol)
                     entry['health'] = {'expected': float(exp_len), 'actual': actual, 'delta': delta, 'ok': ok}
-            except Exception:
-                pass
+            except Exception as e:
+                _log.warning("importer: error computing health for %s day %s (encode_days): %s", out_path, d.get('day'), e)
             days.append(entry)
         results.append({'camera': cam, 'days': days})
 
@@ -2520,6 +3029,17 @@ def api_import_encode_status():
             resp = dict(job)
             if job.get('task_id'):
                 resp['task_id'] = job.get('task_id')
+            # Compute server-side ETA so the frontend doesn't need wall-clock math
+            try:
+                spd = float(resp.get('speed') or 0)
+                total_dur = float(resp.get('current_total_duration') or 0)
+                done_us = int(resp.get('out_time_us') or 0)
+                if spd > 0 and total_dur > 0:
+                    done_s = done_us / 1_000_000
+                    remaining_s = max(0.0, total_dur - done_s)
+                    resp['eta_seconds'] = round(remaining_s / spd, 1)
+            except Exception:
+                pass
             return jsonify({'ok': True, **resp})
     task = _find_task_by_payload('import.encode', 'job_id', jid)
     if task:
@@ -2553,30 +3073,113 @@ def api_import_encode_cancel():
     with ENCODE_LOCK:
         job = ENCODE_JOBS.get(jid)
         task_id = None
+        procs: Set[subprocess.Popen] = set()
         if job:
             job['cancel'] = True
             task_id = job.get('task_id')
-            proc = ENCODE_PROCS.get(jid)
-            if proc and proc.poll() is None:
-                try:
-                    proc.terminate()
-                except Exception:
-                    pass
+            procs = set(ENCODE_PROCS.get(jid) or [])
+    for proc in procs:
+        try:
+            if proc.poll() is None:
+                proc.terminate()
+        except Exception as e:
+            _log.warning("importer: failed to terminate encode proc %s: %s", getattr(proc, 'pid', '?'), e)
     if not job:
         task = _find_task_by_payload('import.encode', 'job_id', jid)
         if not task:
             return jsonify({'error': 'Job not found'}), 404
         try:
             cancel_task_record(task.get('id'))
-        except Exception:
-            pass
+        except Exception as e:
+            _log.warning("importer: failed to cancel orphan task record: %s", e)
         return jsonify({'ok': True, 'status': 'CANCELLING', 'job': jid})
     try:
         if task_id:
             cancel_task_record(task_id)
-    except Exception:
-        pass
+    except Exception as e:
+        _log.warning("importer: failed to cancel task record %s: %s", task_id, e)
     return jsonify({'ok': True, 'status': 'CANCELLING', 'job': jid})
+
+
+@bp.route('/retry_failed', methods=['POST'])
+def api_import_retry_failed():
+    """Re-queue only the FAILED/MISSING/PENDING days from a completed encode task.
+
+    Body JSON: {"task_id": "<task id of the original import.encode task>"}
+
+    The new task shares the same facility/experiment/treatment/batch as the
+    original.  The batch-existence check is bypassed because the output folder
+    already exists.
+    """
+    payload = request.get_json(silent=True) or {}
+    task_id = str(payload.get('task_id') or '').strip()
+    if not task_id:
+        return jsonify({'error': 'Missing task_id'}), 400
+
+    task = get_task(task_id)
+    if not task:
+        return jsonify({'error': 'Task not found'}), 404
+    if str(task.get('kind') or '') != 'import.encode':
+        return jsonify({'error': 'Task is not an import.encode task'}), 400
+
+    original_payload = task.get('payload') or {}
+    meta = task.get('meta') or {}
+    plan = meta.get('plan') or original_payload.get('plan') or []
+
+    # Build a plan containing only days that need to be (re-)run
+    retry_plan: List[Dict[str, Any]] = []
+    for cam_entry in plan:
+        retry_days = [
+            {**d, 'status': 'PENDING'}
+            for d in (cam_entry.get('days') or [])
+            if str(d.get('status') or '').upper() in ('FAILED', 'MISSING', 'PENDING')
+        ]
+        if retry_days:
+            retry_plan.append({'camera': cam_entry.get('camera'), 'days': retry_days})
+
+    if not retry_plan:
+        return jsonify({'error': 'No failed or pending days to retry'}), 400
+
+    retry_total = sum(
+        1 for c in retry_plan
+        for d in (c.get('days') or [])
+        if int(d.get('segments') or 1) > 0 and str(d.get('status') or '').upper() != 'MISSING'
+    )
+
+    new_job_id = uuid.uuid4().hex
+    new_task_payload = {
+        **original_payload,
+        'plan': retry_plan,
+        'job_id': new_job_id,
+        'is_retry': True,
+    }
+
+    with ENCODE_LOCK:
+        ENCODE_JOBS[new_job_id] = {
+            'id': new_job_id,
+            'status': 'QUEUED',
+            'progress': 0,
+            'total': retry_total,
+            'plan': retry_plan,
+            'cancel': False,
+            'created_at': time.time(),
+        }
+
+    new_task = enqueue_task(
+        title=f"Retry: {task.get('title', 'Encode')}",
+        kind='import.encode',
+        runner=lambda ctx, p=new_task_payload: _encode_task_runner(ctx, p),
+        total=retry_total,
+        meta={'plan': retry_plan},
+        payload=new_task_payload,
+        on_cancel=lambda: _cancel_encode_job(new_job_id),
+    )
+    with ENCODE_LOCK:
+        j = ENCODE_JOBS.get(new_job_id)
+        if j:
+            j['task_id'] = new_task['id']
+
+    return jsonify({'ok': True, 'task_id': new_task['id'], 'job_id': new_job_id, 'total': retry_total})
 
 
 def _resume_import_concat(ctx: TaskContext, payload: Dict[str, Any]) -> None:

@@ -49,6 +49,8 @@
       <a class="tab tab-tasks {{ 'active' if active_tab == 'tasks' else '' }}" href="/tasks" aria-label="Tasks"
         title="Tasks">
         <span class="nav-icon icon-tasks" aria-hidden="true"></span>
+        <span id="tasks-nav-ring" class="tasks-nav-ring" aria-hidden="true"></span>
+        <span id="tasks-nav-badge" class="tasks-nav-badge" aria-hidden="true"></span>
       </a>
       <a class="tab tab-settings {{ 'active' if active_tab == 'settings' else '' }}" href="/settings"
         aria-label="Settings" title="Settings">
@@ -69,24 +71,6 @@
     {{ caller() }}
   </main>
   <div id="app-cache" hidden></div>
-
-  <footer class="app-footer">
-    <div class="footer-inner">
-      <a class="footer-link" href="/tasks">
-        <span class="footer-title">
-          Tasks
-          <span id="tasks-footer-spinner" class="footer-spinner" aria-hidden="true"></span>
-        </span>
-        <span id="tasks-footer-summary" class="footer-summary muted">No active tasks</span>
-      </a>
-      <div class="footer-progress">
-        <div class="progress footer-progress-rail">
-          <div id="tasks-footer-bar" class="bar"></div>
-        </div>
-      </div>
-      <div id="tasks-footer-detail" class="footer-detail muted"></div>
-    </div>
-  </footer>
 
   <div id="module-modal" class="module-modal" hidden aria-modal="true" role="dialog">
     <div class="module-modal-box">

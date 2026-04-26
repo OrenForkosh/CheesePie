@@ -1,25 +1,27 @@
 /* ── Calibration module ─────────────────────────────────────────────────── */
 
-/* Active tab accent */
+/* Tab accent */
 .tab.tab-calibration.active {
   background: linear-gradient(180deg, #00b894, #007a5e);
   color: #fff;
   border-color: transparent;
 }
 
-/* Layout ------------------------------------------------------------------- */
+/* ── Layout ─────────────────────────────────────────────────────────────── */
 .cal-layout {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 256px 1fr;
   gap: 14px;
   padding: 14px;
+  padding-bottom: 20px;
   align-items: start;
-  min-height: 0;
 }
 
+/* Sidebar: zero out subpanel's default 24px padding so sections control it */
 .cal-sidebar {
-  display: flex;
-  flex-direction: column;
+  padding: 0 !important;
+  overflow: visible !important;
+  height: auto !important;
   gap: 0;
 }
 
@@ -30,25 +32,252 @@
   min-width: 0;
 }
 
+/* ── Sidebar sections ───────────────────────────────────────────────────── */
+.cal-section {
+  padding: 12px 16px;
+}
 
-/* Preview area ------------------------------------------------------------- */
+.cal-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0;
+}
+
+.cal-section-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.cal-badge-label {
+  font-size: 9px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: 0.7;
+}
+
+/* Value badge (e.g. mask %) */
+.cal-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--muted);
+}
+
+/* Status line below each section */
+.cal-status {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 5px;
+  min-height: 15px;
+  line-height: 1.4;
+}
+
+/* ── Camera row ─────────────────────────────────────────────────────────── */
+.cal-camera-row {
+  display: flex;
+  gap: 5px;
+  align-items: stretch;
+}
+
+.cal-camera-row select {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.cal-camera-row .btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Gear icon button */
+.cal-icon-btn {
+  font-size: 14px;
+  padding: 0 7px;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+
+.cal-icon-btn:hover { opacity: 1; }
+
+/* Scan spinner */
+.cal-spin-icon {
+  display: inline-block;
+  font-style: normal;
+  line-height: 1;
+}
+
+.cal-spin-icon.spinning {
+  animation: cal-spin 0.7s linear infinite;
+}
+
+@keyframes cal-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Segmented control (Snap / Auto / Live) ─────────────────────────────── */
+.cal-seg {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.cal-seg-btn {
+  flex: 1;
+  padding: 6px 0;
+  background: none;
+  border: none;
+  border-right: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  font-family: inherit;
+}
+
+.cal-seg-btn:last-child {
+  border-right: none;
+}
+
+.cal-seg-btn:hover:not(.active) {
+  background: color-mix(in srgb, var(--border) 35%, transparent);
+  color: #eee;
+}
+
+.cal-seg-btn.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+/* ── Pill toggle buttons ────────────────────────────────────────────────── */
+.cal-pill-row {
+  display: flex;
+  gap: 6px;
+}
+
+.cal-pill {
+  flex: 1;
+  padding: 5px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.12s;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.cal-pill:hover:not(.active) {
+  border-color: color-mix(in srgb, var(--border) 50%, var(--primary));
+  color: #eee;
+}
+
+.cal-pill.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+/* ── Save row ───────────────────────────────────────────────────────────── */
+.cal-save-row {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.cal-save-row select {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.cal-save-row .btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* ── PTZ grid ───────────────────────────────────────────────────────────── */
+.cal-ptz-grid {
+  display: grid;
+  grid-template-columns: 40px 1fr 1fr;
+  gap: 5px;
+  align-items: center;
+}
+
+.cal-ptz-label {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.cal-ptz-btn {
+  font-size: 14px;
+  padding: 6px 0;
+  text-align: center;
+  user-select: none;
+}
+
+/* ── Preview panel ──────────────────────────────────────────────────────── */
+.cal-preview-panel {
+  flex: 1;
+  padding: 0 !important;
+  overflow: hidden;
+  min-width: 0;
+}
+
 .cal-preview-wrap {
   position: relative;
   width: 100%;
-  background: #0a0d14;
-  border-radius: 6px;
-  overflow: hidden;
-  min-height: 160px;
+  background: #080b12;
+  min-height: 180px;
 }
 
+/* Placeholder */
 .cal-placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 60px 20px;
+  padding: 72px 24px;
+}
+
+.cal-ph-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  color: var(--muted);
+  opacity: 0.35;
   text-align: center;
 }
 
+.cal-ph-inner p {
+  font-size: 13px;
+  margin: 0;
+}
+
+/* Layer stack */
 .cal-layers {
   position: relative;
   width: 100%;
@@ -62,10 +291,8 @@
 
 .cal-overlay-canvas {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
   pointer-events: none;
 }
 
@@ -75,21 +302,41 @@
   z-index: 3;
 }
 
-/* Pixel info bar ----------------------------------------------------------- */
+/* Mode badge — top-right corner of the preview */
+.cal-mode-badge {
+  position: absolute;
+  top: 8px; right: 8px;
+  padding: 3px 9px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  color: rgba(255, 255, 255, 0.45);
+  z-index: 10;
+  pointer-events: none;
+  user-select: none;
+  transition: color 0.2s;
+}
+
+.cal-mode-badge.mode-auto { color: #ffd166; }
+.cal-mode-badge.mode-live { color: #ff6b6b; }
+
+/* ── Pixel info bar ─────────────────────────────────────────────────────── */
 .cal-pixel-bar {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 10px;
+  padding: 5px 12px;
   border-top: 1px solid var(--border);
   background: var(--surface);
   font-size: 12px;
   font-family: 'Roboto Mono', monospace;
 }
 
-.cal-pixel-chip {
-  color: var(--muted);
-}
+.cal-pixel-chip { color: var(--muted); }
 
 .cal-pixel-sep {
   color: var(--border);
@@ -97,24 +344,28 @@
 }
 
 .cal-pixel-swatch {
-  width: 16px;
-  height: 16px;
+  width: 16px; height: 16px;
   border-radius: 3px;
   border: 1px solid var(--border);
   flex-shrink: 0;
+  margin-left: auto;
 }
 
-/* Histogram ---------------------------------------------------------------- */
+/* ── Histogram ──────────────────────────────────────────────────────────── */
 .cal-hist-panel {
   flex-shrink: 0;
 }
 
-.cal-hist-canvas {
-  display: block;
-  width: 100%;
-  height: 100px;
-  border-radius: 4px;
-  background: #0a0d14;
+.cal-hist-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.cal-ch-toggles {
+  display: flex;
+  gap: 10px;
 }
 
 .cal-ch-toggle {
@@ -126,45 +377,20 @@
 }
 
 .cal-ch-toggle input {
-  width: 12px;
-  height: 12px;
+  width: 12px; height: 12px;
   margin: 0;
   cursor: pointer;
 }
 
-/* Filter buttons ----------------------------------------------------------- */
-.cal-filter-btn.active {
-  background: var(--primary);
-  color: #fff;
-  border-color: var(--primary);
+.cal-hist-canvas {
+  display: block;
+  width: 100%;
+  height: 100px;
+  border-radius: 4px;
+  background: #080b12;
 }
 
-/* PTZ controls ------------------------------------------------------------- */
-.cal-ptz-section {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 4px;
-}
-
-.cal-ptz-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.cal-ptz-btn {
-  flex: 1;
-  font-family: 'Roboto Mono', monospace;
-  font-size: 12px;
-  user-select: none;
-}
-
-.cal-ptz-btn:active {
-  opacity: 0.7;
-}
-
-/* Responsive --------------------------------------------------------------- */
+/* ── Responsive ─────────────────────────────────────────────────────────── */
 @media (max-width: 720px) {
   .cal-layout {
     grid-template-columns: 1fr;

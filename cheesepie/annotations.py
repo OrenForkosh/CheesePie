@@ -6,6 +6,8 @@ from typing import Any
 
 from flask import Blueprint, jsonify, request
 
+from .pathguard import assert_within_allowed_roots
+
 
 bp = Blueprint('annotations_api', __name__)
 
@@ -19,7 +21,7 @@ def api_annotations():
     video = request.args.get('video') if request.method == 'GET' else (request.json or {}).get('video')
     if not video:
         return jsonify({"error": "No video path provided"}), 400
-    vpath = Path(video).expanduser()
+    vpath = assert_within_allowed_roots(str(video))
     if not vpath.exists() or not vpath.is_file():
         return jsonify({"error": "Video file not found"}), 404
     apath = _annotation_path_for(vpath)

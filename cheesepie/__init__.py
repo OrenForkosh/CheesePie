@@ -1,7 +1,38 @@
 from __future__ import annotations
 
+import logging
+import logging.handlers
 from pathlib import Path
 from flask import Flask, redirect, request, url_for, jsonify
+
+
+def _setup_file_logging(base_dir: Path) -> None:
+    """Attach a rotating file handler to the root logger."""
+    log_dir = base_dir / 'working'
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / 'app.log'
+    root_logger = logging.getLogger()
+    try:
+        resolved_log_file = log_file.resolve()
+    except Exception:
+        resolved_log_file = log_file
+    for existing in root_logger.handlers:
+        if not isinstance(existing, logging.handlers.RotatingFileHandler):
+            continue
+        try:
+            if Path(getattr(existing, 'baseFilename', '')).resolve() == resolved_log_file:
+                return
+        except Exception:
+            continue
+    handler = logging.handlers.RotatingFileHandler(
+        str(log_file), maxBytes=5 * 1024 * 1024, backupCount=3, encoding='utf-8',
+    )
+    handler.setLevel(logging.WARNING)
+    handler.setFormatter(logging.Formatter(
+        '%(asctime)s %(levelname)s [%(name)s] %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+    ))
+    root_logger.addHandler(handler)
 
 
 def create_app() -> Flask:
@@ -11,6 +42,7 @@ def create_app() -> Flask:
     """
     # Ensure Flask looks for templates/static at the project root
     base_dir = Path(__file__).resolve().parent.parent
+    _setup_file_logging(base_dir)
     app = Flask(
         __name__,
         template_folder=str(base_dir / 'templates'),
@@ -34,9 +66,11 @@ def create_app() -> Flask:
     from .importer import bp as importer_bp
     from .tasks import bp as tasks_bp, resume_pending_tasks
     from .calibration import bp as calibration_bp
+    from .applog import bp as applog_bp
     from .pages import bp as pages_bp
     from .filters import register_filters
     from .auth import bp as auth_bp, verify_token, password_is_set, set_auth_cookie
+    from .annotations import bp as annotations_bp
 
     # Context processors
     app_version = get_app_version(base_dir)
@@ -58,13 +92,36 @@ def create_app() -> Flask:
     app.register_blueprint(config_bp, url_prefix='/api/config')
     app.register_blueprint(importer_bp, url_prefix='/api/import')
     app.register_blueprint(calibration_bp, url_prefix='/api/calibration')
+    app.register_blueprint(applog_bp)
     app.register_blueprint(tasks_bp, url_prefix='/api/tasks')
+    app.register_blueprint(annotations_bp, url_prefix='/api')
     app.register_blueprint(pages_bp)
     app.register_blueprint(auth_bp)
 
     # Module-specific initialization (MATLAB removed)
+
+    # Reap orphan subprocesses from a previous server instance
+    try:
+        from .importer import reap_orphan_ffmpeg
+        reap_orphan_ffmpeg()
+    except Exception:
+        pass
+    try:
+        from .track import reap_orphan_track
+        reap_orphan_track()
+    except Exception:
+        pass
+
+    # Resume task-queue jobs (encode, scan, …)
     try:
         resume_pending_tasks()
+    except Exception:
+        pass
+
+    # Resume background tracking jobs
+    try:
+        from .track import resume_track_jobs
+        resume_track_jobs()
     except Exception:
         pass
 

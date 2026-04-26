@@ -3,13 +3,14 @@ from __future__ import annotations
 import json
 import mimetypes
 import subprocess
-import tempfile
 import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 from flask import Blueprint, jsonify, request, Response, send_file
 from werkzeug.utils import secure_filename
+
+from .pathguard import assert_within_allowed_roots, get_app_tmp_root
 
 
 bp = Blueprint('media_api', __name__)
@@ -108,19 +109,14 @@ def probe_media(path: Path) -> Dict[str, Any]:
 
 @bp.route('/api/media_meta')
 def api_media_meta():
-    path = request.args.get('path', '').strip()
-    if not path:
-        return jsonify({"error": "No path provided"}), 400
-    meta = probe_media(Path(path).expanduser())
+    path = assert_within_allowed_roots(request.args.get('path', ''))
+    meta = probe_media(path)
     return jsonify(meta)
 
 
 @bp.route('/media')
 def media():
-    path_str = request.args.get('path', '').strip()
-    if not path_str:
-        return jsonify({"error": "No path provided"}), 400
-    path = Path(path_str).expanduser()
+    path = assert_within_allowed_roots(request.args.get('path', ''))
     if not path.exists() or not path.is_file():
         return jsonify({"error": "File not found"}), 404
     file_size = path.stat().st_size
@@ -147,6 +143,8 @@ def media():
                 return _range_not_satisfiable()
             start = max(0, min(start, file_size - 1))
             end = max(start, min(end, file_size - 1))
+            if file_size == 0 or start >= file_size:
+                return _range_not_satisfiable()
             length = (end - start + 1)
 
             def generate():
@@ -174,6 +172,10 @@ def media():
     return rv
 
 
+_PREVIEW_ALLOWED_MIME_PREFIXES = ('video/', 'image/')
+_PREVIEW_MAX_BYTES = 4 * 1024 * 1024 * 1024  # 4 GiB
+
+
 @bp.route('/api/preview_upload', methods=['POST'])
 def preview_upload():
     if 'file' not in request.files:
@@ -182,16 +184,28 @@ def preview_upload():
     if not upload or not upload.filename:
         return jsonify({'error': 'No file provided'}), 400
     safe_name = secure_filename(upload.filename) or 'upload'
-    tmp_root = Path('/tmp')
-    if not tmp_root.exists() or not tmp_root.is_dir():
-        tmp_root = Path(tempfile.gettempdir())
+    # Restrict to image/video by guessing from the filename extension
+    guessed_mime, _ = mimetypes.guess_type(safe_name)
+    if not guessed_mime or not any(guessed_mime.startswith(p) for p in _PREVIEW_ALLOWED_MIME_PREFIXES):
+        return jsonify({'error': 'Only image and video files are accepted'}), 415
+    # Enforce size cap using Content-Length when available; stream-check otherwise
+    content_length = request.content_length
+    if content_length is not None and content_length > _PREVIEW_MAX_BYTES:
+        return jsonify({'error': 'File exceeds 4 GiB size limit'}), 413
     try:
-        tmp_root.mkdir(parents=True, exist_ok=True)
+        tmp_root = get_app_tmp_root()
         dest = tmp_root / f"cheesepie_preview_{uuid.uuid4().hex}_{safe_name}"
         upload.save(dest)
     except Exception as e:
         return jsonify({'error': f'Failed to save upload: {e}'}), 500
-    return jsonify({'ok': True, 'path': str(dest), 'name': safe_name, 'size': dest.stat().st_size})
+    saved_size = dest.stat().st_size
+    if saved_size > _PREVIEW_MAX_BYTES:
+        try:
+            dest.unlink(missing_ok=True)
+        except Exception:
+            pass
+        return jsonify({'error': 'File exceeds 4 GiB size limit'}), 413
+    return jsonify({'ok': True, 'path': str(dest), 'name': safe_name, 'size': saved_size})
 
 
 __all__ = ['bp', 'probe_media']

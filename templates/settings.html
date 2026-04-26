@@ -1,60 +1,147 @@
 {% extends 'base.html' %}
 {% block content %}
-<section class="panel">
-  <div class="panel-header">
+<section class="panel settings-page">
+  <div class="panel-header settings-page__header">
     <div>
       <h1>Settings</h1>
-      <p class="muted">Customize your CheesePie experience.</p>
+      <p class="muted">Theme, configuration, server actions, and diagnostics.</p>
     </div>
   </div>
 
-  <div class="controls">
-    <div class="control-group">
-      <label for="theme-select">Theme</label>
-      <div class="inline">
-        <select id="theme-select">
-          <option value="dark">Dark</option>
-          <option value="light">Light</option>
-          <option value="ocean">Ocean</option>
-          <option value="forest">Forest</option>
-          <option value="plum">Plum</option>
-          <option value="contrast">High Contrast</option>
-          <option value="mouse">Mouse</option>
-        </select>
-        <button id="apply-theme" class="btn primary">Apply</button>
-      </div>
-    </div>
-    <div class="control-group">
-      <label for="cfg-select">Config file</label>
-      <div class="inline" style="gap:8px; flex-wrap: wrap">
-        <select id="cfg-select" style="flex:1; min-width: 280px"></select>
-        <div style="display:flex; gap:8px">
-          <button id="apply-config" class="btn themed-settings">Apply</button>
-          <button id="reset-config" class="btn">Reset to default</button>
+  <div class="panel-body settings-page__body">
+    <div class="settings-grid">
+      <section class="settings-card settings-card--appearance">
+        <div class="settings-card__head">
+          <div>
+            <div class="settings-card__kicker">Appearance</div>
+            <h2>Theme</h2>
+          </div>
+          <span class="settings-card__badge">Local</span>
         </div>
-      </div>
-      <div class="muted" id="cfg-status" style="margin-top:6px"></div>
-    </div>
-    <div class="control-group">
-      <label>Server</label>
-      <div class="inline" style="gap:8px; flex-wrap: wrap">
-        <button id="restart-app" class="btn themed-settings">Restart server</button>
-        <div class="muted" id="restart-status"></div>
-      </div>
-      <div class="muted" style="margin-top:6px">
-        Requires a process manager (Docker/systemd) to auto-restart after exit.
-      </div>
-    </div>
-    <div class="control-group">
-      <label>Update</label>
-      <div class="inline" style="gap:8px; flex-wrap: wrap">
-        <button id="update-app" class="btn themed-settings">Update from GitHub</button>
-        <div class="muted" id="update-status"></div>
-      </div>
-      <div class="muted" style="margin-top:6px">
-        Runs <code>git pull</code> and restarts the server on success.
-      </div>
+        <p class="settings-card__copy">
+          Applied immediately and remembered in local storage.
+        </p>
+        <div class="control-group">
+          <label for="theme-select">Theme</label>
+          <div class="settings-inline settings-inline--stack-mobile">
+            <select id="theme-select" class="settings-input--grow">
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+              <option value="ocean">Ocean</option>
+              <option value="forest">Forest</option>
+              <option value="plum">Plum</option>
+              <option value="contrast">High Contrast</option>
+              <option value="mouse">Mouse</option>
+            </select>
+            <button id="apply-theme" class="btn primary">Apply</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="settings-card settings-card--config">
+        <div class="settings-card__head">
+          <div>
+            <div class="settings-card__kicker">Runtime</div>
+            <h2>Config File</h2>
+          </div>
+          <span class="settings-card__badge">Server</span>
+        </div>
+        <p class="settings-card__copy">
+          Switch the active runtime config for this deployment.
+        </p>
+        <div class="control-group">
+          <label for="cfg-select">Config file</label>
+          <div class="settings-inline settings-inline--stack-mobile">
+            <select id="cfg-select" class="settings-input--grow"></select>
+            <button id="apply-config" class="btn themed-settings">Apply</button>
+            <button id="reset-config" class="btn">Default</button>
+          </div>
+          <div class="muted settings-status" id="cfg-status"></div>
+        </div>
+      </section>
+
+      <section class="settings-card settings-card--server">
+        <div class="settings-card__head">
+          <div>
+            <div class="settings-card__kicker">Operations</div>
+            <h2>Restart</h2>
+          </div>
+          <span class="settings-card__badge">Managed process</span>
+        </div>
+        <p class="settings-card__copy">
+          Request a process restart after config or environment changes.
+        </p>
+        <div class="control-group">
+          <label for="restart-app">Server action</label>
+          <div class="settings-inline settings-inline--stack-mobile">
+            <button id="restart-app" class="btn themed-settings">Restart server</button>
+          </div>
+          <div class="muted settings-status" id="restart-status"></div>
+        </div>
+      </section>
+
+      <section class="settings-card settings-card--update">
+        <div class="settings-card__head">
+          <div>
+            <div class="settings-card__kicker">Operations</div>
+            <h2>Update</h2>
+          </div>
+          <span class="settings-card__badge">Git pull</span>
+        </div>
+        <p class="settings-card__copy">
+          Pull latest code and restart on success.
+        </p>
+        <div class="control-group">
+          <label for="update-app">Update action</label>
+          <div class="settings-inline settings-inline--stack-mobile">
+            <button id="update-app" class="btn themed-settings">Update from GitHub</button>
+          </div>
+          <div class="muted settings-status" id="update-status"></div>
+        </div>
+      </section>
+
+      <section class="settings-card settings-card--log">
+        <div class="settings-card__head">
+          <div>
+            <div class="settings-card__kicker">Diagnostics</div>
+            <h2>App Log</h2>
+          </div>
+          <span class="settings-card__badge">Warnings + errors</span>
+        </div>
+        <p class="settings-card__copy">
+          Inspect recent warnings and errors from the rotating app log.
+        </p>
+        <div class="control-group">
+          <label for="view-log-btn">Log viewer</label>
+          <div class="settings-inline settings-inline--stack-mobile">
+            <button id="view-log-btn" class="btn themed-settings">Show log</button>
+          </div>
+          <div class="muted settings-status" id="log-btn-status">Read-only until you explicitly clear the file.</div>
+        </div>
+      </section>
     </div>
   </div>
 </section>
+
+<div id="applog-overlay" class="overlay" hidden>
+  <div class="overlay-panel settings-log-modal">
+    <div class="overlay-header settings-log-modal__header">
+      <span class="settings-log-modal__title">App Log</span>
+      <div class="settings-log-modal__controls">
+        <select id="applog-level">
+          <option value="">All levels</option>
+          <option value="warning">Warning+</option>
+          <option value="error">Error only</option>
+        </select>
+        <button class="btn mini" id="applog-refresh-btn">Refresh</button>
+        <button class="btn mini settings-log-modal__clear" id="applog-clear-btn">Clear log</button>
+        <button class="btn mini" id="applog-close-btn">Close</button>
+      </div>
+    </div>
+    <div class="settings-log-modal__body">
+      <pre id="applog-pre" class="settings-log-modal__pre">Loading…</pre>
+    </div>
+    <div id="applog-status" class="settings-log-modal__status"></div>
+  </div>
+</div>
 {% endblock %}

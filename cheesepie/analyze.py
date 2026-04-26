@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 from flask import Blueprint, jsonify, request
 
+from .pathguard import assert_within_allowed_roots
+
 bp = Blueprint('analyze_api', __name__)
 
 
@@ -243,8 +245,12 @@ def _load_mat_tracks_hdf5(mat_path: Path) -> Optional[TrackData]:
 
             candidates: Dict[str, Tuple[np.ndarray, np.ndarray]] = {}
 
+            _MAX_VISIT_DEPTH = 8
+
             def visit(name, obj):
                 try:
+                    if name.count('/') >= _MAX_VISIT_DEPTH:
+                        return
                     if not isinstance(obj, h5py.Group):
                         return
                     dx = reader.read_array(f"{name}/x") or reader.read_array(f"{name}/X")
@@ -419,9 +425,7 @@ def _slice_tracks(x: np.ndarray, y: np.ndarray, start: int, count: int) -> Tuple
 
 @bp.route('/api/analyze/info')
 def api_analyze_info():
-    video = Path((request.args.get('video') or '').strip())
-    if not video:
-        return jsonify({'error': 'Missing video'}), 400
+    video = assert_within_allowed_roots((request.args.get('video') or '').strip())
     mat = _track_path_for_video(video)
     if not mat.exists():
         return jsonify({
@@ -451,9 +455,7 @@ def api_analyze_info():
 
 @bp.route('/api/analyze/positions')
 def api_analyze_positions():
-    video = Path((request.args.get('video') or '').strip())
-    if not video:
-        return jsonify({'error': 'Missing video'}), 400
+    video = assert_within_allowed_roots((request.args.get('video') or '').strip())
     try:
         start = int(request.args.get('start') or '0')
         count = int(request.args.get('count') or '240')

@@ -279,7 +279,7 @@
 .panel.panel-browser {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - var(--header-height, 72px) - var(--footer-height, 52px) - 64px);
+  height: calc(100vh - var(--header-height, 72px) - 64px);
   overflow: hidden;
 }
 
@@ -515,17 +515,95 @@
 
 .panel-browser .browser-nav-row {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: var(--browser-space-sm);
+  --browser-nav-h: 34px;
 }
 
 .panel-browser .breadcrumb-bar {
   flex: 1 1 auto;
   min-width: 0;
+  height: var(--browser-nav-h);
+  padding-top: 0;
+  padding-bottom: 0;
+  box-sizing: border-box;
 }
 
-.panel-browser .browser-nav-row .search-wrap {
-  flex: 0 0 200px;
+.panel-browser .browser-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--browser-space-xs);
+  flex-shrink: 0;
+}
+
+.panel-browser .browser-toolbar .search-wrap {
+  flex: 0 0 180px;
+}
+
+.panel-browser .browser-toolbar .search-wrap input {
+  height: var(--browser-nav-h);
+  padding-top: 0;
+  padding-bottom: 0;
+  box-sizing: border-box;
+}
+
+.browser-sort-seg {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overflow: hidden;
+  flex-shrink: 0;
+  height: var(--browser-nav-h, 34px);
+  box-sizing: border-box;
+}
+
+.sort-seg {
+  height: 100%;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border: none;
+  border-right: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+}
+
+.sort-seg:last-child {
+  border-right: none;
+}
+
+.sort-seg:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
+.sort-seg.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.sort-seg.active:hover {
+  filter: brightness(1.1);
+}
+
+.sort-dir {
+  font-size: 11px;
+  opacity: 0.85;
+  line-height: 1;
+}
+
+.browser-item-count {
+  font-size: 11px;
+  padding: 0 var(--browser-space-lg) 6px;
+  min-height: 16px;
 }
 
 .panel-browser .file-item {

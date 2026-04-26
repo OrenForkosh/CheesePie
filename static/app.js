@@ -82,6 +82,7 @@
     "/annotator": ["annotator.css"],
     "/importer": ["importer.css"],
     "/calibration": ["calibration.css"],
+    "/settings": ["settings.css"],
   };
   const QUERY_SENSITIVE = new Set(["/preproc", "/annotator", "/preview"]);
   const MODAL_PAGES = new Set(["/preproc", "/annotator", "/preview"]);
@@ -370,16 +371,23 @@
     if (!modal || modal.hidden) return;
     modal.hidden = true;
     document.body.classList.remove("modal-open");
+    const box = modal.querySelector(".module-modal-box");
+    if (box) box.classList.remove("module-modal-box--scrollable");
+    // Restore body scroll position after modal that prevented scrolling
+    document.documentElement.style.overflow = "";
   }
 
   async function openModuleModal(pathname, search, full, opts) {
     const modal = document.getElementById("module-modal");
     const content = document.getElementById("module-modal-content");
     if (!modal || !content) { window.location.href = full; return; }
+    const box = modal.querySelector(".module-modal-box");
+    const isScrollable = pathname === "/annotator";
+    if (box) box.classList.toggle("module-modal-box--scrollable", isScrollable);
     ensureCss(pathname);
     content.innerHTML = '<div class="placeholder muted" style="padding:48px;text-align:center">Loading…</div>';
     modal.hidden = false;
-    document.body.classList.add("modal-open");
+    if (!isScrollable) document.body.classList.add("modal-open");
     try {
       const partialUrl = `/partials${pathname}${search || ""}`;
       const resp = await fetch(partialUrl, { headers: { "X-Requested-With": "cheesepie" } });
@@ -518,9 +526,7 @@
   function updateLayoutVars() {
     try {
       const header = document.querySelector(".app-header");
-      const footer = document.querySelector(".app-footer");
       if (header) document.documentElement.style.setProperty("--header-height", `${header.offsetHeight}px`);
-      if (footer) document.documentElement.style.setProperty("--footer-height", `${footer.offsetHeight}px`);
     } catch { }
   }
   updateLayoutVars();
@@ -550,6 +556,8 @@
   const LS_KEY = "cheesepie.lastDir";
   let browserFacilityBound = false;
   let desiredSelectPath = null;
+  let browserSortBy = 'name';
+  let browserSortOrder = 'asc';
 
   function humanSize(bytes) {
     const thresh = 1024;
@@ -1089,12 +1097,10 @@
     const body = document.getElementById("track-body");
     if (!body) return;
     body.innerHTML = files
-      .map(
-        (f) =>
-          `<tr data-file="${f}"><td class="browser-track-file">${f}</td><td>PENDING</td><td>—</td><td>0/0</td><td><a href="/media?path=${encodeURIComponent(
-            f + ".log"
-          )}" target="_blank" rel="noopener">Show</a></td></tr>`
-      )
+      .map((f) => {
+        const fname = f.split(/[/\\]/).pop() || f;
+        return `<tr data-file="${f}"><td class="browser-track-file" title="${f}">${fname}</td><td>PENDING</td><td>—</td><td>0/0</td><td><a href="/media?path=${encodeURIComponent(f + ".log")}" target="_blank" rel="noopener">Show</a></td></tr>`;
+      })
       .join("");
   }
 
@@ -1434,7 +1440,6 @@
   function renderBreadcrumb(dir) {
     const bar = document.getElementById("breadcrumb-bar");
     if (!bar) return;
-    updateBrowserNavControls();
     if (!dir) {
       bar.innerHTML = '<span class="bc-empty muted">Select a facility to browse files.</span>';
       return;
@@ -1473,23 +1478,36 @@
     if (!currentDir) {
       listEl.innerHTML =
         '<div class="placeholder muted">Select a facility to load files.</div>';
+      updateBrowserCount(null);
       return;
     }
     listEl.innerHTML = '<div class="placeholder muted">Loading…</div>';
     const fac = String(currentFacility || "");
     fetch(
-      `/api/list?dir=${encodeURIComponent(currentDir)}&q=${encodeURIComponent(
-        q
-      )}&facility=${encodeURIComponent(fac)}`
+      `/api/list?dir=${encodeURIComponent(currentDir)}&q=${encodeURIComponent(q)}&facility=${encodeURIComponent(fac)}&sort=${encodeURIComponent(browserSortBy)}&order=${encodeURIComponent(browserSortOrder)}`
     )
       .then((r) => r.json())
       .then((data) => {
         renderList(data.items);
+        updateBrowserCount(data.items);
       })
       .catch(() => {
         listEl.innerHTML =
           '<div class="placeholder muted">Failed to load folder.</div>';
+        updateBrowserCount(null);
       });
+  }
+
+  function updateBrowserCount(items) {
+    const el = document.getElementById('browser-item-count');
+    if (!el) return;
+    if (!items) { el.textContent = ''; return; }
+    const dirs = items.filter(x => x.is_dir).length;
+    const files = items.length - dirs;
+    const parts = [];
+    if (dirs) parts.push(`${dirs} folder${dirs === 1 ? '' : 's'}`);
+    if (files) parts.push(`${files} file${files === 1 ? '' : 's'}`);
+    el.textContent = parts.length ? parts.join(', ') : 'Empty folder';
   }
 
   function debounce(fn, ms) {
@@ -1548,10 +1566,6 @@
     return d;
   }
 
-  function updateBrowserNavControls() {
-    // no-op: up button removed
-  }
-
   function navigateToDir(dir) {
     currentDir = clampDirToBase(dir);
     if (currentDir) {
@@ -1583,6 +1597,79 @@
         loadList();
       });
       clearBtn.dataset.bound = "1";
+    }
+
+    // Sort segmented control
+    const sortSeg = document.getElementById('browser-sort-seg');
+    if (sortSeg && !sortSeg.dataset.bound) {
+      sortSeg.dataset.bound = '1';
+      function updateSortSeg() {
+        sortSeg.querySelectorAll('.sort-seg').forEach(btn => {
+          const isActive = btn.dataset.sort === browserSortBy;
+          btn.classList.toggle('active', isActive);
+          const dir = btn.querySelector('.sort-dir');
+          if (isActive) {
+            if (!dir) {
+              const s = document.createElement('span');
+              s.className = 'sort-dir';
+              btn.appendChild(s);
+            }
+            btn.querySelector('.sort-dir').textContent = browserSortOrder === 'asc' ? '↑' : '↓';
+            btn.title = browserSortOrder === 'asc' ? 'Sorted A→Z — click to reverse' : 'Sorted Z→A — click to reverse';
+          } else {
+            if (dir) dir.remove();
+            btn.title = `Sort by ${btn.dataset.sort}`;
+          }
+        });
+      }
+      sortSeg.querySelectorAll('.sort-seg').forEach(btn => {
+        btn.addEventListener('click', () => {
+          if (btn.dataset.sort === browserSortBy) {
+            browserSortOrder = browserSortOrder === 'asc' ? 'desc' : 'asc';
+          } else {
+            browserSortBy = btn.dataset.sort;
+            browserSortOrder = 'asc';
+          }
+          updateSortSeg();
+          loadList();
+        });
+      });
+      updateSortSeg();
+    }
+
+    // Keyboard navigation in file list
+    if (!listEl.dataset.keybound) {
+      listEl.dataset.keybound = '1';
+      document.addEventListener('keydown', (ev) => {
+        if (!listEl || document.activeElement === searchInput) return;
+        if (ev.target && ev.target.tagName === 'INPUT') return;
+        const rows = Array.from(listEl.children).filter(r => r.classList.contains('file-item'));
+        if (!rows.length) return;
+        if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+          ev.preventDefault();
+          const cur = currentSelection;
+          const idx = cur ? rows.indexOf(cur) : -1;
+          const next = ev.key === 'ArrowDown'
+            ? rows[Math.min(idx + 1, rows.length - 1)]
+            : rows[Math.max(idx - 1, 0)];
+          if (next) {
+            selectRow(next, false);
+            next.scrollIntoView({ block: 'nearest' });
+            updateSelectionDetails();
+          }
+        } else if (ev.key === 'Enter') {
+          if (currentSelection) {
+            if (currentSelection.dataset.isdir === '1') {
+              navigateToDir(currentSelection.dataset.path);
+            }
+          }
+        } else if (ev.key === 'Backspace' && !ev.metaKey && !ev.ctrlKey) {
+          const parent = parentDir(currentDir);
+          if (parent && parent !== currentDir && isUnderBase(parent, facilityBaseDir)) {
+            navigateToDir(parent);
+          }
+        }
+      });
     }
 
     toggleClear();
@@ -1948,11 +2035,99 @@
     btn.dataset.bound = "1";
   }
 
+  function initAppLogViewer() {
+    const openBtn = document.getElementById("view-log-btn");
+    const overlay = document.getElementById("applog-overlay");
+    if (!openBtn || !overlay) return;
+    if (openBtn.dataset.bound) return;
+
+    const pre = document.getElementById("applog-pre");
+    const statusEl = document.getElementById("applog-status");
+    const levelSel = document.getElementById("applog-level");
+    const refreshBtn = document.getElementById("applog-refresh-btn");
+    const clearBtn = document.getElementById("applog-clear-btn");
+    const closeBtn = document.getElementById("applog-close-btn");
+
+    function colorLine(line) {
+      if (line.includes(" ERROR ") || line.includes(" CRITICAL ")) {
+        return `<span style="color:var(--danger,#e05)">${line}</span>`;
+      }
+      if (line.includes(" WARNING ")) {
+        return `<span style="color:#f6c344">${line}</span>`;
+      }
+      return line;
+    }
+
+    function escHtml(s) {
+      return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    async function loadLog() {
+      if (pre) pre.textContent = "Loading…";
+      if (statusEl) statusEl.textContent = "";
+      const level = levelSel ? levelSel.value : "";
+      try {
+        const r = await fetch(`/api/logs?lines=2000${level ? "&level=" + level : ""}`);
+        const d = await r.json();
+        if (!r.ok || d.error) {
+          if (pre) pre.textContent = "Error: " + (d.error || r.status);
+          return;
+        }
+        if (!d.lines || d.lines.length === 0) {
+          if (pre) pre.innerHTML = '<span style="color:var(--muted)">Log is empty.</span>';
+          if (statusEl) statusEl.textContent = "No entries.";
+          return;
+        }
+        if (pre) {
+          pre.innerHTML = d.lines.map((l) => colorLine(escHtml(l))).join("\n");
+          pre.scrollTop = pre.scrollHeight;
+        }
+        if (statusEl) {
+          const shown = d.lines.length;
+          const total = d.total || shown;
+          statusEl.textContent = shown < total
+            ? `Showing last ${shown} of ${total} lines — ${d.path}`
+            : `${total} lines — ${d.path}`;
+        }
+      } catch (e) {
+        if (pre) pre.textContent = "Error: " + e;
+      }
+    }
+
+    openBtn.addEventListener("click", () => {
+      overlay.hidden = false;
+      loadLog();
+    });
+
+    closeBtn && closeBtn.addEventListener("click", () => { overlay.hidden = true; });
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.hidden = true; });
+    refreshBtn && refreshBtn.addEventListener("click", loadLog);
+    levelSel && levelSel.addEventListener("change", loadLog);
+
+    clearBtn && clearBtn.addEventListener("click", async () => {
+      if (!confirm("Clear the app log file?")) return;
+      try {
+        const r = await fetch("/api/logs", { method: "DELETE" });
+        const d = await r.json();
+        if (!r.ok || d.error) {
+          if (statusEl) statusEl.textContent = "Error: " + (d.error || r.status);
+          return;
+        }
+        loadLog();
+      } catch (e) {
+        if (statusEl) statusEl.textContent = "Error: " + e;
+      }
+    });
+
+    openBtn.dataset.bound = "1";
+  }
+
   function initSettingsPage() {
     initThemeControls();
     initConfigSwitcher();
     initRestartControl();
     initUpdateControl();
+    initAppLogViewer();
   }
 
   function initModuleFileChip() {
@@ -2131,7 +2306,7 @@
   window.cheesepieRegisterPageRefresher?.("settings", initSettingsPage);
   window.cheesepieRegisterPageRefresher?.("preproc", function () { initModuleFileChip(); initPreprocVideoControls(); });
   window.cheesepieRegisterPageRefresher?.("annotator", initModuleFileChip);
-  window.cheesepieRegisterPageRefresher?.("preview", initModuleFileChip);
+  window.cheesepieRegisterPageRefresher?.("preview", function () { initModuleFileChip(); if (typeof initPreview === "function") initPreview(); });
   document.addEventListener("app:page-changed", (e) => {
     const path = e && e.detail && e.detail.path;
     if (path === "/settings") initSettingsPage();
@@ -2194,93 +2369,60 @@
   } catch (e) { }
 })();
 
-// Footer task progress summary (all pages)
-(function taskFooter() {
+// Tasks activity ring in header nav (all pages)
+(function tasksNavIndicator() {
   try {
-    const summaryEl = document.getElementById("tasks-footer-summary");
-    const barEl = document.getElementById("tasks-footer-bar");
-    const detailEl = document.getElementById("tasks-footer-detail");
-    const spinnerEl = document.getElementById("tasks-footer-spinner");
-    if (!summaryEl || !barEl || !detailEl) return;
+    const ringEl = document.getElementById("tasks-nav-ring");
+    const badgeEl = document.getElementById("tasks-nav-badge");
+    if (!ringEl) return;
     const doneStates = ["DONE", "FAILED", "CANCELLED", "ERROR"];
     let timer = null;
+    let _delay = 2000;
+    const _MIN = 2000;
+    const _MAX = 8000;
 
-    function taskTitle(t) {
-      return t.title || t.kind || "Task";
-    }
-
-    function fmtProgress(t) {
-      const total = Number(t.total || 0);
-      const prog = Number(t.progress || 0);
-      if (total > 0) return ` (${prog}/${total})`;
-      return "";
-    }
-
-    function updateFooter(tasks) {
+    function updateIndicator(tasks) {
       const active = (tasks || []).filter(
         (t) => !doneStates.includes(String(t.status || "").toUpperCase())
       );
-      const running = active.filter(
-        (t) => String(t.status || "").toUpperCase() === "RUNNING"
-      );
-      if (!active.length) {
-        summaryEl.textContent = "No active tasks";
-        detailEl.textContent = "";
-        barEl.classList.remove("indeterminate");
-        barEl.style.width = "0%";
-        if (spinnerEl) spinnerEl.classList.remove("active");
-        return;
-      }
-      if (running.length) {
-        summaryEl.textContent =
-          `${active.length} active • ${running.length} running`;
-        if (spinnerEl) spinnerEl.classList.add("active");
+      const hasActive = active.length > 0;
+      if (hasActive) {
+        ringEl.classList.add("active");
+        if (badgeEl) {
+          badgeEl.textContent = active.length > 9 ? "9+" : String(active.length);
+          badgeEl.classList.add("visible");
+        }
       } else {
-        summaryEl.textContent = `${active.length} queued`;
-        if (spinnerEl) spinnerEl.classList.remove("active");
+        ringEl.classList.remove("active");
+        if (badgeEl) {
+          badgeEl.textContent = "";
+          badgeEl.classList.remove("visible");
+        }
       }
-      const focus = running[0] || active[0];
-      detailEl.textContent = `Now: ${taskTitle(focus)}${fmtProgress(focus)}`;
-      const totalTotal = active.reduce((acc, t) => {
-        const total = Number(t.total || 0);
-        return total > 0 ? acc + total : acc;
-      }, 0);
-      const totalProg = active.reduce((acc, t) => {
-        const total = Number(t.total || 0);
-        const prog = Number(t.progress || 0);
-        return total > 0 ? acc + prog : acc;
-      }, 0);
-      if (totalTotal > 0) {
-        const pct = Math.max(0, Math.min(100, Math.round((100 * totalProg) / totalTotal)));
-        barEl.classList.remove("indeterminate");
-        barEl.style.width = `${pct}%`;
-      } else {
-        barEl.classList.add("indeterminate");
-        barEl.style.width = "";
-      }
+      return hasActive;
     }
 
-    async function loadTasks() {
+    function _schedule(hasActive) {
+      if (timer) clearTimeout(timer);
+      _delay = hasActive ? _MIN : Math.min(_delay + 2000, _MAX);
+      timer = setTimeout(_poll, _delay);
+    }
+
+    async function _poll() {
+      let hasActive = false;
       try {
         const res = await fetch("/api/tasks?active=1&limit=0");
         const data = await res.json();
-        if (!res.ok || !data || data.error) {
-          throw new Error((data && data.error) || res.statusText);
+        if (res.ok && data && !data.error) {
+          hasActive = updateIndicator(data.tasks || []);
         }
-        updateFooter(data.tasks || []);
-      } catch {
-        summaryEl.textContent = "Tasks unavailable";
-        detailEl.textContent = "";
-        barEl.classList.remove("indeterminate");
-        barEl.style.width = "0%";
-        if (spinnerEl) spinnerEl.classList.remove("active");
-      }
+      } catch { /* ignore */ }
+      _schedule(hasActive);
     }
 
-    loadTasks();
-    timer = setInterval(loadTasks, 4000);
+    _poll();
     window.addEventListener("beforeunload", () => {
-      if (timer) clearInterval(timer);
+      if (timer) clearTimeout(timer);
     });
   } catch { }
 })();

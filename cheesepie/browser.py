@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import mimetypes
 import re
 from pathlib import Path
@@ -12,9 +13,17 @@ from .config import cfg_browser_visible_extensions, cfg_browser_required_filenam
 
 
 bp = Blueprint('browser_api', __name__)
+_log = logging.getLogger(__name__)
+
+_SORT_KEYS = {'name', 'date', 'size'}
 
 
-def list_dir_contents(directory: Path, query: str | None = None) -> List[Dict[str, Any]]:
+def list_dir_contents(
+    directory: Path,
+    query: str | None = None,
+    sort_by: str = 'name',
+    sort_order: str = 'asc',
+) -> List[Dict[str, Any]]:
     items: List[Dict[str, Any]] = []
     if not directory.exists() or not directory.is_dir():
         return items
@@ -23,8 +32,9 @@ def list_dir_contents(directory: Path, query: str | None = None) -> List[Dict[st
     q_lower = q.lower()
     allowed_exts = set(cfg_browser_visible_extensions())
     name_re = cfg_browser_required_filename_regex()
+    descending = sort_order.lower() == 'desc'
 
-    for entry in sorted(directory.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
+    for entry in directory.iterdir():
         if entry.name.startswith('.'):
             continue
         name_lower = entry.name.lower()
@@ -35,7 +45,11 @@ def list_dir_contents(directory: Path, query: str | None = None) -> List[Dict[st
                 continue
             if name_re is not None and not name_re.match(entry.name):
                 continue
-        stat = entry.stat()
+        try:
+            stat = entry.stat()
+        except OSError as e:
+            _log.warning("browser: skipping %s — stat failed: %s", entry, e)
+            continue
         item: Dict[str, Any] = {
             "name": entry.name,
             "path": str(entry.resolve()),
@@ -51,7 +65,22 @@ def list_dir_contents(directory: Path, query: str | None = None) -> List[Dict[st
             )
             item["has_annotations"] = entry.with_suffix(".json").exists()
         items.append(item)
-    return items
+
+    # Sort: directories always first, then apply sort_by within each group
+    sort_by = sort_by if sort_by in _SORT_KEYS else 'name'
+    dirs = [x for x in items if x['is_dir']]
+    files = [x for x in items if not x['is_dir']]
+
+    if sort_by == 'date':
+        sort_key = lambda x: x['modified']
+    elif sort_by == 'size':
+        sort_key = lambda x: x['size']
+    else:
+        sort_key = lambda x: x['name'].lower()
+
+    dirs.sort(key=sort_key, reverse=descending)
+    files.sort(key=sort_key, reverse=descending)
+    return dirs + files
 
 
 def file_info(path: Path) -> Dict[str, Any]:
@@ -82,6 +111,8 @@ def api_list():
         return jsonify({"items": [], "error": "Facility output_dir not available"}), 400
     directory = request.args.get('dir', '').strip()
     query = request.args.get('q', '').strip()
+    sort_by = request.args.get('sort', 'name').strip().lower()
+    sort_order = request.args.get('order', 'asc').strip().lower()
     if not directory:
         return jsonify({"items": [], "error": "No directory provided"}), 400
     path = Path(directory).expanduser().resolve()
@@ -89,8 +120,8 @@ def api_list():
         path.relative_to(base)
     except Exception:
         return jsonify({"items": [], "error": "Path outside facility scope"}), 403
-    items = list_dir_contents(path, query)
-    return jsonify({"items": items})
+    items = list_dir_contents(path, query, sort_by=sort_by, sort_order=sort_order)
+    return jsonify({"items": items, "sort": sort_by, "order": sort_order})
 
 
 @bp.route('/fileinfo')

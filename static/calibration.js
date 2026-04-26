@@ -1,26 +1,45 @@
-(() => {
+function initCalibration() {
   // ── Helpers ──────────────────────────────────────────────────────────────
   const byId  = (id) => document.getElementById(id);
   const panel = byId('calibration-panel');
-  if (!panel) return;
+  if (!panel || panel.dataset.calBound) return;
+  panel.dataset.calBound = '1';
 
   const state = {
     ip:          null,   // selected camera IP
     profile:     null,   // selected profile token
     mode:        'snap', // 'snap' | 'auto' | 'live'
     autoTimer:   null,
-    liveRafId:   null,   // rAF handle for live filter rendering
-    maskImg:     null,   // HTMLImageElement for mask PNG
+    liveRafId:        null,  // rAF handle for live filter rendering
+    liveRefreshTimer: null, // interval handle for live histogram/mark refresh
+    lastMark:         null, // last pixel/area selection for periodic re-sampling
+    maskImg:          null, // HTMLImageElement for mask PNG
     maskLoaded:  false,
     frameLoaded: false,  // has at least one frame been displayed
     ptzActive:   null,   // currently held PTZ action
     filterEq:    false,  // histogram equalization (display only)
     filterInv:   false,  // invert (display only)
+    subnet:      '10.0.0',
   };
 
   // DOM refs
   const scanBtn        = byId('cal-scan-btn');
+  const scanSpinEl     = byId('cal-scan-spin');
   const scanStatus     = byId('cal-scan-status');
+  const cfgBtn         = byId('cal-cfg-btn');
+  const cfgOverlay     = byId('cal-cfg-overlay');
+  const cfgClose       = byId('cal-cfg-close');
+  const cfgCancel      = byId('cal-cfg-cancel');
+  const cfgSave        = byId('cal-cfg-save');
+  const cfgStatus      = byId('cal-cfg-status');
+  const cfgSubnet      = byId('cal-cfg-subnet');
+  const cfgPort        = byId('cal-cfg-port');
+  const cfgUser        = byId('cal-cfg-user');
+  const modeBadge      = byId('cal-mode-badge');
+  const divPreview     = byId('cal-div-preview');
+  const divDisplay     = byId('cal-div-display');
+  const divSave        = byId('cal-div-save');
+  const divPtz         = byId('cal-div-ptz');
   const cameraSelect   = byId('cal-camera-select');
   const profileGroup   = byId('cal-profile-group');
   const profileSelect  = byId('cal-profile-select');
@@ -34,6 +53,10 @@
   const ptzGroup       = byId('cal-ptz-group');
   const ptzStatus      = byId('cal-ptz-status');
   const autofocusBtn   = byId('cal-autofocus-btn');
+  const saveGroup      = byId('cal-save-group');
+  const calTypeSelect  = byId('cal-cal-type');
+  const saveBtn        = byId('cal-save-btn');
+  const saveStatus     = byId('cal-save-status');
   const grabBtn        = byId('cal-grab-btn');
   const autoBtn        = byId('cal-auto-btn');
   const liveBtn        = byId('cal-live-btn');
@@ -64,39 +87,104 @@
   }
   loadMask();
 
+  // ── Connection-settings dialog ────────────────────────────────────────────
+  function openCfgDialog() {
+    cfgStatus.textContent = '';
+    cfgSubnet.value = state.subnet;
+    // Load fresh values from server
+    fetch('/api/calibration/config')
+      .then(r => r.json())
+      .then(d => {
+        cfgSubnet.value = d.subnet      || state.subnet;
+        cfgPort.value   = d.onvif_port  ?? 80;
+        cfgUser.value   = d.onvif_user  || '';
+      })
+      .catch(() => {/* use state.subnet already set */});
+    cfgOverlay.removeAttribute('hidden');
+    cfgSubnet.focus();
+  }
+
+  function closeCfgDialog() { cfgOverlay.setAttribute('hidden', ''); }
+
+  cfgBtn.addEventListener('click', openCfgDialog);
+  cfgClose.addEventListener('click', closeCfgDialog);
+  cfgCancel.addEventListener('click', closeCfgDialog);
+  cfgOverlay.addEventListener('click', e => { if (e.target === cfgOverlay) closeCfgDialog(); });
+
+  cfgSave.addEventListener('click', () => {
+    const subnet = cfgSubnet.value.trim().replace(/\.+$/, '');
+    if (!subnet) { cfgStatus.textContent = 'Subnet cannot be empty.'; return; }
+
+    cfgSave.disabled      = true;
+    cfgStatus.textContent = 'Saving…';
+
+    fetch('/api/calibration/config', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({
+        subnet,
+        onvif_port: parseInt(cfgPort.value, 10) || 80,
+        onvif_user: cfgUser.value.trim(),
+      }),
+    })
+      .then(r => r.json())
+      .then(d => {
+        cfgSave.disabled = false;
+        if (d.error) { cfgStatus.textContent = `Error: ${d.error}`; return; }
+        state.subnet = subnet;
+        closeCfgDialog();
+      })
+      .catch(err => {
+        cfgSave.disabled      = false;
+        cfgStatus.textContent = `Error: ${err.message}`;
+      });
+  });
+
+  // Load initial subnet from server config
+  fetch('/api/calibration/config')
+    .then(r => r.json())
+    .then(d => { if (d.subnet) state.subnet = d.subnet; })
+    .catch(() => {});
+
   // ── Camera discovery ──────────────────────────────────────────────────────
-  // Map ip → camera object, populated after scan
+  // Map ip → camera object, populated after scan (demo always present)
   const cameraMap = {};
 
-  scanBtn.addEventListener('click', () => {
-    scanStatus.textContent   = 'Scanning 10.0.0.x … this may take a few seconds.';
-    scanBtn.disabled         = true;
-    cameraSelect.disabled    = true;
-    cameraSelect.innerHTML   = '<option value="">Scanning…</option>';
+  // Always add demo camera as the first option (no scan needed)
+  const _demoCam = { ip: '__demo__', friendly_name: 'Demo', manufacturer: '', model: 'test pattern', onvif: false };
+  cameraMap['__demo__'] = _demoCam;
+  (() => {
+    cameraSelect.appendChild(_cameraOption(_demoCam));
+    cameraSelect.disabled = false;
+  })();
 
-    fetch('/api/calibration/discover')
+  scanBtn.addEventListener('click', () => {
+    const subnet = state.subnet;
+    scanStatus.textContent = `Scanning ${subnet}.x…`;
+    scanBtn.disabled       = true;
+    scanSpinEl.classList.add('spinning');
+    cameraSelect.disabled  = true;
+    cameraSelect.innerHTML = '<option value="">Scanning…</option>';
+
+    fetch(`/api/calibration/discover?subnet=${encodeURIComponent(subnet)}`)
       .then(r => r.json())
       .then(data => {
         scanBtn.disabled = false;
+        scanSpinEl.classList.remove('spinning');
         const cams = data.cameras || [];
         cameraSelect.innerHTML = '<option value="">— select a camera —</option>';
+        cameraSelect.appendChild(_cameraOption(_demoCam));
         if (!cams.length) {
-          scanStatus.textContent = 'No cameras found on 10.0.0.x.';
-          cameraSelect.disabled  = true;
+          scanStatus.textContent = `No cameras found on ${subnet}.x.`;
+          cameraSelect.disabled  = false;
           return;
         }
-        scanStatus.textContent = `Found ${cams.length} device${cams.length > 1 ? 's' : ''}.`;
+        scanStatus.textContent = `Found ${cams.length} camera${cams.length > 1 ? 's' : ''}.`;
         cams.forEach(cam => {
           cameraMap[cam.ip] = cam;
-          const opt = document.createElement('option');
-          opt.value       = cam.ip;
-          opt.textContent = cam.name !== cam.ip
-            ? `${cam.name}  (${cam.ip})`
-            : cam.ip;
-          cameraSelect.appendChild(opt);
+          cameraSelect.appendChild(_cameraOption(cam));
         });
         cameraSelect.disabled = false;
-        // Auto-select if only one camera found
         if (cams.length === 1) {
           cameraSelect.value = cams[0].ip;
           cameraSelect.dispatchEvent(new Event('change'));
@@ -104,6 +192,7 @@
       })
       .catch(err => {
         scanBtn.disabled       = false;
+        scanSpinEl.classList.remove('spinning');
         cameraSelect.disabled  = false;
         scanStatus.textContent = `Error: ${err.message}`;
       });
@@ -124,6 +213,8 @@
     filterGroup.style.display   = '';
     maskGroup.style.display     = '';
     ptzGroup.style.display      = '';
+    divPreview.style.display    = '';
+    divPtz.style.display        = '';
     profileSelect.innerHTML     = '<option value="">Loading…</option>';
     profileSelect.disabled      = true;
 
@@ -165,8 +256,8 @@
       previewStatus.textContent = 'Select a camera and profile first.';
       return;
     }
-    previewStatus.textContent = 'Fetching frame…';
-    setMode('snap');
+    // Only switch to snap-mode when not in a persistent mode (auto/live handles its own state)
+    if (state.mode !== 'auto') setMode('snap');
     frameImg.style.display  = '';
     streamImg.style.display = 'none';
     frameImg.onload  = () => { onFrameReady(); previewStatus.textContent = ''; };
@@ -178,8 +269,6 @@
     if (!state.ip || !state.profile) return;
     stopLive();
     setMode('auto');
-    autoBtn.classList.add('active');
-    previewStatus.textContent = 'Auto-refresh on (1 fps)…';
     grabFrame();
     state.autoTimer = setInterval(grabFrame, 1000);
   }
@@ -187,7 +276,6 @@
   function stopAuto() {
     if (state.autoTimer) { clearInterval(state.autoTimer); state.autoTimer = null; }
     if (state.mode === 'auto') {
-      autoBtn.classList.remove('active');
       previewStatus.textContent = '';
       setMode('snap');
     }
@@ -197,8 +285,7 @@
     if (!state.ip || !state.profile) return;
     stopAuto();
     setMode('live');
-    liveBtn.classList.add('active');
-    previewStatus.textContent = 'Connecting live stream…';
+    previewStatus.textContent = 'Connecting…';
 
     const url = `/api/calibration/stream?ip=${encodeURIComponent(state.ip)}`
               + `&profile=${encodeURIComponent(state.profile)}`;
@@ -206,8 +293,15 @@
     streamImg.style.display = '';
     streamImg.onload = () => {
       onFrameReady();
-      previewStatus.textContent = 'Live';
+      previewStatus.textContent = '';
       if (state.filterEq || state.filterInv) startLiveRaf();
+      // Periodically refresh histogram and mark values from the running stream
+      state.liveRefreshTimer = setInterval(() => {
+        if (streamImg.naturalWidth) {
+          updateHistogram();
+          refreshMark(streamImg);
+        }
+      }, 1000);
     };
     streamImg.src = url;
   }
@@ -215,16 +309,36 @@
   function stopLive() {
     if (state.mode === 'live') {
       stopLiveRaf();
+      if (state.liveRefreshTimer) { clearInterval(state.liveRefreshTimer); state.liveRefreshTimer = null; }
       streamImg.src = '';
       streamImg.style.display = 'none';
       frameImg.style.display  = '';
-      liveBtn.classList.remove('active');
       previewStatus.textContent = '';
       setMode('snap');
     }
   }
 
-  function setMode(m) { state.mode = m; }
+  function setMode(m) {
+    state.mode = m;
+    grabBtn.classList.toggle('active', m === 'snap');
+    autoBtn.classList.toggle('active', m === 'auto');
+    liveBtn.classList.toggle('active', m === 'live');
+    updateModeBadge();
+  }
+
+  function updateModeBadge() {
+    if (!state.frameLoaded) return;
+    modeBadge.className = 'cal-mode-badge';
+    if (state.mode === 'live') {
+      modeBadge.textContent = '● LIVE';
+      modeBadge.classList.add('mode-live');
+    } else if (state.mode === 'auto') {
+      modeBadge.textContent = 'AUTO';
+      modeBadge.classList.add('mode-auto');
+    } else {
+      modeBadge.textContent = 'SNAP';
+    }
+  }
 
   grabBtn.addEventListener('click', () => { stopAuto(); stopLive(); grabFrame(); });
   autoBtn.addEventListener('click', () => state.mode === 'auto' ? stopAuto() : startAuto());
@@ -238,11 +352,17 @@
       layers.style.display      = '';
       pixelBar.style.display    = '';
       histPanel.style.display   = '';
+      saveGroup.style.display   = '';
+      divDisplay.style.display  = '';
+      divSave.style.display     = '';
+      modeBadge.style.display   = '';
     }
+    updateModeBadge();
     syncCanvasSize();
     renderFilter();
     drawMask();
     updateHistogram();
+    refreshMark(frameImg);
   }
 
   // ── Canvas sizing ─────────────────────────────────────────────────────────
@@ -325,8 +445,8 @@
     if (state.liveRafId) { cancelAnimationFrame(state.liveRafId); state.liveRafId = null; }
   }
 
-  // Filter toggle buttons
-  document.querySelectorAll('.cal-filter-btn').forEach(btn => {
+  // Filter toggle buttons (pill style)
+  document.querySelectorAll('.cal-pill[data-filter]').forEach(btn => {
     btn.addEventListener('click', () => {
       const f = btn.dataset.filter;
       if (f === 'eq')  state.filterEq  = !state.filterEq;
@@ -394,6 +514,7 @@
       const cx = d.x0, cy = d.y0;
       const px = Math.round((cx / r.width)  * srcImg.naturalWidth);
       const py = Math.round((cy / r.height) * srcImg.naturalHeight);
+      state.lastMark = { type: 'pixel', cx, cy, px, py };
       _drawCrosshair(cx, cy);
       const sample = (img) => {
         const off = _offscreen(img);
@@ -403,8 +524,7 @@
         } catch { pixelCoords.textContent = `(${px}, ${py})`; pixelRgb.textContent = 'unavailable'; }
         pixelBar.style.display = '';
       };
-      if (state.mode === 'live') { const t = new Image(); t.onload = () => sample(t); t.src = snapshotUrl(); }
-      else sample(srcImg);
+      sample(srcImg);
 
     } else {
       // ── Area selection ────────────────────────────────────────────
@@ -417,6 +537,7 @@
       const px0 = Math.round(x0 * scaleX), py0 = Math.round(y0 * scaleY);
       const pw  = Math.max(1, Math.round((x1 - x0) * scaleX));
       const ph  = Math.max(1, Math.round((y1 - y0) * scaleY));
+      state.lastMark = { type: 'area', x0, y0, x1, y1, px0, py0, pw, ph };
 
       const sampleArea = (img) => {
         const off = _offscreen(img);
@@ -430,8 +551,7 @@
         } catch { pixelCoords.textContent = 'Area unavailable'; pixelRgb.textContent = ''; }
         pixelBar.style.display = '';
       };
-      if (state.mode === 'live') { const t = new Image(); t.onload = () => sampleArea(t); t.src = snapshotUrl(); }
-      else sampleArea(srcImg);
+      sampleArea(srcImg);
     }
   });
 
@@ -440,6 +560,25 @@
     c.width = img.naturalWidth || img.width; c.height = img.naturalHeight || img.height;
     c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
     return c.getContext('2d');
+  }
+
+  function refreshMark(srcImg) {
+    const m = state.lastMark;
+    if (!m || !srcImg.naturalWidth) return;
+    try {
+      const off = _offscreen(srcImg);
+      if (m.type === 'pixel') {
+        const p = off.getImageData(m.px, m.py, 1, 1).data;
+        _showPixelInfo(`(${m.px}, ${m.py})`, p[0], p[1], p[2]);
+      } else {
+        const data = off.getImageData(m.px0, m.py0, m.pw, m.ph).data;
+        let rs = 0, gs = 0, bs = 0;
+        const n = m.pw * m.ph;
+        for (let i = 0; i < data.length; i += 4) { rs += data[i]; gs += data[i+1]; bs += data[i+2]; }
+        _showPixelInfo(`(${m.px0},${m.py0}) – (${m.px0+m.pw},${m.py0+m.ph})  ${m.pw}×${m.ph} px`,
+                       Math.round(rs/n), Math.round(gs/n), Math.round(bs/n), 'avg ');
+      }
+    } catch {}
   }
 
   function _rgbToHsv(r, g, b) {
@@ -610,7 +749,58 @@
     btn.addEventListener('touchend',   ()  => { if (state.ptzActive === action) { sendPtz('stop'); state.ptzActive = null; } });
   });
 
-  // ── Utilities ─────────────────────────────────────────────────────────────
+  // ── Save snapshot (client-side download) ─────────────────────────────────
+  saveBtn.addEventListener('click', () => {
+    if (!state.frameLoaded) return;
+
+    const srcImg = state.mode === 'live' ? streamImg : frameImg;
+    if (!srcImg.naturalWidth) {
+      saveStatus.textContent = 'No frame available.';
+      return;
+    }
+
+    // Draw raw frame to an offscreen canvas and export as PNG
+    const off = document.createElement('canvas');
+    off.width  = srcImg.naturalWidth;
+    off.height = srcImg.naturalHeight;
+    off.getContext('2d').drawImage(srcImg, 0, 0);
+    const dataUrl = off.toDataURL('image/png');
+
+    // Build filename: YYYYMMDD_HHMMSS_<type>_<cam>.png
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const ts  = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`
+              + `_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const cam      = cameraMap[state.ip] || {};
+    const camLabel = (cam.user_name || cam.friendly_name || cam.ip || 'demo')
+                       .replace(/[^\w\-.]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+    const typeSlug = (calTypeSelect.value || 'snapshot').replace(/\s+/g, '_');
+    const filename = `${ts}_${typeSlug}_${camLabel}.png`;
+
+    const a = document.createElement('a');
+    a.href     = dataUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    saveStatus.textContent = `Downloaded: ${filename}`;
+    setTimeout(() => { saveStatus.textContent = ''; }, 3000);
+  });
+
+  function _cameraOption(cam) {
+    const opt  = document.createElement('option');
+    opt.value  = cam.ip;
+    // Priority: user-assigned name > ONVIF friendly name > manufacturer+model
+    const primary = (cam.user_name || cam.friendly_name || '').trim();
+    const model   = [cam.manufacturer, cam.model].filter(Boolean).join(' ').trim();
+    let label = primary || model;
+    if (!label) label = cam.ip;
+    if (cam.ip !== '__demo__') label += `  (${cam.ip})`;
+    opt.textContent = label;
+    return opt;
+  }
+
   function esc(s) {
     return String(s)
       .replace(/&/g, '&amp;')
@@ -618,4 +808,7 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
   }
-})();
+}
+
+initCalibration();
+window.cheesepieRegisterPageRefresher?.('calibration', initCalibration);
